@@ -30,8 +30,8 @@ a{text-decoration:none;color:inherit}
 .hero-left{flex:1;text-align:left}
 .hero-right{position:relative;width:200px;height:200px;flex:0 0 auto}
 #hero-globe{width:200px;height:200px}
-.globe-weather{position:absolute;bottom:-8px;left:50%;transform:translateX(-50%);display:flex;gap:4px;flex-wrap:wrap;justify-content:center;max-width:220px}
-.globe-weather .wt{font-size:9px;color:var(--muted);background:rgba(0,0,0,.6);padding:1px 4px;border-radius:4px;white-space:nowrap}
+.globe-weather{position:absolute;inset:0;pointer-events:none}
+.globe-weather .wt{position:absolute;font-size:9px;color:var(--muted);background:rgba(0,0,0,.7);padding:1px 4px;border-radius:4px;white-space:nowrap}
 .contact-label{font-size:12px;color:var(--muted);margin-bottom:8px;letter-spacing:1px;text-transform:uppercase}
 .social{display:flex;justify-content:center;gap:10px;margin:0}
 .social a{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border:1px solid var(--line);border-radius:50%;color:var(--muted);transition:all .2s}
@@ -195,26 +195,38 @@ async function loadGlobe(){
   try{
     const r=await fetch('/api/stats',{cache:'no-store'});
     const st=await r.json();
-    markers=(st.cities||[]).filter(c=>c.lat!=null&&c.lon!=null).map(c=>({location:[c.lat,c.lon],size:0.02+Math.log2((c.n||1)+1)*0.008}));
+    markers=(st.cities||[]).filter(c=>c.lat!=null&&c.lon!=null).map(c=>({location:[c.lat,c.lon],size:0.02+Math.log2((c.n||1)+1)*0.008,id:c.city}));
     const top5=(st.cities||[]).filter(c=>c.lat!=null).sort((a,b)=>b.n-a.n).slice(0,5);
-    const wps=top5.map(c=>fetch(`https://api.open-meteo.com/v1/forecast?latitude=${c.lat}&longitude=${c.lon}&current=temperature_2m,weather_code&timezone=auto`).then(r=>r.json()).then(d=>({city:c.city_zh||c.city,temp:Math.round(d.current?.temperature_2m||0),icon:WEATHER_ICON[d.current?.weather_code]||'🌡️'})).catch(()=>({city:c.city_zh||c.city,temp:'?',icon:'🌡️'})));
+    const wps=top5.map(c=>fetch(`https://api.open-meteo.com/v1/forecast?latitude=${c.lat}&longitude=${c.lon}&current=temperature_2m,weather_code&timezone=auto`).then(r=>r.json()).then(d=>({city:c.city_zh||c.city,lat:c.lat,lon:c.lon,temp:Math.round(d.current?.temperature_2m||0),icon:WEATHER_ICON[d.current?.weather_code]||'🌡️'})).catch(()=>({city:c.city_zh||c.city,lat:c.lat,lon:c.lon,temp:'?',icon:'🌡️'})));
     weatherData=await Promise.all(wps);
   }catch(e){}
   const wEl=document.getElementById('globe-weather');
-  if(wEl) wEl.innerHTML=weatherData.map(w=>`<span class="wt">${w.icon}${w.city}${w.temp}°</span>`).join('');
   const globe=createGlobe(canvas,{
     devicePixelRatio:2,width:400,height:400,
     phi:0,theta:0.3,
-    dark:1,diffuse:1.2,scale:1,
-    mapSamples:16000,mapBrightness:6,
-    baseColor:[0.1,0.1,0.2],
+    dark:1,diffuse:3,scale:1,
+    mapSamples:16000,mapBrightness:12,
+    baseColor:[0.4,0.4,0.5],
     markerColor:[0.35,0.65,1],
-    glowColor:[0.15,0.3,0.6],
+    glowColor:[0.1,0.2,0.5],
     offset:[0,0],
     markers:markers,
-    markerElevation:0.02,
-    onRender:(state)=>{state.phi=phi;phi+=0.003;}
+    markerElevation:0.02
   });
+  function animate(){
+    phi+=0.003;
+    globe.update({phi});
+    if(wEl&&weatherData.length){
+      wEl.innerHTML=weatherData.map(w=>{
+        const angle=Math.atan2(Math.cos(w.lat*Math.PI/180)*Math.sin((w.lon*Math.PI/180)+phi),Math.sin(w.lat*Math.PI/180));
+        const x=50+40*Math.cos(angle);
+        const y=50-40*Math.sin(angle);
+        return '<span class="wt" style="position:absolute;left:'+x+'%;top:'+y+'%;transform:translate(-50%,-50%)">'+w.icon+w.city+' '+w.temp+'°</span>';
+      }).join('');
+    }
+    requestAnimationFrame(animate);
+  }
+  animate();
 }
 loadGlobe();
 </script>
