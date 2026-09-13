@@ -162,6 +162,10 @@ const canvas = document.getElementById('mainCanvas');
 const ctx = canvas.getContext('2d');
 const stageWrap = document.getElementById('stageWrap');
 const canvasStage = document.getElementById('canvasStage');
+const canvasColumn = document.getElementById('canvasColumn');
+const playerBar = document.querySelector('.player-bar');
+const controlRow = document.getElementById('controlRow');
+const panelDock = document.getElementById('panelDock');
 
 const CFG = {
   canvas: { w:1280, h:720, zoom:1, bgType:'solid', bgColor:'#000000',
@@ -1444,6 +1448,8 @@ function applyZoom(){
   canvas.style.transformOrigin='0 0';
   stageWrap.style.width=(canvas.width*z)+'px';
   stageWrap.style.height=(canvas.height*z)+'px';
+  // 绘制区/进度条/按钮行同宽：列宽跟随画布显示宽度（移动端由 CSS 强制 100%）
+  if(canvasColumn) canvasColumn.style.width=(canvas.width*z)+'px';
   // 供全屏 CSS 覆盖移动端强制宽度（!important 需要变量参与）
   const rs=document.documentElement.style;
   rs.setProperty('--canvas-zoom', z);
@@ -1456,7 +1462,9 @@ function fitCanvas(){
   const stage=document.getElementById('canvasStage');
   if(!stage) return;
   const availW=stage.clientWidth;
-  const availH=stage.clientHeight;
+  // 扣除紧贴绘制区下方的进度条/按钮行高度，使整列（画布+进度条+按钮）完整可见
+  const belowH=(playerBar?playerBar.offsetHeight:0)+(controlRow?controlRow.offsetHeight:0);
+  const availH=stage.clientHeight-belowH;
   if(availW<=0){ CFG.canvas.zoom=1; applyZoom(); return; }
   const zW=availW/canvas.width;
   const zH=availH>0?availH/canvas.height:Infinity;
@@ -1518,9 +1526,12 @@ function _syncDropIcons(){
 }
 function _closeAllDropPanels(){
   document.querySelectorAll('.drop-panel.open').forEach(p=>p.classList.remove('open'));
+  if(panelDock) panelDock.classList.remove('open');
   _setActiveTool(null);
   _lastTool=null;
   _syncDropIcons();
+  requestAnimationFrame(()=>fitCanvas());  // 面板收起，绘制区恢复完整
+  setTimeout(()=>fitCanvas(),280);         // 侧栏/抽屉动画结束后再适配一次
 }
 function _openToolPanel(tool){
   _lastTool=tool;
@@ -1538,8 +1549,11 @@ function _openToolPanel(tool){
     const lp=document.getElementById('logPanel');
     if(lp){ lp.classList.add('open'); lp.querySelector('.log-bar')?.scrollTo(0, lp.querySelector('.log-bar').scrollHeight); }
   }
+  if(panelDock) panelDock.classList.add('open');
   _setActiveTool(tool);
   _syncDropIcons();
+  requestAnimationFrame(()=>fitCanvas());  // 面板展开，绘制区重新适配
+  setTimeout(()=>fitCanvas(),280);         // 侧栏/抽屉动画结束后再适配一次
 }
 function _toggleTool(tool){
   const active=!!_toolButtons.find(b=>b.dataset.tool===tool)?.classList.contains('active');
@@ -1610,12 +1624,10 @@ if(_restored && CFG.elements.length){
   CFG.selectedId=null;
   renderProps();
 }else{
-  // 默认添加一个居中元素（x/y=50），但不自动展开属性面板
+  // 默认添加一个居中元素（x/y=50）
   addElement('bars');
 }
-_lastTool=null;
-_setActiveTool(null);
-_syncDropIcons();
+_openToolPanel('props'); // 默认展开「属性」面板
 applyPanelAppearance(); // 应用持久化的面板透明度/模糊
 // 等布局完成后按宽度适配一次
 requestAnimationFrame(()=>{ render(); fitCanvas(); });
