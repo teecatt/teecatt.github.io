@@ -33,6 +33,8 @@ jobs:
           printf 'window.CRYPTO_BUILD={sha:"%s",time:%s*1000};\n' "$sha" "$ts" > crypto/build-info.js
           read psha pts < <(git log -1 --format='%H %ct')
           printf 'window.SITE_BUILD={sha:"%s",time:%s*1000};\n' "$psha" "$pts" > build-info.js
+          sed -i -E "s#build-info\.js\?[^\"']*#build-info.js?v=$psha#" index.html
+          sed -i -E "s#build-info\.js\?[^\"']*#build-info.js?v=$sha#" crypto/index.html
       - uses: actions/configure-pages@v4
       - uses: actions/upload-pages-artifact@v3
         with:
@@ -54,6 +56,8 @@ jobs:
           printf 'window.CRYPTO_BUILD={sha:"%s",time:%s*1000};\n' "$sha" "$ts" > crypto/build-info.js
           read psha pts < <(git log -1 --format='%H %ct')
           printf 'window.SITE_BUILD={sha:"%s",time:%s*1000};\n' "$psha" "$pts" > build-info.js
+          sed -i -E "s#build-info\.js\?[^\"']*#build-info.js?v=$psha#" index.html
+          sed -i -E "s#build-info\.js\?[^\"']*#build-info.js?v=$sha#" crypto/index.html
       - name: Stage site files
         run: |
           mkdir -p /tmp/cf_dist
