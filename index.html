@@ -155,7 +155,7 @@ footer{border-top:1px solid var(--line);padding:16px 24px;text-align:center;font
   function render(){
     const label = ago(Date.now() - b.time);
     el.textContent = '最近构建 ' + label;
-    document.title = 'teecatt·' + label;
+    document.title = 'teecatt · ' + label;
   }
   render();
   setInterval(render, 30000); // 相对时间随当前时间刷新
