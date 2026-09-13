@@ -171,7 +171,6 @@ const CFG = {
   audio: null, audioCtx: null, analyser: null, freq: null, wave: null,
   playing: false, loop: true, volume: 1, smoothing: 0.8,
   fps: 120, showFps: true, showRes: true,
-  menuCollapsed: false, menuAlpha: 0.82, menuGray: 0,
 };
 window.__CFG = CFG;
 
@@ -194,7 +193,6 @@ function saveConfig(){
       fps: CFG.fps, showFps: CFG.showFps, showRes: CFG.showRes,
       loop: CFG.loop, volume: CFG.volume, smoothing: CFG.smoothing,
       panelW: _panelW,
-      menuCollapsed: CFG.menuCollapsed, menuAlpha: CFG.menuAlpha, menuGray: CFG.menuGray,
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   }catch(e){}
@@ -215,19 +213,50 @@ function loadConfig(){
     if(typeof d.volume==='number') CFG.volume=d.volume;
     if(typeof d.smoothing==='number') CFG.smoothing=d.smoothing;
     if(typeof d.panelW==='number'){ _panelW=Math.max(180, Math.min(600, d.panelW)); document.documentElement.style.setProperty('--panel-w', _panelW+'px'); }
-    if(typeof d.menuCollapsed==='boolean') CFG.menuCollapsed=d.menuCollapsed;
-    if(typeof d.menuAlpha==='number') CFG.menuAlpha=Math.max(0.2, Math.min(1, d.menuAlpha));
-    if(typeof d.menuGray==='number') CFG.menuGray=Math.max(0, Math.min(1, d.menuGray));
     return true;
   }catch(e){ return false; }
 }
-// 悬浮菜单外观：透明度（面板 + 圆形按钮）与灰度（圆形按钮）
-function _applyMenuAppearance(){
-  const rs=document.documentElement.style;
-  rs.setProperty('--panel-alpha', CFG.menuAlpha);
-  rs.setProperty('--menu-alpha', CFG.menuAlpha);
-  rs.setProperty('--menu-gray', CFG.menuGray);
+/* ===== 下拉面板透明度 / 背景模糊（参考 midi_player，持久化到 localStorage） ===== */
+function _panelTargets(){ return Array.from(document.querySelectorAll('.drop-panel')); }
+function _applyAllAppearance(transparency, blurPct, menuGray){
+  const alpha=Math.max(0, Math.min(1, (100-transparency)/100));
+  const blurPx=blurPct*0.2;                          // 100% -> 20px
+  const bf=blurPx>0 ? ('blur('+blurPx.toFixed(1)+'px)') : 'none';
+  _panelTargets().forEach(el=>{
+    el.style.background='rgba(0,0,0,'+alpha+')';
+    el.style.backdropFilter=bf;
+    el.style.webkitBackdropFilter=bf;
+  });
+  document.documentElement.style.setProperty('--menu-gray', Math.max(0, Math.min(1, menuGray/100)));
+  const setV=(id,v)=>{ const e=document.getElementById(id); if(e) e.value=v; };
+  setV('panelTransparency', transparency);
+  setV('panelBlur', blurPct);
+  setV('menuGray', menuGray);
+  const tpct=document.getElementById('transparencyPct'); if(tpct) tpct.textContent=Math.round(transparency)+'%';
+  const bpct=document.getElementById('blurPct'); if(bpct) bpct.textContent=Math.round(blurPct)+'%';
+  const gpct=document.getElementById('grayPct'); if(gpct) gpct.textContent=Math.round(menuGray)+'%';
+  try{
+    localStorage.setItem('mv-panelTransparency', String(transparency));
+    localStorage.setItem('mv-panelBlur', String(blurPct));
+    localStorage.setItem('mv-menuGray', String(menuGray));
+  }catch(e){}
 }
+function applyPanelAppearance(){
+  const tp=document.getElementById('panelTransparency');
+  const bl=document.getElementById('panelBlur');
+  const mg=document.getElementById('menuGray');
+  _applyAllAppearance(tp?parseFloat(tp.value):40, bl?parseFloat(bl.value):0, mg?parseFloat(mg.value):0);
+}
+(function _restorePanelAppearance(){
+  try{
+    const t=localStorage.getItem('mv-panelTransparency');
+    const b=localStorage.getItem('mv-panelBlur');
+    const g=localStorage.getItem('mv-menuGray');
+    if(t!==null){ const el=document.getElementById('panelTransparency'); if(el) el.value=t; }
+    if(b!==null){ const el=document.getElementById('panelBlur'); if(el) el.value=b; }
+    if(g!==null){ const el=document.getElementById('menuGray'); if(el) el.value=g; }
+  }catch(e){}
+})();
 // 重置所有设置（性能面板底部按钮）：清除持久化并恢复出厂默认
 function resetAllSettings(){
   try{ localStorage.removeItem(STORAGE_KEY); }catch(e){}
@@ -239,14 +268,15 @@ function resetAllSettings(){
   CFG.fps=120; CFG.showFps=true; CFG.showRes=true;
   CFG.loop=true; CFG.volume=1; CFG.smoothing=0.8;
   _panelW=280; document.documentElement.style.setProperty('--panel-w', '280px');
-  CFG.menuCollapsed=false; CFG.menuAlpha=0.82; CFG.menuGray=0;
-  document.querySelector('.main')?.classList.remove('menu-collapsed');
-  _applyMenuAppearance(); if(typeof _syncMenuToggle==='function') _syncMenuToggle();
+  const _tp=document.getElementById('panelTransparency'); if(_tp) _tp.value=40;
+  const _bl=document.getElementById('panelBlur'); if(_bl) _bl.value=0;
+  const _mg=document.getElementById('menuGray'); if(_mg) _mg.value=0;
+  applyPanelAppearance();
+  if(typeof _closeAllDropPanels==='function') _closeAllDropPanels();
   if(CFG.audio){ CFG.audio.loop=true; CFG.audio.volume=1; }
   const vs=document.getElementById('volSlider'); if(vs) vs.value=1;
   const lb=document.getElementById('loopBtn'); if(lb){ lb.classList.add('active'); lb.innerHTML=LIST_LOOP_ICON; }
   addElement('bars');
-  document.getElementById('propsPanel').classList.remove('mobile-open');
   renderLibrary(); renderProps();
   if(_lastTool==='perf') renderPerf();
   fitCanvas();
@@ -770,7 +800,7 @@ function updateSeekUI(){
    ============================================================ */
 function renderLibrary(){
   const body=document.getElementById('libBody');
-  const tool=document.querySelector('.ibtn.active')?.dataset.tool||'elements';
+  const tool=(_lastTool==='background')?'background':'elements';
   let items=[];
   if(tool==='elements') items=[...VISUAL_STYLES];
   const cats={};
@@ -874,21 +904,13 @@ function renderProps(){
   const body=document.getElementById('propsBody');
   const sel=getSelected();
   const title=document.getElementById('propsTitle');
-  const propsPanel=document.getElementById('propsPanel');
   const delBtn=document.getElementById('propsDelBtn');
   if(!sel){
     title.textContent='属性';
-    body.innerHTML=`<div class="empty-props"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg><div>从左侧选择或添加元素<br>点击画布上的元素编辑属性</div></div>`;
-    propsPanel.classList.remove('mobile-open');
+    body.innerHTML=`<div class="empty-props"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg><div>从「元素」添加可视化风格<br>点击画布上的元素编辑属性</div></div>`;
     if(delBtn) delBtn.style.display='none';
-    _syncBackdrop();
     return;
   }
-  propsPanel.classList.add('mobile-open');
-  // 属性面板与左侧元素面板/性能面板互斥
-  document.getElementById('library')?.classList.remove('mobile-open');
-  document.getElementById('perfPanel')?.classList.remove('open','mobile-open');
-  _syncBackdrop();
   if(delBtn) delBtn.style.display='flex';
   const p=sel.params;
   const isVis=VISUAL_STYLES.some(s=>s.id===sel.type);
@@ -1017,14 +1039,6 @@ function renderPerf(){
     </div>
     <div class="field"><div class="toggle-row"><label style="margin-bottom:0">显示帧率</label><div class="toggle ${CFG.showFps?'on':''}" data-field="showFps"></div></div></div>
     <div class="field"><div class="toggle-row"><label style="margin-bottom:0">显示分辨率</label><div class="toggle ${CFG.showRes?'on':''}" data-field="showRes"></div></div></div>
-    <div class="field">
-      <label>悬浮菜单透明度</label>
-      <div class="range-row"><input type="range" id="menuAlphaRange" min="20" max="100" step="1" value="${Math.round(CFG.menuAlpha*100)}"><span class="val" id="menuAlphaVal">${Math.round(CFG.menuAlpha*100)}%</span></div>
-    </div>
-    <div class="field">
-      <label>悬浮菜单灰度</label>
-      <div class="range-row"><input type="range" id="menuGrayRange" min="0" max="100" step="1" value="${Math.round(CFG.menuGray*100)}"><span class="val" id="menuGrayVal">${Math.round(CFG.menuGray*100)}%</span></div>
-    </div>
     <div class="perf-err" id="perfErr"></div>
     <button type="button" class="perf-reset" id="perfResetBtn">重置所有设置</button>
   `;
@@ -1066,18 +1080,6 @@ function bindPerfFields(){
   body.querySelectorAll('#perfFpsPresets button').forEach(b=>b.addEventListener('click',()=>{ fEl.value=b.dataset.fps; applyFps(); }));
   body.querySelectorAll('[data-field="showFps"],[data-field="showRes"]').forEach(t=>{
     t.addEventListener('click',()=>{ const f=t.dataset.field; CFG[f]=!CFG[f]; t.classList.toggle('on',CFG[f]); scheduleSave(); });
-  });
-  const maEl=document.getElementById('menuAlphaRange');
-  if(maEl) maEl.addEventListener('input',()=>{
-    CFG.menuAlpha=Math.max(0.2, Math.min(1, (+maEl.value)/100));
-    const v=document.getElementById('menuAlphaVal'); if(v) v.textContent=maEl.value+'%';
-    _applyMenuAppearance(); scheduleSave();
-  });
-  const mgEl=document.getElementById('menuGrayRange');
-  if(mgEl) mgEl.addEventListener('input',()=>{
-    CFG.menuGray=Math.max(0, Math.min(1, (+mgEl.value)/100));
-    const v=document.getElementById('menuGrayVal'); if(v) v.textContent=mgEl.value+'%';
-    _applyMenuAppearance(); scheduleSave();
   });
   const rb=document.getElementById('perfResetBtn');
   if(rb) rb.addEventListener('click',()=>{ if(typeof confirm!=='function' || confirm('确定重置所有设置吗？')) resetAllSettings(); });
@@ -1301,10 +1303,7 @@ function getHandleAt(wx,wy,p){
 }
 function selectElement(el){
   CFG.selectedId=el.id;
-  document.querySelectorAll('.ibtn[data-tool]').forEach(x=>x.classList.remove('active'));
-  document.querySelector('.ibtn[data-tool="props"]')?.classList.add('active');
-  _lastTool='props';
-  renderProps();
+  _openToolPanel('props'); // 选中元素时展开「属性」下拉面板
 }
 function clampNum(v,lo,hi){ return Math.max(lo, Math.min(hi, v)); }
 // 拖动/缩放期间轻量同步属性面板数值控件，避免整面板重建
@@ -1471,33 +1470,6 @@ function fitCanvas(){
   CFG.canvas.zoom=Math.max(0.05,Math.min(2,Math.min(zW,zH)));
   applyZoom();
 }
-// 左侧面板宽度拖拽（PC）：拖动时画布等比缩放，始终完整可见
-(function(){
-  const rz=document.getElementById('panelResizer');
-  if(!rz) return;
-  let dragging=false, startX=0, startW=0;
-  function currentW(){
-    const el=document.querySelector('.library:not(.hidden)') || document.querySelector('.props.open');
-    return el ? el.getBoundingClientRect().width : 280;
-  }
-  rz.addEventListener('pointerdown',e=>{
-    dragging=true; startX=e.clientX; startW=currentW();
-    rz.classList.add('dragging');
-    try{ rz.setPointerCapture(e.pointerId); }catch(_){}
-    e.preventDefault();
-  });
-  rz.addEventListener('pointermove',e=>{
-    if(!dragging) return;
-    const w=Math.max(180, Math.min(600, startW+(e.clientX-startX)));
-    _panelW=w;
-    document.documentElement.style.setProperty('--panel-w', w+'px');
-    fitCanvas();
-  });
-  function end(){ if(!dragging) return; dragging=false; rz.classList.remove('dragging'); scheduleSave(); }
-  rz.addEventListener('pointerup',end);
-  rz.addEventListener('pointercancel',end);
-  window.addEventListener('pointerup',end);
-})();
 /* ============================================================
    事件绑定
    ============================================================ */
@@ -1532,106 +1504,62 @@ seekBar.addEventListener('touchstart',e=>{_seekDragging=true;seekPreview(e.touch
 document.addEventListener('touchmove',e=>{if(_seekDragging)seekPreview(e.touches[0].clientX);});
 document.addEventListener('touchend',()=>{if(_seekDragging){seekApply();_seekDragging=false;}});
 let _lastTool='elements';
-let _panelTimer=null;
-function _panelOpen(){
-  const lib=document.getElementById('library');
-  const propsPanel=document.getElementById('propsPanel');
-  const perfPanel=document.getElementById('perfPanel');
-  return (lib && lib.classList.contains('mobile-open')) ||
-         (propsPanel && (propsPanel.classList.contains('open')||propsPanel.classList.contains('mobile-open'))) ||
-         (perfPanel && (perfPanel.classList.contains('open')||perfPanel.classList.contains('mobile-open')));
+/* ===== 下拉菜单面板（参考 midi_player：控制行圆形按钮 + 下方浮层，互斥展开） ===== */
+const _toolButtons = Array.from(document.querySelectorAll('.ctl-btn[data-tool]'));
+function _setActiveTool(tool){
+  _toolButtons.forEach(b=>b.classList.toggle('active', b.dataset.tool===tool));
 }
-function _syncBackdrop(){
-  const bd=document.getElementById('panelBackdrop');
-  if(bd) bd.classList.toggle('show', _panelOpen());
+function _syncDropIcons(){
+  const isOpen = tool => {
+    if(tool==='elements' || tool==='background')
+      return !!(document.getElementById('library')?.classList.contains('open') && _lastTool===tool);
+    if(tool==='props') return !!document.getElementById('propsPanel')?.classList.contains('open');
+    if(tool==='perf') return !!document.getElementById('perfPanel')?.classList.contains('open');
+    return false;
+  };
+  _toolButtons.forEach(b=>{
+    const icon=b.querySelector('svg');
+    if(icon) icon.style.transform = isOpen(b.dataset.tool) ? 'rotate(180deg)' : '';
+  });
 }
-function _closeAllPanels(){
-  const lib=document.getElementById('library');
-  const propsPanel=document.getElementById('propsPanel');
-  const perfPanel=document.getElementById('perfPanel');
-  if(lib) lib.classList.remove('mobile-open','hidden');
-  if(propsPanel) propsPanel.classList.remove('open','mobile-open');
-  if(perfPanel) perfPanel.classList.remove('open','mobile-open');
-  document.querySelectorAll('.ibtn[data-tool]').forEach(x=>x.classList.remove('active'));
+function _closeAllDropPanels(){
+  document.querySelectorAll('.drop-panel.open').forEach(p=>p.classList.remove('open'));
+  _setActiveTool(null);
   _lastTool=null;
-  fitCanvas();
-  _syncBackdrop();
+  _syncDropIcons();
 }
-document.querySelectorAll('.ibtn[data-tool]').forEach(b=>b.addEventListener('click',()=>{
-  const lib=document.getElementById('library');
-  const propsPanel=document.getElementById('propsPanel');
-  const perfPanel=document.getElementById('perfPanel');
-  const tool=b.dataset.tool;
-  const isActive=b.classList.contains('active');
-  if(_panelTimer) clearTimeout(_panelTimer);
-  document.querySelectorAll('.ibtn[data-tool]').forEach(x=>x.classList.remove('active'));
-  lib.classList.remove('mobile-open','hidden');
-  propsPanel.classList.remove('open','mobile-open');
-  perfPanel.classList.remove('open','mobile-open');
-  if(isActive){
-    _lastTool=null;
-  }else{
-    b.classList.add('active');
-    _lastTool=tool;
-    if(tool==='props'){
-      // 属性/性能面板与左侧元素面板共用左侧位置：打开时隐藏元素面板
-      lib.classList.add('hidden');
-      void propsPanel.offsetHeight;
-      renderProps();
-      propsPanel.classList.add('open','mobile-open');
-    }else if(tool==='perf'){
-      lib.classList.add('hidden');
-      void perfPanel.offsetHeight;
-      renderPerf();
-      perfPanel.classList.add('open','mobile-open');
-    }else{
-      void lib.offsetHeight;
-      _panelTimer=setTimeout(()=>{
-        renderLibrary();
-        lib.classList.add('mobile-open');
-      },30);
-    }
+function _openToolPanel(tool){
+  _lastTool=tool;
+  document.querySelectorAll('.drop-panel.open').forEach(p=>p.classList.remove('open'));
+  if(tool==='elements' || tool==='background'){
+    renderLibrary();
+    document.getElementById('library')?.classList.add('open');
+  }else if(tool==='props'){
+    renderProps();
+    document.getElementById('propsPanel')?.classList.add('open');
+  }else if(tool==='perf'){
+    renderPerf();
+    document.getElementById('perfPanel')?.classList.add('open');
   }
-  if(tool==='props'||tool==='perf') fitCanvas(); // 面板开合改变可用宽度，重新按宽度适配
-  _syncBackdrop();
-}));
-document.getElementById('panelBackdrop').addEventListener('click',e=>{
-  // 移动端点击右侧 1/3：仅收起面板，不做任何其他响应
-  e.preventDefault();
-  e.stopPropagation();
-  _closeAllPanels();
+  _setActiveTool(tool);
+  _syncDropIcons();
+}
+function _toggleTool(tool){
+  const active=!!_toolButtons.find(b=>b.dataset.tool===tool)?.classList.contains('active');
+  if(active && document.querySelector('.drop-panel.open')){
+    _closeAllDropPanels();
+  }else{
+    _openToolPanel(tool);
+  }
+}
+_toolButtons.forEach(b=>b.addEventListener('click',()=>_toggleTool(b.dataset.tool)));
+// 点击面板 / 触发按钮以外区域：关闭所有下拉面板（全屏等非下拉按钮除外）
+document.addEventListener('pointerdown',e=>{
+  const t=e.target;
+  if(t && t.closest && (t.closest('.drop-panel') || t.closest('.drop-trigger'))) return;
+  if(t && t.closest && t.closest('.ctl-btn')) return;
+  if(document.querySelector('.drop-panel.open')) _closeAllDropPanels();
 });
-/* 悬浮菜单开关：PC 收起/展开整个左侧菜单；移动端快速开合面板 */
-const _menuToggleBtn=document.getElementById('menuToggle');
-function _isDesktopLayout(){ return window.matchMedia('(min-width:769px)').matches; }
-function _syncMenuToggle(){
-  const main=document.querySelector('.main');
-  const collapsed=!!(main && _isDesktopLayout() && main.classList.contains('menu-collapsed'));
-  if(_menuToggleBtn){
-    const icon=_menuToggleBtn.querySelector('svg');
-    if(icon) icon.style.transform=collapsed?'rotate(180deg)':'';
-    _menuToggleBtn.title=collapsed?'展开菜单':'收起菜单';
-  }
-}
-function _toggleMenu(){
-  const main=document.querySelector('.main');
-  if(!main) return;
-  if(_isDesktopLayout()){
-    main.classList.toggle('menu-collapsed');
-    CFG.menuCollapsed=main.classList.contains('menu-collapsed');
-    scheduleSave();
-    _syncMenuToggle();
-    fitCanvas();
-  }else if(_panelOpen()){
-    _closeAllPanels();
-  }else{
-    _closeAllPanels();
-    const b=document.querySelector('.ibtn[data-tool="elements"]');
-    if(b) b.click();
-  }
-}
-if(_menuToggleBtn) _menuToggleBtn.addEventListener('click',_toggleMenu);
-window.addEventListener('resize',_syncMenuToggle);
 // 全屏：全屏绘制区；全屏时画布元素不可选中/点击，双击任意位置退出
 let _isFullscreen=false;
 const _fsBtn=document.getElementById('fsToggleBtn');
@@ -1688,16 +1616,13 @@ if(_restored && CFG.elements.length){
   // 默认添加一个居中元素（x/y=50），但不自动展开属性面板
   addElement('bars');
 }
-document.getElementById('propsPanel').classList.remove('mobile-open');
 _lastTool=null;
-_syncBackdrop();
-// 恢复悬浮菜单外观与收起状态
-_applyMenuAppearance();
-if(CFG.menuCollapsed) document.querySelector('.main')?.classList.add('menu-collapsed');
-_syncMenuToggle();
-// 等布局完成后按宽度适配一次（PC 端绘制区宽度自动撑满左右控件边界）
+_setActiveTool(null);
+_syncDropIcons();
+applyPanelAppearance(); // 应用持久化的面板透明度/模糊
+// 等布局完成后按宽度适配一次
 requestAnimationFrame(()=>{ render(); fitCanvas(); });
-window.addEventListener('resize',()=>{ fitCanvas(); _syncBackdrop(); });
+window.addEventListener('resize',()=>{ fitCanvas(); });
 
 // 自动加载演示音频
 _log('页面初始化完成, 开始加载demo音频...');
