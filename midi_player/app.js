@@ -316,10 +316,10 @@ function onDebugEnabledChange(){
 // 面板透明度 / 背景模糊：透明滑块 100 = 全透明（alpha 0），0 = 全黑
 // 菜单面板、调试面板、选谱弹层、谱面管理弹窗共享同一组值并绑定
 function _panelTargets(){
+  // 配色面板（#paletteRow）不在此列：始终 100% 不透明，不受全局透明度/模糊影响
   const list = [
     document.getElementById('controlPanel'),
     document.getElementById('debugPanel'),
-    document.getElementById('paletteRow'),
     document.getElementById('manageModal')
   ];
   document.querySelectorAll('.csel-pop').forEach(el => list.push(el));
@@ -608,8 +608,31 @@ const PerfArbiter = {
   }
 };
 
+// 性能降级：临时切换到合成钢琴（最省 CPU），记录原音色以便恢复
+function _perfDegradeToSynth(){
+  const cur = SoundfontLoader.current;
+  if(cur === '__synth__') return;
+  _perfDegradeTimbre = cur;
+  SoundfontLoader.stopAll();
+  SoundfontLoader.current = '__synth__';
+  const sel = document.getElementById('timbreSel');
+  if(sel) sel.value = '__synth__';
+  _updateSynthPathInfo();
+  console.log('[AudioDebug][INFO] 性能降级：音色临时切换为合成钢琴（原 ' + timbreDisplayName(cur) + '）');
+}
+// 性能恢复：切回降级前的音色；本地不存在则后台下载，下完再切
+function _perfRestoreTimbre(){
+  const want = _perfDegradeTimbre || _desiredTimbre;
+  _perfDegradeTimbre = null;
+  if(!want || want === '__synth__') return;
+  const cached = want === '__yamaha_c7__' || SoundfontLoader.cachedNames.has(want);
+  console.log('[AudioDebug][INFO] 性能恢复：切回音色[' + timbreDisplayName(want) + ']' + (cached ? '' : '（本地不存在，下载完成后切换）'));
+  _applyTimbre(want, { auto: true, songKey: currentSongKey, songDisp: null });
+}
+
 // 渲染 + 音频同步降级/恢复
 function applyDegradation(on){
+  _perfDegraded = !!on;
   // 音频：降低复音上限、提高同音重触发下限
   SoundfontLoader.MAX_VOICES = on ? 64 : 128;
   const base = SoundfontLoader.baseRetriggerFloor || 0;
@@ -617,8 +640,13 @@ function applyDegradation(on){
   // 渲染：降级时把帧率上限临时压到 DEGRADE_FPS_CAP，减少主线程/GPU 负载（比仅抽帧 LOD 更平滑）
   _lastLoopTs = 0;
   _syncFpsCapLabel();
-  if(on) console.log('[AudioDebug][INFO] 渲染降级：帧率上限临时降为 ' + _effectiveFpsCap() + 'fps（原 ' + (renderFpsCap || '不限') + '）');
-  else console.log('[AudioDebug][INFO] 渲染恢复：帧率上限回到 ' + (renderFpsCap || '不限'));
+  if(on){
+    console.log('[AudioDebug][INFO] 渲染降级：帧率上限临时降为 ' + _effectiveFpsCap() + 'fps（原 ' + (renderFpsCap || '不限') + '）');
+    _perfDegradeToSynth();
+  } else {
+    console.log('[AudioDebug][INFO] 渲染恢复：帧率上限回到 ' + (renderFpsCap || '不限'));
+    _perfRestoreTimbre();
+  }
   // 自动降帧率同属渲染降级：进入降级时按勾选设置自动展开调试区（不自动收起）
   if(on && debugEnabled) autoOpenDebugPanel();
 }
@@ -2030,95 +2058,118 @@ try{ SoundfontLoader.refreshCachedNames(); }catch(e){}
 // 音色下载完成后刷新音色下拉列表的下载/删除按钮状态（由 SoundfontLoader._doLoad 调用）
 function _onTimbreCached(){ try{ if(_timbreSelect) _timbreSelect.refresh(); }catch(e){} }
 
-// opts.auto=true：谱面配置的音色自动切换（不打断正在播放的音符）
-// 谱面默认音色自动切换：默认音色本地不存在时，先回滚合成钢琴并后台下载；
-// 下载完成后仅在「用户未主动切其他音色」且「当前谱面未播完」时自动切回。
-let _timbreAutoSwitch = null; // { file, name, disp, gen }
+// 音色状态：_desiredTimbre 记录「期望音色」（谱面配置或用户选中），与实际的
+// SoundfontLoader.current 解耦——配置音色未缓存或性能降级时实际用合成钢琴，
+// 条件满足后再切回期望音色（opts.auto=true 表示由谱面/恢复触发，不打断播放）。
+let _timbreAutoSwitch = null; // { name, gen, songKey }：后台下载完成后待切换的音色
 let _timbreGen = 0;           // 代际：切歌/手动切音色/播完时递增，使旧的下载回调失效
 let currentSongKey = null;    // 当前选中谱面（含前缀，如 builtin:midi/x.mid）
 let _songEnded = false;       // 当前谱面是否已播完
-function _invalidateTimbreAutoSwitch(){ _timbreGen++; _timbreAutoSwitch = null; }
+let _desiredTimbre = '__synth__'; // 期望音色（谱面配置或用户选中），与实际 current 解耦
+let _perfDegradeTimbre = null;    // 性能降级前实际使用的音色（恢复时切回）
+let _perfDegraded = false;        // 是否因性能问题处于降级状态（暂用合成钢琴）
+function _invalidateTimbreAutoSwitch(){ _timbreGen++; _timbreAutoSwitch = null; _perfDegradeTimbre = null; }
 
-async function onTimbreChange(opts){
-  const auto = !!(opts && opts.auto);
-  if(!auto) _invalidateTimbreAutoSwitch(); // 用户主动切音色：作废谱面默认音色的自动切换
+// 统一音色应用（所有谱开始播放前调用）：
+// - 算法音色（合成钢琴/雅马哈C7）：无需下载，直接使用
+// - 已缓存：加载并预解码后切换
+// - 本地不存在：先用合成钢琴播放，后台下载，下载完成后自动切过去
+// opts: { auto, songKey, songDisp }
+function _applyTimbre(name, opts){
+  opts = opts || {};
+  const auto = !!opts.auto;
+  if(!auto) _invalidateTimbreAutoSwitch(); // 用户主动切音色：作废谱面自动切换
   const sel = document.getElementById('timbreSel');
-  const name = sel.value;
   const disp = timbreDisplayName(name);
-  initAudio();
-  // 切换音色前停止所有正在播放的音符，避免新旧音色叠加导致音量暴增
-  SoundfontLoader.stopAll();
-  if(name === '__synth__' || name === '__yamaha_c7__'){
-    SoundfontLoader.current = name; // 纯算法音色：无需下载，直接切换
-    _updateSynthPathInfo();
-    return;
-  }
-  // 未下载的音色：直接下载并切换（不再要求先点下载按钮）
-  const needDownload = !SoundfontLoader.cachedNames.has(name);
-  try{
-    setStatus('音色[' + disp + ']' + (needDownload ? '下载中…' : '加载中…'));
-    await SoundfontLoader.load(name, (p) => {
-      if(p < 1) setStatus('音色[' + disp + ']下载 ' + Math.round(p * 100) + '%');
-    });
-    await SoundfontLoader.predecodeAll();
-    setStatus('音色[' + disp + ']完成!');
-    _updateSynthPathInfo();
-  }catch(e){
-    setStatus('音色[' + disp + ']加载失败，已回退合成钢琴');
-    sel.value = '__synth__';
-    SoundfontLoader.current = '__synth__';
-  }
-}
-
-// 应用谱面配置的默认音色：
-// - 合成钢琴：谱面本就配置合成钢琴，属于正常选择，不是「加载失败回退」
-// - 已缓存：直接切换
-// - 本地不存在：提示后回滚合成钢琴，后台下载，下载完成后按条件自动切回
-async function _applySongDefaultTimbre(file, fname, timbre){
-  const sel = document.getElementById('timbreSel');
-  const disp = timbreDisplayName(timbre);
-  const songDisp = _songDisplayName(file);
-  if(timbre === '__synth__' || timbre === '__yamaha_c7__'){
-    sel.value = timbre;
-    SoundfontLoader.current = timbre;
-    console.log('[AudioDebug][INFO] 谱面' + _songId(file) + ' 默认使用' + disp + '音色');
-    return;
-  }
-  if(SoundfontLoader.cachedNames.has(timbre)){
-    if(sel.value !== timbre){ sel.value = timbre; await onTimbreChange({auto: true}); }
-    return;
-  }
-  // 本地不存在：回滚合成钢琴，记录待切换动作，并后台下载（不阻塞当前播放）
-  sel.value = '__synth__';
-  SoundfontLoader.current = '__synth__';
-  const prompt = '谱面[' + songDisp + ']默认使用音色[' + disp + ']。音色[' + disp + ']本地不存在，回滚到合成钢琴';
-  setStatus(prompt);
-  console.log('[AudioDebug][INFO] ' + prompt);
+  _desiredTimbre = name;
   const gen = ++_timbreGen;
-  _timbreAutoSwitch = { file, name: timbre, disp, gen };
-  SoundfontLoader.load(timbre, (p) => {
+  // 算法音色：直接使用
+  if(name === '__synth__' || name === '__yamaha_c7__'){
+    if(sel) sel.value = name;
+    SoundfontLoader.current = name;
+    _updateSynthPathInfo();
+    return;
+  }
+  // 已缓存：直接切换（已解析则立即使用，后台预解码；未解析则解析后切换）
+  if(SoundfontLoader.cachedNames.has(name)){
+    if(sel) sel.value = name;
+    const use = () => {
+      if(gen !== _timbreGen || _perfDegraded) return;
+      SoundfontLoader.current = name;
+      _updateSynthPathInfo();
+      SoundfontLoader.predecodeAll(name).catch(() => {}); // 后台预热，不阻塞起播
+    };
+    if(SoundfontLoader.loaded[name] && SoundfontLoader.loaded[name].ready) use();
+    else SoundfontLoader.load(name, null, {switchCurrent: false}).then(use).catch(() => {});
+    return;
+  }
+  // 本地不存在：先用合成钢琴播放，后台下载
+  if(!_perfDegraded){
+    if(sel) sel.value = '__synth__';
+    SoundfontLoader.current = '__synth__';
+    _updateSynthPathInfo();
+  }
+  const songDisp = opts.songDisp;
+  const msg = auto && songDisp
+    ? ('谱面[' + songDisp + ']默认使用音色[' + disp + ']。音色[' + disp + ']本地不存在，回滚到合成钢琴')
+    : ('音色[' + disp + ']本地不存在，先用合成钢琴播放，下载完成后自动切换');
+  setStatus(msg);
+  console.log('[AudioDebug][INFO] ' + msg);
+  _timbreAutoSwitch = { name: name, gen: gen, songKey: opts.songKey || currentSongKey };
+  SoundfontLoader.load(name, (p) => {
     if(p < 1 && _timbreAutoSwitch && _timbreAutoSwitch.gen === gen){
       setStatus('音色[' + disp + ']后台下载 ' + Math.round(p * 100) + '%');
     }
   }, {switchCurrent: false}).then(() => {
     // 若已被用户主动切音色 / 切歌 / 播完作废，则不再自动切换
     if(!(_timbreAutoSwitch && _timbreAutoSwitch.gen === gen)) return;
-    if(_songEnded || currentSongKey !== ('builtin:' + file)){ _timbreAutoSwitch = null; return; }
+    if(_desiredTimbre !== name){ _timbreAutoSwitch = null; return; }
+    if(_timbreAutoSwitch.songKey && currentSongKey !== _timbreAutoSwitch.songKey){ _timbreAutoSwitch = null; return; }
+    if(_songEnded){ _timbreAutoSwitch = null; return; }
     _timbreAutoSwitch = null;
-    sel.value = timbre;
-    return SoundfontLoader.predecodeAll(timbre).then(() => {
-      SoundfontLoader.current = timbre;
-      const msg = '音色[' + disp + ']下载成功，谱面[' + songDisp + ']音色自动切换到[' + disp + ']';
-      console.log('[AudioDebug][INFO] ' + msg);
-      setStatus(msg);
+    if(_perfDegraded) return; // 性能降级中：等恢复时再切
+    return SoundfontLoader.predecodeAll(name).then(() => {
+      if(_timbreGen !== gen || _desiredTimbre !== name || _perfDegraded) return;
+      if(sel) sel.value = name;
+      SoundfontLoader.current = name;
+      _updateSynthPathInfo();
+      const m = '音色[' + disp + ']下载成功，已切换到[' + disp + ']';
+      console.log('[AudioDebug][INFO] ' + m);
+      setStatus(m);
     });
   }).catch((e) => {
     if(_timbreAutoSwitch && _timbreAutoSwitch.gen === gen){
       _timbreAutoSwitch = null;
-      console.warn('[AudioDebug][WARN] 谱面默认音色[' + disp + ']下载失败：' + (e && e.message ? e.message : e));
+      console.warn('[AudioDebug][WARN] 音色[' + disp + ']下载失败：' + (e && e.message ? e.message : e));
       setStatus('音色[' + disp + ']下载失败，继续使用合成钢琴');
     }
   });
+}
+
+// 用户手动切换音色（下拉 onchange / 点击选项）
+async function onTimbreChange(opts){
+  const auto = !!(opts && opts.auto);
+  const sel = document.getElementById('timbreSel');
+  const name = sel.value;
+  initAudio();
+  // 切换音色前停止所有正在播放的音符，避免新旧音色叠加导致音量暴增
+  SoundfontLoader.stopAll();
+  _applyTimbre(name, { auto: auto, songKey: opts && opts.songKey, songDisp: opts && opts.songDisp });
+}
+
+// 应用谱面配置的默认音色（内置谱用 songDefaultTimbre，其余用当前下拉选中的音色）
+function _applySongDefaultTimbre(key, file, fname, timbre){
+  const sel = document.getElementById('timbreSel');
+  const disp = timbreDisplayName(timbre);
+  if(timbre === '__synth__' || timbre === '__yamaha_c7__'){
+    if(sel) sel.value = timbre;
+    SoundfontLoader.current = timbre;
+    _desiredTimbre = timbre;
+    _updateSynthPathInfo();
+    console.log('[AudioDebug][INFO] 谱面' + _songId(file) + ' 默认使用' + disp + '音色');
+    return;
+  }
+  _applyTimbre(timbre, { auto: true, songKey: key, songDisp: _songDisplayName(file) });
 }
 
 // 内置谱默认音色配置：谱子文件名 -> 音色id
@@ -2877,12 +2928,16 @@ async function onSongChange(val){
       console.log('[AudioDebug][INFO] ' + _songLabel(name) + '（本地缓存）已读取 (' + (buf.byteLength/1024).toFixed(0) + 'KB)');
     }
     parseAndPlayMidi(buf, name);
-    // 内置谱按配置应用默认音色（本地不存在时回滚合成钢琴并排队自动切换）
+    // 所有谱起播前检查配置音色：本地不存在则先用合成钢琴，下载完成后自动切过去
+    const tSel = document.getElementById('timbreSel');
     if(val.startsWith('builtin:')){
       const file = val.substring(8);
       const fname = file.split('/').pop();
-      const defaultTimbre = songDefaultTimbre[fname];
-      if(defaultTimbre) await _applySongDefaultTimbre(file, fname, defaultTimbre);
+      const defaultTimbre = songDefaultTimbre[fname] || (tSel && tSel.value) || '__synth__';
+      _applySongDefaultTimbre(val, file, fname, defaultTimbre);
+    } else {
+      const cur = (tSel && tSel.value) || SoundfontLoader.current || '__synth__';
+      _applyTimbre(cur, { auto: true, songKey: val, songDisp: _songDisplayName(name) });
     }
     // 切换后自动播放
     initAudio();
@@ -2962,6 +3017,12 @@ function onMidiFile(event){
         throw new Error('谱面为空或格式错误（未解析到任何音符）');
       }
       console.log('[AudioDebug][INFO] ' + _songLabel(fname) + ' 上传解析成功，共 ' + allNotes.length + ' 个音符');
+      // 起播前检查配置音色（=当前下拉选中的音色）：本地不存在则先用合成钢琴
+      _invalidateTimbreAutoSwitch();
+      currentSongKey = 'user:' + file.name;
+      const upSel = document.getElementById('timbreSel');
+      const upTimbre = (upSel && upSel.value) || SoundfontLoader.current || '__synth__';
+      _applyTimbre(upTimbre, { auto: true, songKey: currentSongKey, songDisp: file.name });
       // 上传后自动播放
       initAudio();
       if(audioCtx.state === 'suspended') audioCtx.resume();
@@ -3098,13 +3159,11 @@ function startPlay(){
   const _pb = document.getElementById('playBtn');
   _pb.innerHTML = PAUSE_ICON; _pb.title = '暂停';
   rafId = requestAnimationFrame(playLoop);
-  schedulePaletteAutoCollapse(); // 3s 内未切换配色/点全屏则自动收起配色栏
 }
 
 function pausePlay(){
   isPlaying = false;
   if(typeof AudioDebugMonitor !== 'undefined') AudioDebugMonitor.resetClocks();
-  cancelPaletteAutoCollapse(); // 暂停后不再自动收起配色面板
   if(rafId) cancelAnimationFrame(rafId);
   rafId = null;
   // 已经排程到音频线程的音符不会自己停，必须显式停止
@@ -3619,8 +3678,7 @@ function loadCustomPalette(){
 }
 let currentPalette = 'B';
 
-/* 配色面板：默认收起；播放中 2s 未操作自动收起 */
-let paletteAutoCollapseTimer = null;
+/* 配色面板：默认收起，不自动收起 */
 function _paletteRow(){ return document.getElementById('paletteRow'); }
 function updatePaletteToggleIcon(){
   const icon = document.getElementById('paletteToggleIcon');
@@ -3638,52 +3696,65 @@ function setPaletteRowCollapsed(collapsed){
   row.classList.toggle('open', !collapsed);
   updatePaletteToggleIcon();
 }
-function cancelPaletteAutoCollapse(){
-  if(paletteAutoCollapseTimer){ clearTimeout(paletteAutoCollapseTimer); paletteAutoCollapseTimer = null; }
-}
-// 仅在播放中且配色面板展开时，2s 无操作后自动收起
-function schedulePaletteAutoCollapse(){
-  cancelPaletteAutoCollapse();
-  const row = _paletteRow();
-  if(!isPlaying || !row || !row.classList.contains('open')) return;
-  paletteAutoCollapseTimer = setTimeout(() => {
-    paletteAutoCollapseTimer = null;
-    setPaletteRowCollapsed(true);
-  }, 2000);
-}
 function togglePaletteRow(){
   const row = _paletteRow();
   if(!row) return;
-  cancelPaletteAutoCollapse();
   closeAllDropPanels(row);
   row.classList.toggle('open');
   updatePaletteToggleIcon();
-  if(row.classList.contains('open')){
-    openPaletteEditor();          // 面板展开时初始化取色器
-    schedulePaletteAutoCollapse();
-  }
-}
-// 操作配色面板（点按/拖动）时重置自动收起计时
-const _paletteRowEl = _paletteRow();
-if(_paletteRowEl){
-  ['pointerdown','pointermove'].forEach(ev =>
-    _paletteRowEl.addEventListener(ev, () => { if(isPlaying) schedulePaletteAutoCollapse(); }, {passive:true}));
+  if(row.classList.contains('open')) openPaletteEditor(); // 面板展开时初始化取色器
 }
 
 function setPalette(name){
   if(!PALETTES[name]) return;
-  schedulePaletteAutoCollapse(); // 切换配色视为操作，重置自动收起计时
   currentPalette = name;
   try{ localStorage.setItem('paletteV2', name); }catch(e){}
   document.querySelectorAll('.palette-btn').forEach(b => {
     b.classList.toggle('active', b.dataset.palette === name);
   });
   applyTheme(name === 'custom' ? (paletteEditColors.theme || '#c20c0c') : PALETTE_THEME[name]);
+  renderPaletteButtons();
   if(typeof allNotes !== 'undefined'){
     const fallDur = 2.0 / fallSpeedMultiplier;
     const leftIdx = lowerBound(allNotes, currentTime - fallDur);
     const rightIdx = lowerBound(allNotes, currentTime + fallDur);
     drawScene(allNotes, leftIdx, rightIdx, currentTime);
+  }
+}
+// 方案按钮：圆形饼图预览——上半圆=主题色，左下四分之一=黑键力度渐变（左轻下重），
+// 右下四分之一=白键力度渐变（右轻下重）；自定义按钮同形，颜色随自定义设置变化。
+function _paletteButtonSvg(uid, pal, theme){
+  const grad = (id, cols, x1, y1, x2, y2) =>
+    '<linearGradient id="' + id + '" gradientUnits="userSpaceOnUse" x1="' + x1 + '" y1="' + y1 +
+      '" x2="' + x2 + '" y2="' + y2 + '">' +
+      cols.map((c, i) => '<stop offset="' + (i / (cols.length - 1) * 100).toFixed(1) + '%" stop-color="' + c + '"/>').join('') +
+    '</linearGradient>';
+  const gb = 'pgb_' + uid, gw = 'pgw_' + uid;
+  return '<svg viewBox="0 0 100 100" aria-hidden="true">' +
+    '<defs>' +
+      grad(gb, pal.black, 0, 50, 50, 100) +
+      grad(gw, pal.white, 100, 50, 50, 100) +
+    '</defs>' +
+    '<path d="M0,50 A50,50 0 0 1 100,50 Z" fill="' + theme + '"/>' +
+    '<path d="M50,50 L0,50 A50,50 0 0 0 50,100 Z" fill="url(#' + gb + ')"/>' +
+    '<path d="M50,50 L50,100 A50,50 0 0 0 100,50 Z" fill="url(#' + gw + ')"/>' +
+    '<circle cx="50" cy="50" r="49" fill="none" stroke="rgba(0,0,0,.4)" stroke-width="2"/>' +
+  '</svg>';
+}
+// 油漆桶 logo（与旧「自定义配色」按钮一致，保持不变）
+const PALETTE_CUSTOM_ICON = '<svg viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M8.203 2.004c1.261 0 2.304 1.103 2.476 2.538l8.483 8.484l-7.778 7.778a3 3 0 0 1-4.243 0L2.9 16.562a3 3 0 0 1 0-4.243l2.804-2.805V4.961c0-1.633 1.12-2.957 2.5-2.957m.5 2.957v1.553l-1 1V4.961c0-.327.224-.591.5-.591c.277 0 .5.264.5.591m0 5.914V9.342l-4.39 4.391a1 1 0 0 0 0 1.414l4.243 4.243a1 1 0 0 0 1.414 0l6.364-6.364l-5.63-5.63v3.48l-.003.128h-2.01a1 1 0 0 0 .012-.129" clip-rule="evenodd"/><path d="M16.859 16.875a3 3 0 1 0 4.242 0l-2.121-2.121z"/></svg>';
+function renderPaletteButtons(){
+  [['A', PALETTES.A, PALETTE_THEME.A, 'A'],
+   ['B', PALETTES.B, PALETTE_THEME.B, 'B'],
+   ['C', PALETTES.C, PALETTE_THEME.C, 'C']].forEach(([name, pal, theme, glyph]) => {
+    const btn = document.querySelector('.palette-btn[data-palette="' + name + '"]');
+    if(btn) btn.innerHTML = _paletteButtonSvg(name, pal, theme) + '<span class="pal-glyph">' + glyph + '</span>';
+  });
+  const cust = document.getElementById('paletteCustomBtn');
+  if(cust){
+    const pal = buildCustomPalette(paletteEditColors.wl, paletteEditColors.wh, paletteEditColors.bl, paletteEditColors.bh);
+    cust.innerHTML = _paletteButtonSvg('custom', pal, paletteEditColors.theme || '#c20c0c') +
+      '<span class="pal-glyph">' + PALETTE_CUSTOM_ICON + '</span>';
   }
 }
 // ===== 全彩取色板 =====
@@ -3787,20 +3858,41 @@ function _positionBoardMarker(){
   marker.style.background = paletteEditColors[paletteEditTarget];
   marker.style.opacity = _editHSL.a;
 }
+// 叠加在力度图上的小标签（白键/黑键/力度）
+function _swatchLabel(text, pos){
+  return '<span style="position:absolute;' + pos +
+    'font-size:9px;line-height:1;color:#fff;' +
+    'text-shadow:0 0 3px #000,0 0 3px #000;pointer-events:none;white-space:nowrap;">' + text + '</span>';
+}
 // 黑白键力度图：直角梯形（左底边=右底边一半，左轻右重），两端方形色块可点选目标
-// 四端颜色选择：白键·轻/重、黑键·轻/重（不再画力度图，用带标签的色块）
+// 四端颜色选择：白键·轻/重、黑键·轻/重，梯形力度条叠加标签
 function renderPaletteEndpoints(){
   const host = document.getElementById('paletteEndpoints');
   if(!host) return;
   const c = paletteEditColors;
-  const box = (t, col, label) =>
-    '<button type="button" class="pe-box' + (paletteEditTarget === t ? ' sel' : '') + '" data-target="' + t +
-    '" title="' + PALETTE_TARGET_LABELS[t] + '"><span class="sw" style="background:' + col + '"></span>' + label + '</button>';
-  host.innerHTML =
-    '<div class="pe-row">' +
-      box('wl', c.wl, '白键·轻') + box('wh', c.wh, '白键·重') +
-      box('bl', c.bl, '黑键·轻') + box('bh', c.bh, '黑键·重') +
+  const p = buildCustomPalette(c.wl, c.wh, c.bl, c.bh);
+  const stops = cols => cols.map((col, i) =>
+    '<stop offset="' + (i / (cols.length - 1) * 100).toFixed(1) + '%" stop-color="' + col + '"/>').join('');
+  // 直角梯形力度条（左底边=右底边一半），标签覆盖在左侧与中间（与配色面板一致）
+  const bar = (gradId, label) =>
+    '<div class="pe-bar">' +
+      '<svg viewBox="0 0 300 20" preserveAspectRatio="none">' +
+        '<polygon points="0,10 300,0 300,20 0,20" fill="url(#' + gradId + ')"/>' +
+      '</svg>' +
+      _swatchLabel(label, 'left:6px;top:50%;transform:translateY(-50%);') +
     '</div>';
+  // 端点色块：与右上角主题色按钮同形式（圆角框 + 内部色块）
+  const box = (t, col) =>
+    '<button type="button" class="pe-box' + (paletteEditTarget === t ? ' sel' : '') + '" data-target="' + t +
+    '" title="' + PALETTE_TARGET_LABELS[t] + '"><span class="sw" style="background:' + col + '"></span></button>';
+  host.innerHTML =
+    '<svg width="0" height="0" style="position:absolute"><defs>' +
+      '<linearGradient id="peW" x1="0" y1="0" x2="1" y2="0">' + stops(p.white) + '</linearGradient>' +
+      '<linearGradient id="peB" x1="0" y1="0" x2="1" y2="0">' + stops(p.black) + '</linearGradient>' +
+    '</defs></svg>' +
+    '<div class="pe-row">' + box('wl', c.wl) + bar('peW', '白键') + box('wh', c.wh) + '</div>' +
+    '<div class="pe-row">' + box('bl', c.bl) + bar('peB', '黑键') + box('bh', c.bh) + '</div>' +
+    _swatchLabel('力度', 'left:50%;top:50%;transform:translate(-50%,-50%);');
 }
 function renderPalettePresets(){
   const host = document.getElementById('palettePresets');
@@ -3928,6 +4020,7 @@ function savePaletteCustom(){ _applyCustomLive(); } // 兼容旧调用：实时�
     loadCustomPalette();
     const saved = localStorage.getItem('paletteV2');
     if(saved && PALETTES[saved]) currentPalette = saved;
+    setPalette(currentPalette); // 应用主题、高亮选中方案并渲染饼图按钮
   }catch(e){}
 })();
 
@@ -3937,7 +4030,6 @@ const FS_ICON_MIN = '<g fill="none" stroke="currentColor" stroke-linecap="round"
 function toggleFullscreen(){
   const el = document.querySelector('.visual-panel');
   if(!el) return;
-  cancelPaletteAutoCollapse(); // 播放开始后 3s 内点过全屏 -> 不自动收起配色栏
   const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
   if(!fsEl){
     const req = el.requestFullscreen || el.webkitRequestFullscreen;

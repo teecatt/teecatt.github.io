@@ -145,7 +145,9 @@ MIDI不载声响，是二进制的乐思底稿。
 - 窗口内问题总数 ≥ 3 → 进入降级；≤ 1 → 恢复。
 - 降级动作 `applyDegradation`：
   - `MAX_VOICES` 128 → 64；
-  - `retriggerFloor` 提升到至少 30ms。
+  - `retriggerFloor` 提升到至少 30ms；
+  - **音色临时降级到合成钢琴**（`_perfDegradeToSynth`）：记录原音色 `_perfDegradeTimbre`、`stopAll()` 后把 `SoundfontLoader.current` 与下拉都切到 `__synth__`；置 `_perfDegraded` 标志，使后台下载完成的音色在降级期间不切换。
+  - **恢复时切回配置音色**（`_perfRestoreTimbre`）：已缓存立即切回；**未下载完则保持合成钢琴并继续后台下载，下完再切**；用户手动切音色/切歌会作废降级待办（`_invalidateTimbreAutoSwitch` 清空 `_perfDegradeTimbre`）。
 - 渲染降级时可自动弹出调试区并滚到最新日志（勾选项「渲染降级自动弹出」）；恢复时不自动收起。
 
 ### 2.3.5 渲染 LOD 与抗闪烁
@@ -339,7 +341,7 @@ document.getElementById('loopBtn').innerHTML = loopMode === 'one' ? ONE_LOOP_ICO
 - **解析**：使用 `@tonejs/midi` 解析，汇总所有轨道的音符为 `{midi, time, duration, velocity}` 并按时间排序，计算总时长与密度。
 - **内置谱**：`midi/list.json` 描述 `name`/`file`，通过 `fetchFresh` 获取最新列表。
 - **默认音色映射**：`songDefaultTimbre` 将谱面文件名映射到默认音色（如 `Rush E 3.mid → __synth__`、`The Sound of Silence.mid → __synth__`，两首内置谱默认均使用合成钢琴）。
-- **默认音色应用与自动切换**（`_applySongDefaultTimbre`）：切到内置谱时按配置处理——① 配置为合成钢琴（如 The Sound of Silence）即正常使用合成钢琴，**不当作「加载失败回退」**；② 默认音色已缓存则直接切换；③ 默认音色本地不存在时提示 `谱面[X]默认使用音色[T]。音色[T]本地不存在，回滚到合成钢琴`，先回滚合成钢琴并**后台下载**（`switchCurrent:false`，不阻塞播放），把「切到 T」作为待办（`_timbreAutoSwitch` + `_timbreGen`）。下载成功后仅当**用户未主动切其他音色**（手动切换会 `_invalidateTimbreAutoSwitch()`）且**当前谱面未播完**（`_songEnded` / `currentSongKey`）时，才记录 `音色[T]下载成功，谱面[X]音色自动切换到[T]` 并自动切换；否则作废待办。
+- **所有谱起播前的音色检查与自动切换**（统一入口 `_applyTimbre`，`onSongChange` / `onMidiFile` / `_applySongDefaultTimbre` 均调用）：配置音色 = 内置谱的 `songDefaultTimbre[fname]`，无配置或用户上传谱则取**当前下拉选中的音色**。处理：① 算法音色（合成钢琴 / 雅马哈C7）直接用；② 已缓存则加载并预解码后切换；③ **本地不存在则先用合成钢琴播放**（不阻塞起播），`switchCurrent:false` 后台下载，完成后仅当**用户未主动切其他音色**（`_invalidateTimbreAutoSwitch()`）、**当前谱面未切换/未播完**（`_songEnded` / `currentSongKey`）且**未处于性能降级**时才切过去，否则作废待办。待办以 `_timbreAutoSwitch` + `_timbreGen` 代际校验，`_desiredTimbre` 记录期望音色、与实际的 `SoundfontLoader.current` 解耦。
 - **用户上传**：文件读取后立即解析播放，同时写入 IndexedDB `user-songs`，支持在「谱面管理」弹窗中删除；全部本地，不涉及服务器。**非 `.mid/.midi` 文件直接拒绝并 `console.warn`；是 MIDI 但解析失败/无音符也打 warn**（`[AudioDebug][WARN] ...`）。
 - **偏好持久化**：配色（`paletteV2`/`paletteCustom`）、面板位置（`menuBtnPos`）、降级弹窗（`dbgAutoOpen`）。
 
@@ -444,12 +446,11 @@ document.getElementById('loopBtn').innerHTML = loopMode === 'one' ? ONE_LOOP_ICO
 ## 9.9 配色面板（下拉浮层）
 
 - 控制行内的配色按钮（`paletteToggleBtn`，圆形紫色 `.ctl-btn.primary`，图标 `ic:round-color-lens`，收起时旋转 180°）切换 `paletteRow`；**默认收起**，点击从按钮下方展开。
-- **下拉浮层**：`paletteRow` 使用统一 `.drop-panel` 样式（绝对定位在控制行下方），浮在渲染区之上，**不改变渲染区高度，也不影响进度条 / 统计信息位置**；背景与设置/调试/选谱/管理面板共享同一透明度与模糊（`_panelTargets` 含 `paletteRow`）。
-- **按钮**：A/B/C/自定义四个 `.pal-btn` 为 **27px** 圆形；A/B/C 使用 **Google Sans 常规字重**（`@font-face` 来自 `fonts.googleapis.com`，`font-weight:400`，回退 Product Sans / 系统字体）；**始终为不透明主题紫底白字**（无白圈/半透明）。已删除「配色方案」竖排文字标签。
-- **力度图不换行 + 标签叠加**：`paletteRow` 改为 `flex-wrap:nowrap`，`#paletteSwatch` 用 `flex:1 1 0;min-width:0` 自适应收缩，两张力度图不再被挤到下一行；原左侧「白键 / 黑键」独立列已删除，改为把 `白键`/`黑键`/`力度` 用 `_swatchLabel()` **叠加**在梯形渐变图上（白字 + 黑色描边阴影），节省横向空间。
-- **自动收起提示**：A/B/C/自定义按钮下方有一行小字「无操作2s自动收起配色面板」（`.pal-hint`，9px），提示播放中的自动收起行为。
-- **自动收起**：播放中若 2s 内未操作配色面板（点按面板或切换配色会重置计时），自动收起（`schedulePaletteAutoCollapse`，仅在 `isPlaying` 且面板展开时生效）；暂停时取消计时。**当选色面板 `#paletteEditor` 展开时，不启用 2s 自动收起**（`_paletteEditorOpen()` 守卫），方便慢慢调色；收起配色面板时会一并收起选色面板。
-- **五个下拉按钮的旋转动画**：`manageBtn` / `settingsBtn` / `paletteToggleBtn` / `paletteEditBtn`（选色面板）/ `debugToggleBtn` 的图标在各自面板**收起时旋转 180°、展开时转回**（`.drop-trigger svg{transition:transform .2s}`），展开/收起双向都有动画；由 `syncDropToggleIcons()` 依据面板 `.open` 状态集中同步，并在 `_closeDropPanelsOnly()` 末尾调用，因此**打开其他面板**或**点击面板外区域**导致收起时图标同样会旋转。
+- **下拉浮层**：`paletteRow` 使用统一 `.drop-panel` 样式（绝对定位在控制行下方），浮在渲染区之上，**不改变渲染区高度，也不影响进度条 / 统计信息位置**；配色面板**始终 100% 不透明**（`#paletteRow{background:#000 !important;backdrop-filter:none !important}`，且不再列入 `_panelTargets`），不受全局面板透明度/模糊影响，便于精准取色。
+- **按钮**：A/B/C/自定义四个 `.pal-btn` 为 **27px** 圆形 `.pal-pie`，按钮本身即**饼图预览**：**上半圆=该方案主题色**；**左下四分之一=黑键力度渐变**（沿切向从左侧「轻」到底部「重」，`PALETTES[name].black` 五级）；**右下四分之一=白键力度渐变**（从右侧「轻」到底部「重」，`PALETTES[name].white` 五级）。A/B/C 中心叠加字母，自定义按钮中心叠加**油漆桶 logo（保持不变）**，饼图颜色随用户自定义设置实时变化。**选中的方案按键高亮**：外圈白框 + 主题色光环（`.pal-btn.pal-pie.active`）。由 `renderPaletteButtons()` 在 `setPalette()` / 初始化时重建，切换配色或实时调色即刷新。
+- **取色器力度图**：`renderPaletteEndpoints()` 恢复**直角梯形力度条**（左底边=右底边一半，左轻右重）：上排「白键」、下排「黑键」，两端为可点选的方形端点色块（`wl`/`wh`/`bl`/`bh`），`白键`/`黑键`/`力度` 文字用 `_swatchLabel()` 叠加在渐变图上；与配色方案按钮的饼图表达一致。
+- **不再自动收起**：已移除播放中 2s 无操作自动收起逻辑（`schedulePaletteAutoCollapse`/`cancelPaletteAutoCollapse`/`.pal-hint` 及 `#paletteSwatch` 面板力度图均删除）；配色面板只在点击按钮或点击面板外时收起。
+- **四个下拉按钮的旋转动画**：`manageBtn` / `settingsBtn` / `paletteToggleBtn` / `debugToggleBtn` 的图标在各自面板**收起时旋转 180°、展开时转回**（`.drop-trigger svg{transition:transform .2s}`），展开/收起双向都有动画；由 `syncDropToggleIcons()` 依据面板 `.open` 状态集中同步，并在 `_closeDropPanelsOnly()` 末尾调用，因此**打开其他面板**或**点击面板外区域**导致收起时图标同样会旋转。
 
 ## 9.10 谱面管理面板（下拉浮层）
 
@@ -802,6 +803,9 @@ midi_player/
 | 未下载即下载+切换 | 谱面管理/音色选择点击未下载项 = 下载+切换：在下载按钮处显示百分比，完成后切换并收起面板（与先下载再切换一致） | `_pending_` |
 | Rush E3 默认音色 | Rush E3 默认改用合成钢琴（`songDefaultTimbre` + `COLD_START.timbre`）；古钢琴改到 P2 预配置必下音色 | `_pending_` |
 | 多CDN竞速公共组件 | 抽出 `shared/cdn-race.js`（`CdnRace`）：11 个镜像列表、`buildUrls`、完整/首字节竞速、`makeLiveLogger`（覆盖进行中行、固化最终行）；MIDI 播放器与音频可视化共用，两边同时受益、行为与日志一致 | `_pending_` |
+| 配色按钮饼图与力度图恢复 | A/B/C/自定义按钮改为 27px 圆形**饼图预览**（上半=主题色，左下=黑键力度渐变，右下=白键力度渐变），自定义按钮保留油漆桶 logo、颜色随自定义设置变化；选中方案外圈高亮；取色器恢复直角梯形力度条；配色面板始终 100% 不透明 | `_pending_` |
+| 取消配色面板自动收起 | 移除播放中 2s 无操作自动收起（`schedulePaletteAutoCollapse` 等）与提示小字；面板仅在点击按钮/点击外部时收起 | `_pending_` |
+| 全谱音色检查 + 性能降级切音色 | 所有谱起播前检查配置音色（内置谱 `songDefaultTimbre`，其余用下拉选中音色），本地不存在则先用合成钢琴、下载完成后切过去；性能降级临时切到合成钢琴，恢复时切回（未下完则等下完）；统一入口 `_applyTimbre` + `_desiredTimbre`/`_perfDegraded` | `_pending_` |
 
 ## 2026-09 首版与性能攻坚
 

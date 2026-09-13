@@ -118,11 +118,12 @@ h1{font-size:22px;font-weight:700;margin-bottom:4px}
 .palette-theme-btn.active{border-color:var(--accent);background:var(--accent-a18,rgba(139,92,246,.18));color:#fff}
 .palette-theme-btn .sw{width:14px;height:14px;border-radius:3px;border:1px solid #555}
 #paletteEndpoints{position:relative;display:flex;flex-direction:column;gap:4px;margin-bottom:6px}
-.pe-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
-.pe-box{display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 8px;border-radius:6px;
-  border:1px solid #333;background:rgba(255,255,255,.04);color:#ddd;font-size:10px;cursor:pointer;flex:0 0 auto}
-.pe-box .sw{width:13px;height:13px;border-radius:3px;border:1px solid #555}
-.pe-box.sel{border-color:var(--accent);background:var(--accent-a18,rgba(194,12,12,.18));color:#fff}
+.pe-row{display:flex;align-items:center;gap:6px}
+.pe-bar{position:relative;flex:1;height:20px;min-width:0}
+.pe-bar svg{display:block;width:100%;height:100%}
+.pe-box{width:22px;height:22px;border-radius:6px;border:1px solid #333;background:rgba(255,255,255,.04);display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;flex:0 0 auto}
+.pe-box .sw{width:14px;height:14px;border-radius:3px;border:1px solid #555}
+.pe-box.sel{border-color:var(--accent);background:var(--accent-a18,rgba(194,12,12,.18))}
 .palette-preset-row{display:flex;align-items:center;gap:6px;margin-bottom:6px}
 .pp-title{writing-mode:vertical-rl;text-orientation:upright;font-size:9px;color:#aaa;letter-spacing:1px;line-height:1;flex:0 0 auto}
 .palette-presets{flex:1;display:flex;justify-content:space-between;gap:4px;min-width:0}
@@ -167,6 +168,20 @@ button:active,[onclick]:active,[role="button"]:active,a:active{opacity:.78}
 /* 键盘焦点轮廓跟随圆角（仅键盘触发，触屏不显示） */
 .pal-btn:focus-visible{outline:2px solid #fff;outline-offset:2px}
 
+/* 配色方案按钮：圆形饼图预览（上半=主题色，左下=黑键力度渐变，右下=白键力度渐变） */
+.pal-btn.pal-pie{position:relative;background:transparent;overflow:hidden;color:#fff}
+.pal-pie > svg{position:absolute;inset:0;width:100%;height:100%;display:block}
+.pal-pie .pal-glyph{position:relative;z-index:1;display:flex;align-items:center;justify-content:center;
+  font-size:11px;font-weight:600;line-height:1;color:#fff;
+  text-shadow:0 0 2px #000,0 0 2px #000,0 0 3px #000}
+.pal-pie .pal-glyph svg{width:12px;height:12px;display:block;filter:drop-shadow(0 0 2px #000)}
+/* 选中：外圈白框 + 主题色光环 */
+.pal-btn.pal-pie.active{background:transparent;
+  box-shadow:0 0 0 2px #fff,0 0 0 4px var(--accent),0 0 8px var(--accent-a28)}
+.pal-btn.pal-pie:hover{box-shadow:0 0 0 2px rgba(255,255,255,.6)}
+.pal-btn.pal-pie.active:hover{box-shadow:0 0 0 2px #fff,0 0 0 4px var(--accent),0 0 8px var(--accent-a28)}
+.pal-btn.pal-pie:active{opacity:1;box-shadow:inset 0 0 0 999px rgba(0,0,0,.28)}
+
 /* 统一下拉面板：从控制行下方展开，浮在渲染区之上，最大高度约渲染区 2/3 */
 .drop-panel{
   position:absolute;top:100%;right:0;z-index:10050;display:none;
@@ -193,7 +208,6 @@ button:active,[onclick]:active,[role="button"]:active,a:active{opacity:.78}
 /* 配色方案按钮：与播放控制同尺寸（32px）、单行对齐 */
 .pal-grid{display:flex;gap:6px;flex-shrink:0}
 .pal-col{display:flex;flex-direction:column;gap:3px;flex-shrink:0}
-.pal-hint{font-size:9px;line-height:1;color:#888;white-space:nowrap}
 
 /* 控制行：播放控制 + 设置/调试/配色/全屏 */
 /* 第二行 8 个按钮：等分排满整行宽度；窄屏 / DPI 异常时按钮与图标一起自适应缩小，避免溢出或重叠 */
@@ -220,6 +234,8 @@ button:active,[onclick]:active,[role="button"]:active,a:active{opacity:.78}
 /* 配色面板：从控制行下方展开（absolute，不遮挡按钮） */
 .palette-row{display:none;align-items:stretch;gap:8px;flex-wrap:nowrap;min-width:0}
 .palette-row.open{display:flex}
+/* 配色面板始终 100% 不透明，不受全局面板透明度/模糊影响（便于精准取色） */
+#paletteRow{background:#000 !important;backdrop-filter:none !important;-webkit-backdrop-filter:none !important}
 .drop-trigger svg{transition:transform .2s}
 #paletteToggleIcon{transition:transform .2s}
 
@@ -491,11 +507,11 @@ select:focus{border-color:var(--accent)}
           <div id="paletteRow" class="palette-row drop-panel">
             <div class="pal-col">
               <div class="pal-grid">
-              <button class="pal-btn palette-btn" data-palette="A" onclick="setPalette('A')" title="纯紫">A</button>
-              <button class="pal-btn palette-btn active" data-palette="B" onclick="setPalette('B')" title="青蓝×琥珀红">B</button>
-              <button class="pal-btn palette-btn" data-palette="C" onclick="setPalette('C')" title="青绿×品红">C</button>
+              <button class="pal-btn palette-btn pal-pie" data-palette="A" onclick="setPalette('A')" title="纯紫"></button>
+              <button class="pal-btn palette-btn pal-pie active" data-palette="B" onclick="setPalette('B')" title="青蓝×琥珀红"></button>
+              <button class="pal-btn palette-btn pal-pie" data-palette="C" onclick="setPalette('C')" title="青绿×品红"></button>
+              <button class="pal-btn palette-btn pal-pie" id="paletteCustomBtn" data-palette="custom" onclick="setPalette('custom')" title="自定义配色"></button>
               </div>
-              <div class="pal-hint">自定义时 2s 无操作自动收起</div>
             </div>
             <div id="paletteEditor" class="palette-editor">
               <div class="palette-head">
