@@ -35,10 +35,14 @@ jobs:
           printf 'window.SITE_BUILD={sha:"%s",time:%s*1000};\n' "$psha" "$pts" > build-info.js
           sed -i -E "s#build-info\.js\?[^\"']*#build-info.js?v=$psha#" index.html
           sed -i -E "s#build-info\.js\?[^\"']*#build-info.js?v=$sha#" crypto/index.html
+      - name: Stage site files
+        run: |
+          mkdir -p /tmp/gh_dist
+          rsync -a --exclude='.git' --exclude='functions' ./ /tmp/gh_dist/
       - uses: actions/configure-pages@v4
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: '.'
+          path: '/tmp/gh_dist'
       - id: deployment
         uses: actions/deploy-pages@v4
 
@@ -61,7 +65,7 @@ jobs:
       - name: Stage site files
         run: |
           mkdir -p /tmp/cf_dist
-          rsync -a --exclude='.git' ./ /tmp/cf_dist/
+          rsync -a --exclude='.git' --exclude='functions' ./ /tmp/cf_dist/
       - name: Publish snapshot to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
         with:

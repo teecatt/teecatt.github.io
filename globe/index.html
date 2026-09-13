@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>访客地图 · teecatt</title>
+<style>
+:root{--bg:#000;--panel:#0d1117cc;--line:#30363d;--text:#e6edf3;--muted:#8b949e;--accent:#58a6ff;--hover:#21262d}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Microsoft YaHei',Helvetica,Arial,sans-serif}
+#globe{position:fixed;inset:0}
+.scene-tooltip{font-size:12px!important;color:#e6edf3!important}
+
+header{position:fixed;top:0;left:0;padding:14px 18px;z-index:10;display:flex;align-items:center;gap:12px}
+header a{color:var(--accent);text-decoration:none;font-size:13px;border:1px solid var(--line);border-radius:10px;padding:6px 12px;background:var(--panel);backdrop-filter:blur(8px)}
+header a:hover{border-color:var(--accent)}
+header h1{font-size:15px;font-weight:600;letter-spacing:.5px}
+
+#panel{position:fixed;top:0;right:0;width:340px;height:100%;background:var(--panel);backdrop-filter:blur(10px);border-left:1px solid var(--line);z-index:9;display:flex;flex-direction:column}
+.sum{padding:64px 18px 14px;border-bottom:1px solid var(--line)}
+.sum .total{font-size:26px;font-weight:700;color:var(--accent)}
+.sum .sub{font-size:12px;color:var(--muted);margin-top:6px;line-height:1.7}
+.tabs{display:flex;gap:8px;padding:12px 18px}
+.tabs button{flex:1;font-size:12px;color:var(--muted);background:none;border:1px solid var(--line);border-radius:999px;padding:7px 0;cursor:pointer;transition:.15s}
+.tabs button.on{color:#000;background:var(--accent);border-color:var(--accent);font-weight:600}
+#list{flex:1;overflow-y:auto;padding:0 10px 20px}
+.row{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:10px;cursor:pointer;transition:background .15s}
+.row:hover{background:var(--hover)}
+.row .dot{width:9px;height:9px;border-radius:50%;flex:0 0 auto}
+.row .t{flex:1;min-width:0}
+.row .t .n{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .t .s{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .c{font-size:12px;color:var(--accent);font-weight:600;flex:0 0 auto}
+.empty{color:var(--muted);font-size:13px;text-align:center;padding:40px 20px;line-height:1.8}
+.empty code{color:var(--accent);background:#161b22;padding:2px 6px;border-radius:6px;font-size:12px}
+
+#detail{position:fixed;left:18px;bottom:18px;z-index:11;background:var(--panel);backdrop-filter:blur(10px);border:1px solid var(--line);border-radius:14px;padding:14px 16px;min-width:220px;display:none}
+#detail .city{font-size:16px;font-weight:700}
+#detail .meta{font-size:12px;color:var(--muted);margin-top:6px;line-height:1.7}
+#detail .close{position:absolute;top:8px;right:12px;cursor:pointer;color:var(--muted);font-size:16px}
+#detail .close:hover{color:var(--text)}
+
+@media(max-width:720px){
+  #panel{top:auto;bottom:0;width:100%;height:46%;border-left:none;border-top:1px solid var(--line)}
+  .sum{padding:16px 18px 12px}
+  .sum .total{font-size:22px}
+  header h1{display:none}
+  #detail{left:10px;right:10px;bottom:48%}
+}
+</style>
+</head>
+<body>
+<div id="globe"></div>
+<header>
+  <a href="/">← 门户</a>
+  <h1>访客地图</h1>
+</header>
+<aside id="panel">
+  <div class="sum">
+    <div class="total" id="total">—</div>
+    <div class="sub" id="sub">加载中…</div>
+  </div>
+  <div class="tabs">
+    <button id="tab-city" class="on">城市</button>
+    <button id="tab-recent">最近访客</button>
+  </div>
+  <div id="list"><div class="empty">加载中…</div></div>
+</aside>
+<div id="detail">
+  <span class="close" onclick="document.getElementById('detail').style.display='none'">×</span>
+  <div class="city" id="d-city"></div>
+  <div class="meta" id="d-meta"></div>
+</div>
+
+<script>
+var COLORS = ['#58a6ff','#3fb950','#e8b64c','#ff7b72','#c822ff','#2dd4bf','#ff9e64','#a5d6ff','#f778ba','#7ee787'];
+function colorFor(s){ s = String(s||'?'); var h=0; for(var i=0;i<s.length;i++) h=(h*31+s.charCodeAt(i))>>>0; return COLORS[h%COLORS.length]; }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+function ago(ms){ var s=Math.max(0,Math.floor(ms/1000)); if(s<60) return '刚刚'; var m=Math.floor(s/60); if(m<60) return m+' 分钟前'; var h=Math.floor(m/60); if(h<24) return h+' 小时前'; var d=Math.floor(h/24); if(d<30) return d+' 天前'; var mo=Math.floor(d/30); if(mo<12) return mo+' 个月前'; return Math.floor(mo/12)+' 年前'; }
+function full(ts){ try{ return new Date(ts).toLocaleString('zh-CN',{hour12:false}); }catch(e){ return new Date(ts).toISOString(); } }
+function place(v){ var parts=[]; if(v.city) parts.push(v.city); if(v.region && v.region!==v.city) parts.push(v.region); if(v.country) parts.push(v.country); return parts.join(' · ') || '未知位置'; }
+
+var globe, cities=[], visits=[], mode='city', texture=null;
+
+function loadScript(src){ return new Promise(function(res,rej){ var s=document.createElement('script'); s.src=src; s.onload=res; s.onerror=rej; document.head.appendChild(s); }); }
+function imgOk(u){ return new Promise(function(res){ var i=new Image(); i.onload=function(){res(true);}; i.onerror=function(){res(false);}; i.src=u; }); }
+
+async function ensureGlobe(){
+  if(!window.Globe){ try{ await loadScript('https://cdn.jsdelivr.net/npm/globe.gl'); }catch(e){} }
+  if(!window.Globe){ try{ await loadScript('https://unpkg.com/globe.gl'); }catch(e){} }
+  if(!window.Globe){ try{ await loadScript('https://fastly.jsdelivr.net/npm/globe.gl'); }catch(e){} }
+}
+async function pickTexture(){
+  var urls=[
+    'https://cdn.jsdelivr.net/npm/three-globe/example/img/earth-dark.jpg',
+    'https://unpkg.com/three-globe/example/img/earth-dark.jpg',
+    'https://cdn.jsdelivr.net/npm/three-globe/example/img/earth-night.jpg'
+  ];
+  for(var i=0;i<urls.length;i++){ if(await imgOk(urls[i])) return urls[i]; }
+  return null;
+}
+
+function initGlobe(){
+  globe = Globe()(document.getElementById('globe'))
+    .backgroundColor('rgba(0,0,0,0)')
+    .showAtmosphere(true)
+    .atmosphereColor('#3a7bd5')
+    .atmosphereAltitude(0.18)
+    .pointLat('lat').pointLng('lon')
+    .pointColor(function(d){ return colorFor(d.country || d.region); })
+    .pointAltitude(0.012)
+    .pointRadius(function(d){ return 0.25 + Math.log2((d.n||1)+1) * 0.16; })
+    .pointLabel(function(d){ return '<div style="font-size:12px">'+esc(place(d))+'<br>'+d.n+' 次</div>'; })
+    .onPointClick(function(d){ selectCity(d); });
+  if(texture) globe.globeImageUrl(texture);
+  else globe.globeMaterial({ color:0x0b1a2b, emissive:0x08131f, emissiveIntensity:0.6, shininess:0.1 });
+  globe.controls().autoRotate = true;
+  globe.controls().autoRotateSpeed = 0.35;
+  globe.controls().enableDamping = true;
+}
+
+function setPoints(){
+  if(!globe) return;
+  globe.pointsData(cities.filter(function(c){ return c.lat!=null && c.lon!=null; }));
+}
+
+function flyTo(lat,lon){ if(!globe) return; globe.controls().autoRotate=false; globe.pointOfView({lat:lat,lng:lon,altitude:1.4}, 900); }
+
+function showDetail(d){
+  var el=document.getElementById('detail');
+  document.getElementById('d-city').textContent=(d.city||d.region||d.country||'未知')+(d.n?('  ·  '+d.n+' 次'):'');
+  var meta='';
+  if(d.region && d.region!==d.city) meta+=esc(d.region)+'<br>';
+  if(d.country) meta+=esc(d.country)+'<br>';
+  if(d.last) meta+='最近：'+ago(Date.now()-d.last)+'（'+full(d.last)+'）';
+  else if(d.ts) meta+=ago(Date.now()-d.ts)+'（'+full(d.ts)+'）';
+  if(d.path) meta+='<br>页面：'+esc(d.path);
+  document.getElementById('d-meta').innerHTML=meta;
+  el.style.display='block';
+}
+
+function selectCity(c){ flyTo(c.lat,c.lon); showDetail(c); }
+function selectVisit(v){ flyTo(v.lat,v.lon); showDetail(v); }
+
+function renderList(){
+  var list=document.getElementById('list');
+  var items = mode==='city' ? cities : visits;
+  if(!items.length){
+    list.innerHTML='<div class="empty">还没有数据。<br>如果刚部署，请先在 Cloudflare 建好 D1 并绑定 <code>DB</code>。</div>';
+    return;
+  }
+  var html='';
+  if(mode==='city'){
+    items.forEach(function(c){
+      html+='<div class="row" data-lat="'+c.lat+'" data-lon="'+c.lon+'" data-i="'+cities.indexOf(c)+'">'
+        +'<span class="dot" style="background:'+colorFor(c.country)+'"></span>'
+        +'<span class="t"><span class="n">'+esc(c.city||c.region||c.country||'未知')+'</span>'
+        +'<span class="s">'+esc([c.region,c.country].filter(Boolean).join(' · '))+'</span></span>'
+        +'<span class="c">'+c.n+'</span></div>';
+    });
+  } else {
+    items.forEach(function(v){
+      html+='<div class="row" data-lat="'+v.lat+'" data-lon="'+v.lon+'" data-i="'+visits.indexOf(v)+'">'
+        +'<span class="dot" style="background:'+colorFor(v.country)+'"></span>'
+        +'<span class="t"><span class="n">'+esc(place(v))+'</span>'
+        +'<span class="s">'+ago(Date.now()-v.ts)+' · '+esc(v.path||'')+'</span></span></div>';
+    });
+  }
+  list.innerHTML=html;
+  Array.prototype.forEach.call(list.querySelectorAll('.row'), function(row){
+    row.addEventListener('click', function(){
+      var i=+row.getAttribute('data-i');
+      (mode==='city'?selectCity:selectVisit)((mode==='city'?cities:visits)[i]);
+    });
+  });
+}
+
+async function refresh(){
+  try{
+    var rs=await fetch('/api/stats',{cache:'no-store'});
+    var st=await rs.json();
+    cities=(st.cities||[]).filter(function(c){return c.city || c.region;});
+    document.getElementById('total').textContent=st.total!=null?st.total:'—';
+    var countries={}; cities.forEach(function(c){ if(c.country) countries[c.country]=1; });
+    document.getElementById('sub').innerHTML='独立城市 ' + cities.length + ' 个 · 覆盖 ' + Object.keys(countries).length + ' 个国家/地区';
+    setPoints();
+  }catch(e){}
+  try{
+    var rv=await fetch('/api/visits?limit=200',{cache:'no-store'});
+    var vv=await rv.json();
+    visits=(vv.visits||[]).filter(function(v){return v.lat!=null && v.lon!=null;});
+  }catch(e){}
+  renderList();
+}
+
+document.getElementById('tab-city').addEventListener('click',function(){ mode='city'; this.classList.add('on'); document.getElementById('tab-recent').classList.remove('on'); renderList(); });
+document.getElementById('tab-recent').addEventListener('click',function(){ mode='recent'; this.classList.add('on'); document.getElementById('tab-city').classList.remove('on'); renderList(); });
+
+(async function(){
+  await ensureGlobe();
+  if(window.Globe){ texture=await pickTexture(); initGlobe(); }
+  else { document.getElementById('list').innerHTML='<div class="empty">3D 引擎加载失败，请检查网络（CDN）。</div>'; }
+  await refresh();
+  setInterval(refresh, 30000);
+})();
+</script>
+</body>
+</html>

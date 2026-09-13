@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "include": ["/*"],
+  "exclude": [
+    "/crypto/vendor/*",
+    "/midi_player/soundfonts/*",
+    "/midi_player/vendor/*",
+    "/midi_player/midi/*",
+    "/notes/vendor/*",
+    "/tools/skills/*",
+    "/tools/tools/*",
+    "/shared/*",
+    "/data/*",
+    "/ui-kit/ui-kit.css"
+  ]
+}
