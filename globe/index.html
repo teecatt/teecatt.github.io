@@ -222,7 +222,11 @@ function cityForMe(){
   if(!meData) return null;
   var k=rowKey(meData);
   for(var i=0;i<cities.length;i++){ if(rowKey(cities[i])===k) return cities[i]; }
-  return meData;
+  var mk=(meData.country||'')+'|'+(meData.city||'');
+  for(var i=0;i<cities.length;i++){
+    if((cities[i].country||'')+'|'+(cities[i].city||'')===mk) return cities[i];
+  }
+  return null;
 }
 function applySelection(){
   var list=document.getElementById('list');
