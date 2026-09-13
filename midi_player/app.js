@@ -358,7 +358,6 @@ const DROP_TOGGLE_MAP = [
   ['manageModal', '#manageBtn svg'],
   ['controlPanel', '#settingsBtn svg'],
   ['paletteRow', '#paletteToggleIcon'],
-  ['paletteEditor', '#paletteEditBtn svg'],
   ['debugPanel', '#debugToggleBtn svg'],
 ];
 function syncDropToggleIcons(){
@@ -372,8 +371,6 @@ function syncDropToggleIcons(){
 }
 function _closeDropPanelsOnly(except){
   document.querySelectorAll('.drop-panel.open').forEach(p => { if(p !== except) p.classList.remove('open'); });
-  const pe = document.getElementById('paletteEditor');
-  if(pe && pe !== except) pe.classList.remove('open'); // 选色面板不参与互斥判断，但同样需要收起
   syncDropToggleIcons(); // 因打开其他面板 / 点击面板外而收起时，同步旋转图标
 }
 // 关闭所有下拉面板 + 选谱/音色下拉（互斥）
@@ -3639,7 +3636,6 @@ function setPaletteRowCollapsed(collapsed){
   const row = _paletteRow();
   if(!row) return;
   row.classList.toggle('open', !collapsed);
-  if(collapsed) closePaletteEditor();
   updatePaletteToggleIcon();
 }
 function cancelPaletteAutoCollapse(){
@@ -3649,7 +3645,6 @@ function cancelPaletteAutoCollapse(){
 function schedulePaletteAutoCollapse(){
   cancelPaletteAutoCollapse();
   const row = _paletteRow();
-  if(_paletteEditorOpen()) return; // 选色面板打开时不启用 2s 无操作自动收起
   if(!isPlaying || !row || !row.classList.contains('open')) return;
   paletteAutoCollapseTimer = setTimeout(() => {
     paletteAutoCollapseTimer = null;
@@ -3663,11 +3658,17 @@ function togglePaletteRow(){
   closeAllDropPanels(row);
   row.classList.toggle('open');
   updatePaletteToggleIcon();
-  if(row.classList.contains('open')) schedulePaletteAutoCollapse();
+  if(row.classList.contains('open')){
+    openPaletteEditor();          // 面板展开时初始化取色器
+    schedulePaletteAutoCollapse();
+  }
 }
-// 操作配色面板（点按）时重置自动收起计时
+// 操作配色面板（点按/拖动）时重置自动收起计时
 const _paletteRowEl = _paletteRow();
-if(_paletteRowEl) _paletteRowEl.addEventListener('pointerdown', () => { if(isPlaying) schedulePaletteAutoCollapse(); });
+if(_paletteRowEl){
+  ['pointerdown','pointermove'].forEach(ev =>
+    _paletteRowEl.addEventListener(ev, () => { if(isPlaying) schedulePaletteAutoCollapse(); }, {passive:true}));
+}
 
 function setPalette(name){
   if(!PALETTES[name]) return;
@@ -3677,10 +3678,7 @@ function setPalette(name){
   document.querySelectorAll('.palette-btn').forEach(b => {
     b.classList.toggle('active', b.dataset.palette === name);
   });
-  const editBtn = document.getElementById('paletteEditBtn');
-  if(editBtn) editBtn.classList.toggle('active', name === 'custom');
   applyTheme(name === 'custom' ? (paletteEditColors.theme || '#c20c0c') : PALETTE_THEME[name]);
-  updatePaletteSwatch();
   if(typeof allNotes !== 'undefined'){
     const fallDur = 2.0 / fallSpeedMultiplier;
     const leftIdx = lowerBound(allNotes, currentTime - fallDur);
@@ -3688,39 +3686,6 @@ function setPalette(name){
     drawScene(allNotes, leftIdx, rightIdx, currentTime);
   }
 }
-// 叠加在力度图上的小标签（白键/黑键/力度）
-function _swatchLabel(text, pos){
-  return '<span style="position:absolute;' + pos +
-    'font-size:9px;line-height:1;color:#fff;' +
-    'text-shadow:0 0 3px #000,0 0 3px #000;pointer-events:none;white-space:nowrap;">' + text + '</span>';
-}
-// 两个横向直角梯形渐变块：短底=长底一半，左轻右重；上白键、下黑键；标签叠加在图上
-function updatePaletteSwatch(){
-  const host = document.getElementById('paletteSwatch');
-  if(!host) return;
-  const pal = PALETTES[currentPalette] || PALETTES.C;
-  const W = 300, H = 44, gap = 4;
-  const bh = (H - gap) / 2; // 每块高度（长底）
-  const stops = (colors) => colors.map((c, i) =>
-    '<stop offset="' + (i / (colors.length - 1) * 100).toFixed(1) + '%" stop-color="' + c + '"/>').join('');
-  // 直角梯形：右竖直边为长底(bh)，左竖直边为短底(bh/2)，下底水平
-  const trap = (yTop, fillId) =>
-    '<polygon points="0,' + (yTop + bh/2) + ' ' + W + ',' + yTop + ' ' + W + ',' + (yTop + bh) +
-    ' 0,' + (yTop + bh) + '" fill="url(#' + fillId + ')"/>';
-  host.innerHTML =
-    '<svg width="100%" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" style="display:block">' +
-      '<defs>' +
-        '<linearGradient id="pgW" x1="0" y1="0" x2="1" y2="0">' + stops(pal.white) + '</linearGradient>' +
-        '<linearGradient id="pgB" x1="0" y1="0" x2="1" y2="0">' + stops(pal.black) + '</linearGradient>' +
-      '</defs>' +
-      trap(0, 'pgW') +
-      trap(bh + gap, 'pgB') +
-    '</svg>' +
-    _swatchLabel('白键', 'left:10px;top:' + (bh * 0.75) + 'px;transform:translateY(-50%);') +
-    _swatchLabel('黑键', 'left:10px;top:' + (bh + gap + bh * 0.75) + 'px;transform:translateY(-50%);') +
-    _swatchLabel('力度', 'left:50%;top:50%;transform:translate(-50%,-50%);font-size:11px;');
-}
-
 // ===== 全彩取色板 =====
 function drawColorBoard(){
   const cv = document.getElementById('colorBoard');
@@ -3823,33 +3788,19 @@ function _positionBoardMarker(){
   marker.style.opacity = _editHSL.a;
 }
 // 黑白键力度图：直角梯形（左底边=右底边一半，左轻右重），两端方形色块可点选目标
+// 四端颜色选择：白键·轻/重、黑键·轻/重（不再画力度图，用带标签的色块）
 function renderPaletteEndpoints(){
   const host = document.getElementById('paletteEndpoints');
   if(!host) return;
   const c = paletteEditColors;
-  const p = buildCustomPalette(c.wl, c.wh, c.bl, c.bh);
-  const stops = cols => cols.map((col, i) =>
-    '<stop offset="' + (i / (cols.length - 1) * 100).toFixed(1) + '%" stop-color="' + col + '"/>').join('');
-  // 直角梯形力度条（左底边=右底边一半），标签覆盖在左侧与中间（与配色面板一致）
-  const bar = (gradId, label) =>
-    '<div class="pe-bar">' +
-      '<svg viewBox="0 0 300 20" preserveAspectRatio="none">' +
-        '<polygon points="0,10 300,0 300,20 0,20" fill="url(#' + gradId + ')"/>' +
-      '</svg>' +
-      _swatchLabel(label, 'left:6px;top:50%;transform:translateY(-50%);') +
-    '</div>';
-  // 端点色块：与右上角主题色按钮同形式（圆角框 + 内部色块）
-  const box = (t, col) =>
+  const box = (t, col, label) =>
     '<button type="button" class="pe-box' + (paletteEditTarget === t ? ' sel' : '') + '" data-target="' + t +
-    '" title="' + PALETTE_TARGET_LABELS[t] + '"><span class="sw" style="background:' + col + '"></span></button>';
+    '" title="' + PALETTE_TARGET_LABELS[t] + '"><span class="sw" style="background:' + col + '"></span>' + label + '</button>';
   host.innerHTML =
-    '<svg width="0" height="0" style="position:absolute"><defs>' +
-      '<linearGradient id="peW" x1="0" y1="0" x2="1" y2="0">' + stops(p.white) + '</linearGradient>' +
-      '<linearGradient id="peB" x1="0" y1="0" x2="1" y2="0">' + stops(p.black) + '</linearGradient>' +
-    '</defs></svg>' +
-    '<div class="pe-row">' + box('wl', c.wl) + bar('peW', '白键') + box('wh', c.wh) + '</div>' +
-    '<div class="pe-row">' + box('bl', c.bl) + bar('peB', '黑键') + box('bh', c.bh) + '</div>' +
-    _swatchLabel('力度', 'left:50%;top:50%;transform:translate(-50%,-50%);');
+    '<div class="pe-row">' +
+      box('wl', c.wl, '白键·轻') + box('wh', c.wh, '白键·重') +
+      box('bl', c.bl, '黑键·轻') + box('bh', c.bh, '黑键·重') +
+    '</div>';
 }
 function renderPalettePresets(){
   const host = document.getElementById('palettePresets');
@@ -3933,7 +3884,6 @@ function updatePalettePickUI(){
   _updateSliderUI();
 }
 function _paletteEditorEl(){ return document.getElementById('paletteEditor'); }
-function _paletteEditorOpen(){ const pe = _paletteEditorEl(); return !!(pe && pe.classList.contains('open')); }
 function _bindPaletteModal(){
   if(_paletteModalBound) return;
   _paletteModalBound = true;
@@ -3949,10 +3899,9 @@ function _bindPaletteModal(){
   });
   _bindHSLSliders();
 }
+// 取色器已并入配色面板：这里只做初始化（面板展开时调用一次即可）
 function openPaletteEditor(){
-  const pe = _paletteEditorEl();
-  if(!pe) return;
-  cancelPaletteAutoCollapse(); // 选色面板打开时不自动收起
+  if(!_paletteEditorEl()) return;
   if(PALETTES.custom){
     paletteEditColors.wl = PALETTES.custom.white[0];
     paletteEditColors.wh = PALETTES.custom.white[4];
@@ -3970,18 +3919,8 @@ function openPaletteEditor(){
   _renderPaletteThemeBtn();
   updatePalettePickUI();
   _positionBoardMarker();
-  pe.classList.add('open');
-  syncDropToggleIcons();
 }
-function closePaletteEditor(){
-  const pe = _paletteEditorEl();
-  if(pe) pe.classList.remove('open');
-  syncDropToggleIcons();
-}
-function togglePaletteEditor(){
-  if(_paletteEditorOpen()) closePaletteEditor();
-  else openPaletteEditor();
-}
+function closePaletteEditor(){ /* 取色器已并入配色面板，无需收起 */ }
 function savePaletteCustom(){ _applyCustomLive(); } // 兼容旧调用：实时应用
 // 恢复上次选择与自定义配色
 (function(){

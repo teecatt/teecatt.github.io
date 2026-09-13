@@ -103,15 +103,14 @@ h1{font-size:22px;font-weight:700;margin-bottom:4px}
   flex:0 0 auto;
 }
 
-/* 自定义配色：从「自定义」按钮下方展开的面板（纯黑不透明，便于精准取色） */
-.palette-editor{display:none;position:absolute;top:100%;left:0;margin-top:6px;
-  width:min(92vw,400px);max-height:66.67vh;overflow-y:auto;
-  background:#000;border:1px solid var(--border,#333);border-radius:12px;padding:12px;
-  box-shadow:0 14px 44px rgba(0,0,0,.55);
-  backdrop-filter:none;-webkit-backdrop-filter:none;z-index:10060}
-.palette-editor.open{display:block}
-/* 配色行允许子面板溢出显示，不裁剪 */
-#paletteRow{overflow:visible;max-height:none}
+/* 调色板已并入配色面板：面板内直接展示取色器，不再有独立弹层 */
+.palette-editor{display:block;position:static;margin-top:8px;
+  width:auto;max-height:none;overflow:visible;
+  background:transparent;border:none;border-top:1px solid var(--border,#333);
+  border-radius:0;padding:8px 0 0;box-shadow:none;z-index:auto;
+  backdrop-filter:none;-webkit-backdrop-filter:none}
+/* 配色行允许子面板溢出显示，不裁剪；纵向排列：A/B/C + 取色器 */
+#paletteRow{overflow:visible;max-height:none;flex-direction:column;align-items:stretch}
 .palette-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
 .palette-head h3{margin:0;color:#fff;font-size:13px;font-weight:600}
 .palette-theme-btn{display:flex;align-items:center;gap:5px;padding:2px 8px;border-radius:6px;cursor:pointer;
@@ -119,12 +118,11 @@ h1{font-size:22px;font-weight:700;margin-bottom:4px}
 .palette-theme-btn.active{border-color:var(--accent);background:var(--accent-a18,rgba(139,92,246,.18));color:#fff}
 .palette-theme-btn .sw{width:14px;height:14px;border-radius:3px;border:1px solid #555}
 #paletteEndpoints{position:relative;display:flex;flex-direction:column;gap:4px;margin-bottom:6px}
-.pe-row{display:flex;align-items:center;gap:6px}
-.pe-bar{position:relative;flex:1;height:20px;min-width:0}
-.pe-bar svg{display:block;width:100%;height:100%}
-.pe-box{width:22px;height:22px;border-radius:6px;border:1px solid #333;background:rgba(255,255,255,.04);display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;flex:0 0 auto}
-.pe-box .sw{width:14px;height:14px;border-radius:3px;border:1px solid #555}
-.pe-box.sel{border-color:var(--accent);background:var(--accent-a18,rgba(194,12,12,.18))}
+.pe-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.pe-box{display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 8px;border-radius:6px;
+  border:1px solid #333;background:rgba(255,255,255,.04);color:#ddd;font-size:10px;cursor:pointer;flex:0 0 auto}
+.pe-box .sw{width:13px;height:13px;border-radius:3px;border:1px solid #555}
+.pe-box.sel{border-color:var(--accent);background:var(--accent-a18,rgba(194,12,12,.18));color:#fff}
 .palette-preset-row{display:flex;align-items:center;gap:6px;margin-bottom:6px}
 .pp-title{writing-mode:vertical-rl;text-orientation:upright;font-size:9px;color:#aaa;letter-spacing:1px;line-height:1;flex:0 0 auto}
 .palette-presets{flex:1;display:flex;justify-content:space-between;gap:4px;min-width:0}
@@ -220,7 +218,7 @@ button:active,[onclick]:active,[role="button"]:active,a:active{opacity:.78}
 /* 重播图标放大，让外圈尽量贴近按钮边界 */
 #replayBtn svg{width:30px;height:30px}
 /* 配色面板：从控制行下方展开（absolute，不遮挡按钮） */
-.palette-row{display:none;align-items:center;gap:8px;flex-wrap:nowrap;min-width:230px}
+.palette-row{display:none;align-items:stretch;gap:8px;flex-wrap:nowrap;min-width:0}
 .palette-row.open{display:flex}
 .drop-trigger svg{transition:transform .2s}
 #paletteToggleIcon{transition:transform .2s}
@@ -496,13 +494,9 @@ select:focus{border-color:var(--accent)}
               <button class="pal-btn palette-btn" data-palette="A" onclick="setPalette('A')" title="纯紫">A</button>
               <button class="pal-btn palette-btn active" data-palette="B" onclick="setPalette('B')" title="青蓝×琥珀红">B</button>
               <button class="pal-btn palette-btn" data-palette="C" onclick="setPalette('C')" title="青绿×品红">C</button>
-              <button class="pal-btn" id="paletteEditBtn" onclick="togglePaletteEditor()" title="自定义配色">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M8.203 2.004c1.261 0 2.304 1.103 2.476 2.538l8.483 8.484l-7.778 7.778a3 3 0 0 1-4.243 0L2.9 16.562a3 3 0 0 1 0-4.243l2.804-2.805V4.961c0-1.633 1.12-2.957 2.5-2.957m.5 2.957v1.553l-1 1V4.961c0-.327.224-.591.5-.591c.277 0 .5.264.5.591m0 5.914V9.342l-4.39 4.391a1 1 0 0 0 0 1.414l4.243 4.243a1 1 0 0 0 1.414 0l6.364-6.364l-5.63-5.63v3.48l-.003.128h-2.01a1 1 0 0 0 .012-.129" clip-rule="evenodd"/><path d="M16.859 16.875a3 3 0 1 0 4.242 0l-2.121-2.121z"/></svg>
-              </button>
               </div>
-              <div class="pal-hint">无操作2s自动收起配色面板</div>
+              <div class="pal-hint">自定义时 2s 无操作自动收起</div>
             </div>
-            <div id="paletteSwatch" style="flex:1 1 0;min-width:0;max-width:340px;height:44px;position:relative;"></div>
             <div id="paletteEditor" class="palette-editor">
               <div class="palette-head">
                 <h3>自定义配色</h3>
