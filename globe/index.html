@@ -325,9 +325,9 @@ document.getElementById('chev').addEventListener('click',function(){ setCollapse
 document.getElementById('lang').addEventListener('click',function(){ lang = lang==='zh' ? 'en' : 'zh'; applyLang(); var b=this; setTimeout(function(){ b.blur(); },1000); });
 document.getElementById('gps').addEventListener('click',function(){ var c=cityForMe(); if(c) selectCity(c, true); var b=this; setTimeout(function(){ b.blur(); },1000); });
 
-(function(){
+(async function(){
   if(!window.Globe){ document.getElementById('list').innerHTML='<div class="empty">3D engine failed to load.</div>'; return; }
-  initGlobe(); applyLang(); refresh(); refreshMe(); setInterval(refresh, 30000);
+  initGlobe(); applyLang(); await refresh(); refreshMe(); setInterval(refresh, 30000);
 })();
 </script>
 </body>
