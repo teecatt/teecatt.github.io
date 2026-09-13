@@ -40,7 +40,10 @@ function logCopy(){
     navigator.clipboard.writeText(text).catch(()=>{});
   }
 }
-function logClear(){ if(_logBar) _logBar.innerHTML=''; }
+function logClear(){
+  if(_logBar) _logBar.innerHTML='';
+  try{ localStorage.removeItem(LOG_CACHE_KEY); }catch(e){}
+}
 function logDownload(){
   const text = _logBar ? _logBar.innerText : '';
   if(!text) return;
@@ -54,6 +57,35 @@ function logDownload(){
 }
 function logScrollTop(){ if(_logBar) _logBar.scrollTop=0; }
 function logScrollBottom(){ if(_logBar) _logBar.scrollTop=_logBar.scrollHeight; }
+
+/* 日志缓存：刷新/重开页面后仍保留历史日志，只有点击「清空日志」才清除 */
+const LOG_CACHE_KEY='music-viz-log-v1';
+const LOG_CACHE_MAX=500;
+let _logCacheTimer=null;
+function _saveLogCache(){
+  try{
+    if(!_logBar) return;
+    localStorage.setItem(LOG_CACHE_KEY, _logBar.innerHTML);
+  }catch(e){}
+}
+function _scheduleLogCache(){
+  if(_logCacheTimer) clearTimeout(_logCacheTimer);
+  _logCacheTimer=setTimeout(_saveLogCache,500);
+}
+(function _initLogCache(){
+  if(!_logBar) return;
+  try{
+    const html=localStorage.getItem(LOG_CACHE_KEY);
+    if(html){
+      _logBar.innerHTML=html;
+      while(_logBar.childElementCount>LOG_CACHE_MAX) _logBar.removeChild(_logBar.firstChild);
+      _logBar.scrollTop=_logBar.scrollHeight;
+    }
+  }catch(e){}
+  if(window.MutationObserver){
+    new MutationObserver(_scheduleLogCache).observe(_logBar,{childList:true,subtree:true,characterData:true});
+  }
+})();
 
 // 媒体源：镜像列表与竞速引擎来自公共组件 shared/cdn-race.js
 // （与 midi_player 共用同一份：11 个镜像 + 本站同源兜底，同时受益）
@@ -139,6 +171,7 @@ const CFG = {
   audio: null, audioCtx: null, analyser: null, freq: null, wave: null,
   playing: false, loop: true, volume: 1, smoothing: 0.8,
   fps: 120, showFps: true, showRes: true,
+  menuCollapsed: false, menuAlpha: 0.82, menuGray: 0,
 };
 window.__CFG = CFG;
 
@@ -161,6 +194,7 @@ function saveConfig(){
       fps: CFG.fps, showFps: CFG.showFps, showRes: CFG.showRes,
       loop: CFG.loop, volume: CFG.volume, smoothing: CFG.smoothing,
       panelW: _panelW,
+      menuCollapsed: CFG.menuCollapsed, menuAlpha: CFG.menuAlpha, menuGray: CFG.menuGray,
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   }catch(e){}
@@ -181,8 +215,18 @@ function loadConfig(){
     if(typeof d.volume==='number') CFG.volume=d.volume;
     if(typeof d.smoothing==='number') CFG.smoothing=d.smoothing;
     if(typeof d.panelW==='number'){ _panelW=Math.max(180, Math.min(600, d.panelW)); document.documentElement.style.setProperty('--panel-w', _panelW+'px'); }
+    if(typeof d.menuCollapsed==='boolean') CFG.menuCollapsed=d.menuCollapsed;
+    if(typeof d.menuAlpha==='number') CFG.menuAlpha=Math.max(0.2, Math.min(1, d.menuAlpha));
+    if(typeof d.menuGray==='number') CFG.menuGray=Math.max(0, Math.min(1, d.menuGray));
     return true;
   }catch(e){ return false; }
+}
+// 悬浮菜单外观：透明度（面板 + 圆形按钮）与灰度（圆形按钮）
+function _applyMenuAppearance(){
+  const rs=document.documentElement.style;
+  rs.setProperty('--panel-alpha', CFG.menuAlpha);
+  rs.setProperty('--menu-alpha', CFG.menuAlpha);
+  rs.setProperty('--menu-gray', CFG.menuGray);
 }
 // 重置所有设置（性能面板底部按钮）：清除持久化并恢复出厂默认
 function resetAllSettings(){
@@ -195,6 +239,9 @@ function resetAllSettings(){
   CFG.fps=120; CFG.showFps=true; CFG.showRes=true;
   CFG.loop=true; CFG.volume=1; CFG.smoothing=0.8;
   _panelW=280; document.documentElement.style.setProperty('--panel-w', '280px');
+  CFG.menuCollapsed=false; CFG.menuAlpha=0.82; CFG.menuGray=0;
+  document.querySelector('.main')?.classList.remove('menu-collapsed');
+  _applyMenuAppearance(); if(typeof _syncMenuToggle==='function') _syncMenuToggle();
   if(CFG.audio){ CFG.audio.loop=true; CFG.audio.volume=1; }
   const vs=document.getElementById('volSlider'); if(vs) vs.value=1;
   const lb=document.getElementById('loopBtn'); if(lb){ lb.classList.add('active'); lb.innerHTML=LIST_LOOP_ICON; }
@@ -969,6 +1016,14 @@ function renderPerf(){
     </div>
     <div class="field"><div class="toggle-row"><label style="margin-bottom:0">显示帧率</label><div class="toggle ${CFG.showFps?'on':''}" data-field="showFps"></div></div></div>
     <div class="field"><div class="toggle-row"><label style="margin-bottom:0">显示分辨率</label><div class="toggle ${CFG.showRes?'on':''}" data-field="showRes"></div></div></div>
+    <div class="field">
+      <label>悬浮菜单透明度</label>
+      <div class="range-row"><input type="range" id="menuAlphaRange" min="20" max="100" step="1" value="${Math.round(CFG.menuAlpha*100)}"><span class="val" id="menuAlphaVal">${Math.round(CFG.menuAlpha*100)}%</span></div>
+    </div>
+    <div class="field">
+      <label>悬浮菜单灰度</label>
+      <div class="range-row"><input type="range" id="menuGrayRange" min="0" max="100" step="1" value="${Math.round(CFG.menuGray*100)}"><span class="val" id="menuGrayVal">${Math.round(CFG.menuGray*100)}%</span></div>
+    </div>
     <div class="perf-err" id="perfErr"></div>
     <button type="button" class="perf-reset" id="perfResetBtn">重置所有设置</button>
   `;
@@ -1010,6 +1065,18 @@ function bindPerfFields(){
   body.querySelectorAll('#perfFpsPresets button').forEach(b=>b.addEventListener('click',()=>{ fEl.value=b.dataset.fps; applyFps(); }));
   body.querySelectorAll('[data-field="showFps"],[data-field="showRes"]').forEach(t=>{
     t.addEventListener('click',()=>{ const f=t.dataset.field; CFG[f]=!CFG[f]; t.classList.toggle('on',CFG[f]); scheduleSave(); });
+  });
+  const maEl=document.getElementById('menuAlphaRange');
+  if(maEl) maEl.addEventListener('input',()=>{
+    CFG.menuAlpha=Math.max(0.2, Math.min(1, (+maEl.value)/100));
+    const v=document.getElementById('menuAlphaVal'); if(v) v.textContent=maEl.value+'%';
+    _applyMenuAppearance(); scheduleSave();
+  });
+  const mgEl=document.getElementById('menuGrayRange');
+  if(mgEl) mgEl.addEventListener('input',()=>{
+    CFG.menuGray=Math.max(0, Math.min(1, (+mgEl.value)/100));
+    const v=document.getElementById('menuGrayVal'); if(v) v.textContent=mgEl.value+'%';
+    _applyMenuAppearance(); scheduleSave();
   });
   const rb=document.getElementById('perfResetBtn');
   if(rb) rb.addEventListener('click',()=>{ if(typeof confirm!=='function' || confirm('确定重置所有设置吗？')) resetAllSettings(); });
@@ -1533,6 +1600,37 @@ document.getElementById('panelBackdrop').addEventListener('click',e=>{
   e.stopPropagation();
   _closeAllPanels();
 });
+/* 悬浮菜单开关：PC 收起/展开整个左侧菜单；移动端快速开合面板 */
+const _menuToggleBtn=document.getElementById('menuToggle');
+function _isDesktopLayout(){ return window.matchMedia('(min-width:769px)').matches; }
+function _syncMenuToggle(){
+  const main=document.querySelector('.main');
+  const collapsed=!!(main && _isDesktopLayout() && main.classList.contains('menu-collapsed'));
+  if(_menuToggleBtn){
+    const icon=_menuToggleBtn.querySelector('svg');
+    if(icon) icon.style.transform=collapsed?'rotate(180deg)':'';
+    _menuToggleBtn.title=collapsed?'展开菜单':'收起菜单';
+  }
+}
+function _toggleMenu(){
+  const main=document.querySelector('.main');
+  if(!main) return;
+  if(_isDesktopLayout()){
+    main.classList.toggle('menu-collapsed');
+    CFG.menuCollapsed=main.classList.contains('menu-collapsed');
+    scheduleSave();
+    _syncMenuToggle();
+    fitCanvas();
+  }else if(_panelOpen()){
+    _closeAllPanels();
+  }else{
+    _closeAllPanels();
+    const b=document.querySelector('.ibtn[data-tool="elements"]');
+    if(b) b.click();
+  }
+}
+if(_menuToggleBtn) _menuToggleBtn.addEventListener('click',_toggleMenu);
+window.addEventListener('resize',_syncMenuToggle);
 // 全屏：全屏绘制区；全屏时画布元素不可选中/点击，双击任意位置退出
 let _isFullscreen=false;
 const _fsBtn=document.getElementById('fsToggleBtn');
@@ -1547,6 +1645,7 @@ function _toggleFullscreen(){
 }
 function _onFsChange(){
   _isFullscreen=!!(document.fullscreenElement||document.webkitFullscreenElement);
+  document.body.classList.toggle('fs-active',_isFullscreen); // CSS 兜底隐藏进度条与终端
   if(_fsBtn) _fsBtn.classList.toggle('active',_isFullscreen);
   if(_isFullscreen){ CFG.selectedId=null; renderProps(); } // 全屏不可选中元素
   requestAnimationFrame(()=>fitCanvas());
@@ -1591,6 +1690,10 @@ if(_restored && CFG.elements.length){
 document.getElementById('propsPanel').classList.remove('mobile-open');
 _lastTool=null;
 _syncBackdrop();
+// 恢复悬浮菜单外观与收起状态
+_applyMenuAppearance();
+if(CFG.menuCollapsed) document.querySelector('.main')?.classList.add('menu-collapsed');
+_syncMenuToggle();
 // 等布局完成后按宽度适配一次（PC 端绘制区宽度自动撑满左右控件边界）
 requestAnimationFrame(()=>{ render(); fitCanvas(); });
 window.addEventListener('resize',()=>{ fitCanvas(); _syncBackdrop(); });
