@@ -440,11 +440,11 @@ select:focus{border-color:var(--accent)}
    第二行 8 个按钮恰好填满整宽，第一行最左/最右与第二行最左/最右对齐。
    放在样式表末尾以覆盖基础 .top-bar / .top-bar select / .top-bar-row 规则。 */
 @media(max-width:600px){
-  .top-bar{padding-left:0;padding-right:0}
+  .top-bar{padding-left:6px;padding-right:6px}
   .top-bar-row{flex-wrap:nowrap;gap:6px}
   .top-bar-row > select{width:auto;flex:1 1 auto;min-width:0}
   .top-bar-row > .ctl-btn{flex:0 0 calc((100% - 42px)/8);width:auto;height:auto;aspect-ratio:1}
-  .control-row{gap:6px;padding:0;margin-top:6px;flex-wrap:nowrap}
+  .control-row{gap:6px;padding:0 6px;margin-top:6px;flex-wrap:nowrap}
   .ctl-spacer{display:none}
   .control-row > .ctl-group{flex:1 1 0;gap:6px;min-width:0}
   .control-row > .ctl-group > .ctl-btn{flex:1 1 0;min-width:0;max-width:none;width:auto;height:auto;aspect-ratio:1;padding:0}
