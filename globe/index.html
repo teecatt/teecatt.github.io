@@ -97,7 +97,16 @@ function trCountry(code,fallback){
   try{ _regionNames=_regionNames||new Intl.DisplayNames(['zh-Hans'],{type:'region'}); return _regionNames.of(code)||fallback||code; }catch(e){ return fallback||code; }
 }
 function zhCity(o){ if(lang!=='zh') return o.city||''; return o.city_zh||o.city||''; }
-function zhRegion(o){ if(lang!=='zh') return o.region||''; return o.region_zh||o.region||''; }
+function zhRegion(o){
+  if(lang!=='zh') return o.region||'';
+  var r=o.region_zh;
+  if(!r && o.region){
+    for(var i=0;i<cities.length;i++){
+      if(cities[i].country===o.country && cities[i].region===o.region && cities[i].region_zh){ r=cities[i].region_zh; break; }
+    }
+  }
+  return r||o.region||'';
+}
 function flag(code){ if(!code||String(code).length!==2) return ''; return String.fromCodePoint.apply(null, String(code).toUpperCase().split('').map(function(ch){ return 0x1F1E6 + ch.charCodeAt(0) - 65; })); }
 function nameOf(v){ var c=zhCity(v), r=zhRegion(v), k=trCountry(v.country,v.country); return c||r||k||'?'; }
 function subOf(v,nm){ var seg=[]; var r=zhRegion(v)||zhCity(v)||v.city||''; var k=trCountry(v.country,v.country), f=flag(v.country); if(r) seg.push(r); if(k) seg.push(k+(f?' '+f:'')); return seg.join(' · '); }
