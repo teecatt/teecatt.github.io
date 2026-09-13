@@ -796,7 +796,7 @@ midi_player/
 | 公共组件用词 | 历史提交与代码注释中「抽为公共能力」等表述统一为「提取为公共组件」 | `_pending_` |
 | 合成钢琴增益 | 合成钢琴（`__synth__`）默认 300% 音量增益，与其它采样音色默认档一致；预渲染缓冲区与 AudioWorklet 两条路径都应用该增益 | `_pending_` |
 | 雅马哈C7 纯算法音色 | 新增零采样音色「雅马哈C7」（`__yamaha_c7__`）：`shared/yamaha-c7.js` 用 Web Audio 实时合成——6 组泛音（1/2/3/4.01/5.02/6.03，含轻微失谐）、高次泛音递减、8ms 白噪声击弦瞬态、钢琴式 ADSR（2ms 起音→80ms 衰到 30%→延音→释音）、高音短延音、力度控制增益与泛音/噪声比例；复用宿主 `AudioContext`/`masterGain`，64 复音抢占，按键高亮接入 | `_pending_` |
-| Yamaha C7 演示页 | 单文件 `midi_player/Yamaha C7 Piano.html`（CSS/JS 全内联、零外部引用、断网可用）：试听按钮、可点击琴键区、Rush E 上行琶音自动演示；iOS 首次点击后 resume | `_pending_` |
+| Yamaha C7 演示页 | 单文件 `midi_player/yamaha-c7-piano.html`（页面标题与音色名仍为 Yamaha C7 Piano / 雅马哈C7；CSS/JS 全内联、零外部引用、断网可用）：试听按钮、可点击琴键区、Rush E 上行琶音自动演示；iOS 首次点击后 resume。文件名改用 URL 安全形式，因 Cloudflare Pages 对含空格文件名返回 404 | `_pending_` |
 | 降级自动弹出 | 自动降帧率同属渲染降级，进入降级时同样触发「渲染降级自动弹出」（需开启调试） | `_pending_` |
 | 未下载即下载+切换 | 谱面管理/音色选择点击未下载项 = 下载+切换：在下载按钮处显示百分比，完成后切换并收起面板（与先下载再切换一致） | `_pending_` |
 | Rush E3 默认音色 | Rush E3 默认改用合成钢琴（`songDefaultTimbre` + `COLD_START.timbre`）；古钢琴改到 P2 预配置必下音色 | `_pending_` |
