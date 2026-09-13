@@ -170,6 +170,22 @@ button:active,[onclick]:active,[role="button"]:active,a:active{opacity:.78}
 /* 键盘焦点轮廓跟随圆角（仅键盘触发，触屏不显示） */
 .pal-btn:focus-visible{outline:2px solid #fff;outline-offset:2px}
 
+/* 键盘映射（二级面板）：电脑键盘演奏设置 */
+.kbd-map{margin-top:8px;border-top:1px solid var(--border);padding-top:8px}
+.kbd-map > summary{cursor:pointer;font-size:12px;color:var(--dim);list-style:none;user-select:none;display:flex;align-items:center;gap:6px}
+.kbd-map > summary::-webkit-details-marker{display:none}
+.kbd-map > summary::before{content:'▸';transition:transform .2s;display:inline-block}
+.kbd-map[open] > summary::before{transform:rotate(90deg)}
+.kbd-map-body{margin-top:8px}
+.kbd-map-grid{display:flex;flex-direction:column;gap:4px;margin:6px 0}
+.kbd-map-row{display:flex;gap:3px;flex-wrap:wrap}
+.key-chip{display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:26px;padding:3px 2px;
+  border:1px solid var(--border);border-radius:5px;background:rgba(255,255,255,.04);line-height:1}
+.key-chip .kc-key{font-size:10px;color:var(--text);font-weight:600}
+.key-chip .kc-note{font-size:8px;color:var(--dim);margin-top:2px}
+.key-chip.black .kc-note{color:#9aa0ff}
+.kbd-map-hint{font-size:10px;color:var(--dim);line-height:1.5;margin-top:4px}
+
 /* 统一下拉面板：从控制行下方展开，浮在渲染区之上，最大高度约渲染区 2/3 */
 .drop-panel{
   position:absolute;top:100%;right:0;z-index:10050;display:none;
@@ -698,6 +714,25 @@ select:focus{border-color:var(--accent)}
                 </optgroup>
               </select>
             </div>
+            <details class="kbd-map" id="kbdMapDetails">
+              <summary>键盘映射（电脑键盘演奏）</summary>
+              <div class="kbd-map-body">
+                <div class="row">
+                  <label>启用演奏</label>
+                  <label class="switch" style="margin-left:auto" title="开启后可用电脑键盘弹奏钢琴">
+                    <input id="kbdPianoSw" type="checkbox" onchange="onKbdPianoChange()">
+                    <span class="track"><span class="knob"></span></span>
+                  </label>
+                </div>
+                <div class="row">
+                  <label>基准八度</label>
+                  <input type="range" id="kbdOctaveSlider" min="0" max="8" step="1" value="4" oninput="onKbdOctaveChange()">
+                  <span class="val" id="kbdOctaveVal">C4</span>
+                </div>
+                <div class="kbd-map-grid" id="kbdMapGrid"></div>
+                <div class="kbd-map-hint" id="kbdMapHint"></div>
+              </div>
+            </details>
 
           </div>
       <div id="manageModal" class="drop-panel manage-panel">

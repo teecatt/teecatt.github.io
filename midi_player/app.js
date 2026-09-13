@@ -353,7 +353,7 @@ function applyPanelAppearance(){
   _applyAllAppearance(tp ? parseFloat(tp.value) : 40, bl ? parseFloat(bl.value) : 0);
 }
 // ===== 统一下拉面板：从控制行下方展开，最大高度约渲染区 2/3 =====
-// 四个下拉触发按钮：面板展开时图标顺时针旋转 180°，收起时逆时针转回（CSS 过渡）
+// 四个下拉触发按钮：默认（收起）朝向不变，面板展开时图标顺时针旋转 180°（CSS 过渡）
 const DROP_TOGGLE_MAP = [
   ['manageModal', '#manageBtn svg'],
   ['controlPanel', '#settingsBtn svg'],
@@ -365,8 +365,8 @@ function syncDropToggleIcons(){
     const panel = document.getElementById(pid);
     const icon = document.querySelector(sel);
     if(!panel || !icon) return;
-    // 与配色面板一致：收起时旋转 180°，展开时转回
-    icon.style.transform = panel.classList.contains('open') ? '' : 'rotate(180deg)';
+    // 默认（收起）不旋转，展开时旋转 180°
+    icon.style.transform = panel.classList.contains('open') ? 'rotate(180deg)' : '';
   });
 }
 function _closeDropPanelsOnly(except){
@@ -2174,7 +2174,7 @@ function _applySongDefaultTimbre(key, file, fname, timbre){
 
 // 内置谱默认音色配置：谱子文件名 -> 音色id
 const songDefaultTimbre = {
-  'Rush E 3.mid': '__synth__', // 合成钢琴
+  'Rush E 3.mid': 'clavinet', // 古钢琴
   'The Sound of Silence.mid': '__synth__', // 合成钢琴
 };
 
@@ -2191,13 +2191,13 @@ let userGestureSeen = false;
 
 // ===== 冷启动优先级管线 =====
 // 进页面后按优先级「独占带宽、顺序下载」，避免并发抢占带宽：
-//   P0  默认谱面（Rush E3，brotli 压缩）—— 独占下载；完成后立即用合成钢琴起播
-//   P1  默认音色（古钢琴）—— 与 P0 起播同时开始独占下载；期间不下载其它任何资源
+//   P0  默认谱面（Rush E3，brotli 压缩）—— 独占下载；完成后先用合成钢琴起播
+//   P1  默认音色（古钢琴 clavinet）—— 与 P0 起播同时开始独占下载；期间不下载其它任何资源
 //   P2  预配置的内置必下音色与谱面 —— 古钢琴就绪后才开始
 // 迁移 Cloudflare 后同源即可获得低延迟与压缩，不再需要多镜像竞速。
 const COLD_START = {
   sheet: 'midi/Rush E 3.mid',                         // P0：优先独占下载的默认谱面
-  timbre: '__synth__',                                 // P1：默认使用合成钢琴（无需下载，起播即用）
+  timbre: 'clavinet',                                  // P1：默认音色为古钢琴（本地不存在时先用合成钢琴起播，下完自动切换）
   mandatorySheets: ['midi/The Sound of Silence.mid'],  // P2：预配置必下谱面
   mandatoryTimbres: ['clavinet'],                      // P2：预配置必下音色（古钢琴，供其它谱面/手动选择）
 };
@@ -3685,7 +3685,7 @@ function updatePaletteToggleIcon(){
   const row = _paletteRow();
   if(!icon || !row) return;
   const collapsed = !row.classList.contains('open');
-  icon.style.transform = collapsed ? 'rotate(180deg)' : '';
+  icon.style.transform = collapsed ? '' : 'rotate(180deg)';
   const btn = document.getElementById('paletteToggleBtn');
   if(btn) btn.title = collapsed ? '展开配色面板' : '收起配色面板';
   syncDropToggleIcons();
@@ -4507,6 +4507,143 @@ function _endCanvasPointer(e){
 canvas.addEventListener('pointerup', _endCanvasPointer);
 canvas.addEventListener('pointercancel', _endCanvasPointer);
 
+/* ============================================================
+ * 电脑键盘输入
+ *  - 全局：空格 播放/暂停；↑/↓ 钢琴高度；←/→ 水平偏移（Shift 加速）
+ *  - 演奏（可选）：QWERTY 两行映射两个八度，`-`/`=` 升降八度（Shift 轻力度）
+ * ========================================================== */
+const KBD_NOTE_KEYS = {
+  KeyZ: 0, KeyS: 1, KeyX: 2, KeyD: 3, KeyC: 4, KeyV: 5, KeyG: 6,
+  KeyB: 7, KeyH: 8, KeyN: 9, KeyJ: 10, KeyM: 11,
+  KeyQ: 12, Digit2: 13, KeyW: 14, Digit3: 15, KeyE: 16, KeyR: 17,
+  Digit5: 18, KeyT: 19, Digit6: 20, KeyY: 21, Digit7: 22, KeyU: 23,
+};
+const KBD_NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const KBD_LOWER_ROW = [['KeyZ',0],['KeyS',1],['KeyX',2],['KeyD',3],['KeyC',4],['KeyV',5],['KeyG',6],['KeyB',7],['KeyH',8],['KeyN',9],['KeyJ',10],['KeyM',11]];
+const KBD_UPPER_ROW = [['KeyQ',12],['Digit2',13],['KeyW',14],['Digit3',15],['KeyE',16],['KeyR',17],['Digit5',18],['KeyT',19],['Digit6',20],['KeyY',21],['Digit7',22],['KeyU',23]];
+const KBD_KEY_LABELS = { KeyZ:'Z',KeyS:'S',KeyX:'X',KeyD:'D',KeyC:'C',KeyV:'V',KeyG:'G',KeyB:'B',KeyH:'H',KeyN:'N',KeyJ:'J',KeyM:'M',KeyQ:'Q',Digit2:'2',KeyW:'W',Digit3:'3',KeyE:'E',KeyR:'R',Digit5:'5',KeyT:'T',Digit6:'6',KeyY:'Y',Digit7:'7',KeyU:'U' };
+let _kbdPianoEnabled = false;
+let _kbdBaseOctave = 4;
+const _kbdActiveNotes = new Map(); // code -> midi（记录实际发声音高，避免换八度后 stopNote 出错）
+function _kbdBaseMidi(){ return (_kbdBaseOctave + 1) * 12; } // C4 = 60
+function _kbdMidiToName(midi){ return KBD_NOTE_NAMES[midi % 12] + Math.floor(midi / 12 - 1); }
+function _isTypingTarget(t){
+  if(!t) return false;
+  const tag = (t.tagName || '').toLowerCase();
+  return tag === 'input' || tag === 'select' || tag === 'textarea' || t.isContentEditable;
+}
+function _kbdReleaseAll(){
+  for(const midi of _kbdActiveNotes.values()){ try{ SoundfontLoader.stopNote(midi); }catch(_){} }
+  _kbdActiveNotes.clear();
+}
+function _kbdNoteDown(code, e){
+  if(_kbdActiveNotes.has(code)) return;
+  const off = KBD_NOTE_KEYS[code];
+  if(off == null) return;
+  const midi = _kbdBaseMidi() + off;
+  if(midi < 21 || midi > 108) return;
+  initAudio();
+  if(audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+  SoundfontLoader.playNote(midi, (e && e.shiftKey) ? 0.45 : 0.8, 30); // 长时长，松开时 stopNote 停止
+  _kbdActiveNotes.set(code, midi);
+  requestStaticRedraw();
+}
+function _kbdNoteUp(code){
+  const midi = _kbdActiveNotes.get(code);
+  if(midi == null) return;
+  _kbdActiveNotes.delete(code);
+  try{ SoundfontLoader.stopNote(midi); }catch(_){}
+  requestStaticRedraw();
+}
+function _kbdShiftOctave(dir){
+  const next = Math.max(0, Math.min(8, _kbdBaseOctave + dir));
+  if(next === _kbdBaseOctave) return;
+  _kbdBaseOctave = next;
+  const s = document.getElementById('kbdOctaveSlider');
+  if(s) s.value = next;
+  const v = document.getElementById('kbdOctaveVal');
+  if(v) v.textContent = 'C' + next;
+  try{ localStorage.setItem('kbdBaseOctave', String(next)); }catch(_){}
+  renderKbdMap();
+}
+function renderKbdMap(){
+  const grid = document.getElementById('kbdMapGrid');
+  if(!grid) return;
+  const row = (pairs) => '<div class="kbd-map-row">' + pairs.map(([code, off]) => {
+    const midi = _kbdBaseMidi() + off;
+    const valid = midi >= 21 && midi <= 108;
+    const nm = valid ? _kbdMidiToName(midi) : '—';
+    const black = KBD_NOTE_NAMES[midi % 12].indexOf('#') >= 0;
+    return '<span class="key-chip' + (black ? ' black' : '') + '"><span class="kc-key">' + KBD_KEY_LABELS[code] +
+      '</span><span class="kc-note">' + nm + '</span></span>';
+  }).join('') + '</div>';
+  grid.innerHTML = row(KBD_UPPER_ROW) + row(KBD_LOWER_ROW);
+  const hint = document.getElementById('kbdMapHint');
+  if(hint) hint.innerHTML = '基准八度 <b>C' + _kbdBaseOctave + '</b>（' + _kbdMidiToName(_kbdBaseMidi()) + '）；' +
+    '<b>-</b> / <b>=</b> 降低 / 升高八度；按住 <b>Shift</b> 为轻力度。空格播放/暂停，方向键调钢琴高度与水平偏移。';
+}
+function onKbdPianoChange(){
+  const sw = document.getElementById('kbdPianoSw');
+  _kbdPianoEnabled = !!(sw && sw.checked);
+  if(!_kbdPianoEnabled) _kbdReleaseAll();
+  try{ localStorage.setItem('kbdPianoEnabled', _kbdPianoEnabled ? '1' : '0'); }catch(_){}
+}
+function onKbdOctaveChange(){
+  const s = document.getElementById('kbdOctaveSlider');
+  _kbdBaseOctave = Math.max(0, Math.min(8, parseInt(s && s.value, 10) || 0));
+  const v = document.getElementById('kbdOctaveVal');
+  if(v) v.textContent = 'C' + _kbdBaseOctave;
+  try{ localStorage.setItem('kbdBaseOctave', String(_kbdBaseOctave)); }catch(_){}
+  renderKbdMap();
+}
+function _loadKbdSettings(){
+  try{
+    _kbdBaseOctave = Math.max(0, Math.min(8, parseInt(localStorage.getItem('kbdBaseOctave') || '4', 10) || 4));
+    _kbdPianoEnabled = localStorage.getItem('kbdPianoEnabled') === '1';
+  }catch(_){}
+  const sw = document.getElementById('kbdPianoSw');
+  if(sw) sw.checked = _kbdPianoEnabled;
+  const s = document.getElementById('kbdOctaveSlider');
+  if(s) s.value = _kbdBaseOctave;
+  const v = document.getElementById('kbdOctaveVal');
+  if(v) v.textContent = 'C' + _kbdBaseOctave;
+  renderKbdMap();
+}
+document.addEventListener('keydown', (e) => {
+  if(_isTypingTarget(e.target)) return;
+  if(e.ctrlKey || e.metaKey || e.altKey) return;
+  const code = e.code;
+  if(code === 'Space'){
+    e.preventDefault();
+    if(!e.repeat) togglePlay();
+    return;
+  }
+  if(code === 'ArrowUp' || code === 'ArrowDown'){
+    e.preventDefault();
+    const step = e.shiftKey ? 5 : 1;
+    _setPianoHeightPct(pianoHeightPct + (code === 'ArrowUp' ? step : -step), true);
+    return;
+  }
+  if(code === 'ArrowLeft' || code === 'ArrowRight'){
+    e.preventDefault();
+    const os = document.getElementById('pianoOffsetSlider');
+    if(!os) return;
+    const step = e.shiftKey ? 5 : 1;
+    os.value = Math.max(0, Math.min(100, (parseFloat(os.value) || 0) + (code === 'ArrowRight' ? step : -step)));
+    _applyPianoViewFromSliders();
+    return;
+  }
+  if(_kbdPianoEnabled){
+    if(code === 'Minus'){ e.preventDefault(); if(!e.repeat) _kbdShiftOctave(-1); return; }
+    if(code === 'Equal'){ e.preventDefault(); if(!e.repeat) _kbdShiftOctave(1); return; }
+    if(code in KBD_NOTE_KEYS){ e.preventDefault(); if(!e.repeat) _kbdNoteDown(code, e); }
+  }
+});
+document.addEventListener('keyup', (e) => {
+  if(_kbdPianoEnabled && (e.code in KBD_NOTE_KEYS)) _kbdNoteUp(e.code);
+});
+window.addEventListener('blur', () => { if(_kbdPianoEnabled) _kbdReleaseAll(); });
+
 // 初始化
 resizeCanvas();
 setPalette(currentPalette); // 同步按钮选中态并按恢复的配色重绘
@@ -4514,4 +4651,5 @@ updatePaletteToggleIcon();  // 配色栏默认展开，同步收起/展开按钮
 applyPanelAppearance();     // 统一菜单/调试/选谱/管理面板的透明度与模糊（含动态创建的 .csel-pop）
 _loadFpsCap();              // 恢复帧率上限设置
 _loadFpsDisplay();          // 恢复帧率显示开关
+_loadKbdSettings();         // 恢复键盘映射设置
 _updateSynthPathInfo();     // 调试面板：合成钢琴当前路径（AudioWorklet / 预渲染缓冲区）
