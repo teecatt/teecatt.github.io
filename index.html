@@ -39,19 +39,17 @@ a{text-decoration:none;color:inherit}
 .grid.cards-7,.grid.cards-8,.grid.cards-9{grid-template-columns:repeat(3,1fr);max-width:1080px}
 .card{position:relative;background:var(--surface);border:1px solid var(--line);border-radius:24px;padding:28px 24px;cursor:pointer;transition:transform .15s,border-color .15s,box-shadow .15s;display:flex;flex-direction:column;gap:10px;min-width:0}
 .card:hover{transform:translateY(-3px);border-color:var(--accent);box-shadow:0 12px 32px rgba(0,0,0,.35)}
-.card .ico{width:52px;height:52px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:26px}
+.card .ico{width:52px;height:52px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:26px;align-self:center}
 .card h2{font-size:17px;font-weight:600}
 .card .desc{font-size:13px;color:var(--muted);line-height:1.6;flex:1}
 .card-body{display:flex;flex-direction:column;gap:10px;flex:1;color:inherit;min-width:0}
-.doc-link{position:absolute;top:10px;right:12px;font-size:16px;line-height:1;color:var(--muted);text-decoration:none;padding:2px;z-index:2;transition:color .15s,transform .15s}
-.doc-link:hover{color:var(--text);transform:scale(1.15)}
 .card-audio .ico{background:linear-gradient(135deg,rgba(255,63,88,.25),rgba(200,34,255,.25));border:1px solid rgba(255,63,88,.4)}
 .card-audio{border-color:rgba(255,63,88,.35)}
 .card-audio:hover{border-color:var(--red)}
 .card-tools .ico{background:rgba(88,166,255,.15);border:1px solid rgba(88,166,255,.4)}
 .card-links .ico{background:rgba(63,185,80,.15);border:1px solid rgba(63,185,80,.4)}
-.card-piano .ico{background:linear-gradient(135deg,rgba(232,182,76,.2),rgba(139,92,246,.2));border:1px solid rgba(232,182,76,.4)}
-.card-piano{border-color:rgba(232,182,76,.35)}
+.card-piano .ico{background:linear-gradient(135deg,rgba(232,182,76,.3),rgba(139,92,246,.3));border:1px solid rgba(232,182,76,.6)}
+.card-piano{border-color:rgba(232,182,76,.6)}
 .card-piano:hover{border-color:var(--warn)}
 .card-notes .ico{background:rgba(88,166,255,.15);border:1px solid rgba(88,166,255,.4)}
 .card-notes{border-color:rgba(88,166,255,.35)}
@@ -91,7 +89,6 @@ footer{border-top:1px solid var(--line);padding:16px 24px;text-align:center;font
       <h2>音频可视化 <span class="badge badge-new">在线版</span></h2>
       <div class="desc">10 种可视化样式 · 频段包络 · 多色渐变 · 多参数可调 · 多CDN竞速</div>
     </a>
-    <a class="doc-link" href="https://github.com/teecatt/teecatt.github.io/blob/master/music_visualization/README.md" target="_blank" rel="noopener" title="阅读文档">📖</a>
   </div>
   <div class="card card-piano">
     <a class="card-body" href="./midi_player/" title="在线 MIDI 播放器">
@@ -99,7 +96,6 @@ footer{border-top:1px solid var(--line);padding:16px 24px;text-align:center;font
       <h2>MIDI 播放器 <span class="badge badge-new">在线版</span></h2>
       <div class="desc">多种键型钢琴 · FluidR3_GM 音色库共55种 · 变速播放 · 自定义配色 · 音游模式 · 多CDN竞速<br><span style="font-size:11px;color:var(--warn)">💡 低性能设备可能无法流畅播放高密度谱面</span></div>
     </a>
-    <a class="doc-link" href="https://github.com/teecatt/teecatt.github.io/blob/master/midi_player/README.md" target="_blank" rel="noopener" title="阅读文档">📖</a>
   </div>
   <a class="card card-tools" href="./library/" title="资源库">
     <div class="ico">⚙</div>
@@ -122,7 +118,7 @@ footer{border-top:1px solid var(--line);padding:16px 24px;text-align:center;font
     <div class="desc">Base64 / Hex / MD5 / SHA / HMAC / Argon2id / AES / RSA / 时间戳(ns) / 字符集(GBK) / 正则 · 纯前端本地处理</div>
   </a>
 </div>
-<footer><a id="siteBuildInfo" class="build-info" href="#" target="_blank" rel="noopener" title="查看对应提交">最近构建：—</a></footer>
+<footer><a class="build-info" href="https://github.com/teecatt" target="_blank" rel="noopener" title="GitHub 主页">teecatt</a> · <a id="siteBuildInfo" class="build-info" href="#" target="_blank" rel="noopener" title="查看对应提交">最近构建 —</a></footer>
 
 <script src="build-info.js"></script>
 <script>
@@ -131,7 +127,7 @@ footer{border-top:1px solid var(--line);padding:16px 24px;text-align:center;font
   const b = window.SITE_BUILD;
   const el = document.getElementById('siteBuildInfo');
   if(!el) return;
-  if(!b || !b.sha){ el.textContent = '最近构建：未知'; document.title = '构建于未知'; return; }
+  if(!b || !b.sha){ el.textContent = '最近构建 未知'; document.title = 'teecatt'; return; }
   function ago(ms){
     const s = Math.max(0, Math.floor(ms/1000));
     if(s < 60) return '刚刚';
@@ -145,8 +141,8 @@ footer{border-top:1px solid var(--line);padding:16px 24px;text-align:center;font
   // 标签标题（document.title）可动态更新；地址栏本身只显示 URL，无法自定义文字
   function render(){
     const label = ago(Date.now() - b.time);
-    el.textContent = '最近构建：' + label;
-    document.title = '构建于 ' + label;
+    el.textContent = '最近构建 ' + label;
+    document.title = 'teecatt·' + label;
   }
   render();
   setInterval(render, 30000); // 相对时间随当前时间刷新
