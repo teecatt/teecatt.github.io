@@ -13,19 +13,18 @@
 <link rel="dns-prefetch" href="https://testingcf.jsdelivr.net">
 <title>teecatt</title>
 <style>
-:root{--bg:#0d1117;--surface:#161b22;--surface2:#1c2128;--line:#30363d;--text:#e6edf3;--muted:#8b949e;--accent:#58a6ff;--accent2:#3fb950;--hover:#21262d;--violet:#c822ff;--red:#ff3f58;--warn:#e8b64c}
+:root{--bg:#000000;--surface:#000000;--surface2:#1c2128;--line:#30363d;--text:#e6edf3;--muted:#8b949e;--accent:#58a6ff;--accent2:#3fb950;--hover:#21262d;--violet:#c822ff;--red:#ff3f58;--warn:#e8b64c}
 *{margin:0;padding:0;box-sizing:border-box}
 /* 统一触屏按下反馈：去掉浏览器默认的方形点击高亮（按外接矩形绘制、不裁圆角），
    改用随元素 border-radius 裁切的反馈（透明度/缩放不影响形状） */
 *{-webkit-tap-highlight-color:transparent}
 .card-body:active,a.card:active{opacity:.82}
-.card-foot a:active{opacity:.6}
 .social a:active{opacity:1;transform:scale(.9)}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Microsoft YaHei',Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;flex-direction:column}
 a{text-decoration:none;color:inherit}
-.topbar{height:56px;display:flex;align-items:center;padding:0 24px;gap:12px;border-bottom:1px solid var(--line);background:var(--surface);position:relative}
-.logo{font-size:32px;font-weight:700;background:linear-gradient(120deg,var(--accent),var(--violet));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
-.build-info{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:12px;color:var(--muted);text-decoration:none;white-space:nowrap;max-width:60vw;overflow:hidden;text-overflow:ellipsis;padding:2px 8px;border-radius:6px}
+.topbar{height:56px;display:flex;align-items:center;padding:0 24px;gap:12px;border-bottom:1px solid var(--line);background:var(--surface)}
+.logo{font-size:16px;font-weight:700;background:linear-gradient(120deg,var(--accent),var(--violet));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.build-info{color:var(--muted);text-decoration:none}
 .build-info:hover{color:var(--text)}
 .hero{padding:48px 24px 8px;text-align:center}
 .hero h1{font-size:16px;font-weight:700;margin-bottom:16px;font-family:Arial,sans-serif;letter-spacing:1px;background:linear-gradient(120deg,var(--accent),var(--violet));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;display:inline-block}
@@ -40,16 +39,14 @@ a{text-decoration:none;color:inherit}
 .grid.cards-4{grid-template-columns:repeat(2,1fr);max-width:720px}
 .grid.cards-5,.grid.cards-6{grid-template-columns:repeat(3,1fr);max-width:1080px}
 .grid.cards-7,.grid.cards-8,.grid.cards-9{grid-template-columns:repeat(3,1fr);max-width:1080px}
-.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:28px 24px;cursor:pointer;transition:transform .15s,border-color .15s,box-shadow .15s;display:flex;flex-direction:column;gap:10px;min-width:0}
+.card{position:relative;background:var(--surface);border:1px solid var(--line);border-radius:24px;padding:28px 24px;cursor:pointer;transition:transform .15s,border-color .15s,box-shadow .15s;display:flex;flex-direction:column;gap:10px;min-width:0}
 .card:hover{transform:translateY(-3px);border-color:var(--accent);box-shadow:0 12px 32px rgba(0,0,0,.35)}
 .card .ico{width:52px;height:52px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:26px}
 .card h2{font-size:17px;font-weight:600}
 .card .desc{font-size:13px;color:var(--muted);line-height:1.6;flex:1}
-.card .go{font-size:13px;color:var(--accent);font-weight:600}
 .card-body{display:flex;flex-direction:column;gap:10px;flex:1;color:inherit;min-width:0}
-.card-foot{display:flex;align-items:center;justify-content:space-between;gap:10px}
-.doc-link{font-size:12px;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:3px 10px;transition:all .15s;white-space:nowrap}
-.doc-link:hover{border-color:var(--accent);color:var(--text);background:var(--hover)}
+.doc-link{position:absolute;top:10px;right:12px;font-size:16px;line-height:1;color:var(--muted);text-decoration:none;padding:2px;z-index:2;transition:color .15s,transform .15s}
+.doc-link:hover{color:var(--text);transform:scale(1.15)}
 .card-audio .ico{background:linear-gradient(135deg,rgba(255,63,88,.25),rgba(200,34,255,.25));border:1px solid rgba(255,63,88,.4)}
 .card-audio{border-color:rgba(255,63,88,.35)}
 .card-audio:hover{border-color:var(--red)}
@@ -70,15 +67,12 @@ a{text-decoration:none;color:inherit}
 .badge{display:inline-block;font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;letter-spacing:.3px}
 .badge-new{background:rgba(255,63,88,.2);color:var(--red);border:1px solid rgba(255,63,88,.4)}
 footer{border-top:1px solid var(--line);padding:16px 24px;text-align:center;font-size:11px;color:var(--muted)}
-footer a{color:var(--accent)}
-footer a:hover{text-decoration:underline}
-@media(max-width:600px){.hero{padding-top:32px}.grid{padding:24px 16px 40px;gap:14px;grid-template-columns:1fr !important;max-width:none !important}.card{min-width:0}.social{flex-wrap:wrap}.build-info{font-size:11px;max-width:52vw}}
+@media(max-width:600px){.hero{padding-top:32px}.grid{padding:24px 16px 40px;gap:14px;grid-template-columns:1fr !important;max-width:none !important}.card{min-width:0}.social{flex-wrap:wrap}}
 </style>
 </head>
 <body>
 <div class="topbar">
   <span class="logo">teecatt</span>
-  <a id="siteBuildInfo" class="build-info" href="#" target="_blank" rel="noopener" title="查看对应提交">最近构建：—</a>
 </div>
 <div class="hero">
   <h1>Here we stand open arms<br>This is home where we are</h1>
@@ -102,10 +96,7 @@ footer a:hover{text-decoration:underline}
       <h2>音频可视化 <span class="badge badge-new">在线版</span></h2>
       <div class="desc">10 种可视化样式 · 频段包络 · 多色渐变 · 多参数可调 · 多CDN竞速</div>
     </a>
-    <div class="card-foot">
-      <a class="go" href="https://down2.top/music_visualization/">打开编辑器 →</a>
-      <a class="doc-link" href="https://github.com/teecatt/teecatt.github.io/blob/master/music_visualization/README.md" target="_blank" rel="noopener" title="在 GitHub 上阅读文档">📖 阅读</a>
-    </div>
+    <a class="doc-link" href="https://github.com/teecatt/teecatt.github.io/blob/master/music_visualization/README.md" target="_blank" rel="noopener" title="阅读文档">📖</a>
   </div>
   <div class="card card-piano">
     <a class="card-body" href="./midi_player/" title="在线 MIDI 播放器">
@@ -113,41 +104,34 @@ footer a:hover{text-decoration:underline}
       <h2>MIDI 播放器 <span class="badge badge-new">在线版</span></h2>
       <div class="desc">多种键型钢琴 · FluidR3_GM 音色库共55种 · 变速播放 · 自定义配色 · 音游模式 · 多CDN竞速<br><span style="font-size:11px;color:var(--warn)">💡 低性能设备可能无法流畅播放高密度谱面</span></div>
     </a>
-    <div class="card-foot">
-      <a class="go" href="./midi_player/">开始播放 →</a>
-      <a class="doc-link" href="https://github.com/teecatt/teecatt.github.io/blob/master/midi_player/README.md" target="_blank" rel="noopener" title="在 GitHub 上阅读文档">📖 阅读</a>
-    </div>
+    <a class="doc-link" href="https://github.com/teecatt/teecatt.github.io/blob/master/midi_player/README.md" target="_blank" rel="noopener" title="阅读文档">📖</a>
   </div>
   <a class="card card-tools" href="./library/" title="资源库">
     <div class="ico">⚙</div>
     <h2>资源库</h2>
     <div class="desc">Git 规范 · 会话查看器 · 进程守护 · 桌面自动化等,按类型整理,一键复制部署命令</div>
-    <div class="go">浏览资源库 →</div>
   </a>
   <a class="card card-links" href="./links/" title="外部实用小工具">
     <div class="ico">🔗</div>
     <h2>外部实用小工具</h2>
     <div class="desc">好用的小玩意</div>
-    <div class="go">查看链接 →</div>
   </a>
   <a class="card card-crypto" href="https://n.down2.top/" title="加密笔记">
     <div class="ico">🔒</div>
     <h2>加密笔记</h2>
     <div class="desc">Argon2id 派生 · AES-CTR 解密 · 明文不出浏览器</div>
-    <div class="go">打开 →</div>
   </a>
   <a class="card card-chef" href="./crypto/" title="加密工具箱 · 常用加解密工具">
     <div class="ico">🧰</div>
     <h2>加密工具箱 <span class="badge badge-new">中文版</span></h2>
     <div class="desc">Base64 / Hex / MD5 / SHA / HMAC / Argon2id / AES / RSA / 时间戳(ns) / 字符集(GBK) / 正则 · 纯前端本地处理</div>
-    <div class="go">打开工具箱 →</div>
   </a>
 </div>
-<footer>teecatt · Powered by GitHub Pages · <a href="https://github.com/teecatt" target="_blank" rel="noopener">GitHub</a></footer>
+<footer><a id="siteBuildInfo" class="build-info" href="#" target="_blank" rel="noopener" title="查看对应提交">最近构建：—</a></footer>
 
 <script src="build-info.js"></script>
 <script>
-// 顶部居中「最近构建」：显示最近一次部署时间，并可点击跳转到对应提交
+// 页脚「最近构建」：显示最近一次部署时间，并可点击跳转到对应提交
 (function(){
   const b = window.SITE_BUILD;
   const el = document.getElementById('siteBuildInfo');
