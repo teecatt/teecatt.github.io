@@ -2880,85 +2880,6 @@ async function onSongChange(val){
   }
 }
 
-// ===== 高密度尾段归一化（默认开启，无需关闭）=====
-// 针对 black-MIDI 式结尾：超高频 + 超短 + 超轻力度的全键重复。逐音符播放既不可能
-// （每帧上千音被节流丢弃），听感也近乎静音。处理：检测「高密度 + 短时值 + 低力度」区间，
-// 按时间格折叠为「每格每音高一个持续音」，保留原有力度（不放大），只延长时值并大幅降低
-// 触发数，使其成为可听见的和音簇。密集区外的音符原样保留。
-const DENSE_WIN = 0.3;          // 密度统计窗口（秒）
-const DENSE_MIN_NOTES = 3000;   // 窗口内音符数阈值（≈10k/s）
-const DENSE_MAX_AVG_VEL = 0.08; // 窗口内平均力度上限（归一化 0~1，超轻）
-const DENSE_MIN_SHORT = 0.5;    // 窗口内「短时值」音符占比下限
-const DENSE_SHORT_SEC = 0.02;   // 短时值判定（秒）
-const DENSE_CELL = 0.06;        // 归一化时间格（秒），即折叠后每格每音高持续时长
-function _normalizeDenseRegions(notes){
-  const n = notes.length;
-  if(n < DENSE_MIN_NOTES) return notes;
-  // 1) 双指针滑动窗口：标记「高密度 + 低力度 + 多短音」的区间（差分数组，O(n)）
-  const diff = new Int32Array(n + 1);
-  let lo = 0, velSum = 0, shortSum = 0, any = false;
-  for(let hi = 0; hi < n; hi++){
-    velSum += notes[hi].velocity;
-    if(notes[hi].duration < DENSE_SHORT_SEC) shortSum++;
-    while(notes[hi].time - notes[lo].time > DENSE_WIN){
-      velSum -= notes[lo].velocity;
-      if(notes[lo].duration < DENSE_SHORT_SEC) shortSum--;
-      lo++;
-    }
-    const cnt = hi - lo + 1;
-    if(cnt >= DENSE_MIN_NOTES && (velSum / cnt) < DENSE_MAX_AVG_VEL && (shortSum / cnt) > DENSE_MIN_SHORT){
-      diff[lo]++; diff[hi + 1]--; any = true;
-    }
-  }
-  if(!any) return notes;
-  // 2) 前缀和得到标记；只收集密集区中「本身也是超短+超轻」的音符
-  //    （避免把边界处正常力度/正常时值的音符误并入）
-  const isPathological = (nt) => nt.duration < DENSE_SHORT_SEC && nt.velocity < DENSE_MAX_AVG_VEL;
-  const dense = [];
-  let cur = 0;
-  for(let i = 0; i < n; i++){
-    cur += diff[i];
-    if(cur > 0 && isPathological(notes[i])) dense.push(notes[i]);
-  }
-  if(!dense.length) return notes;
-  // 3) 折叠：按 (格序号, 音高) 合并为持续音；力度取组内最大，时值延长到至少一格
-  const start = dense[0].time;
-  const cellMap = new Map();
-  const cellPitchCount = new Map();
-  for(const note of dense){
-    const ci = Math.floor((note.time - start) / DENSE_CELL);
-    const pitch = note.midi < 21 ? 21 : (note.midi > 108 ? 108 : note.midi);
-    const key = ci * 128 + pitch;
-    const prev = cellMap.get(key);
-    if(prev){
-      if(note.velocity > prev.velocity) prev.velocity = note.velocity;
-      const end = note.time + note.duration;
-      if(end > prev.time + prev.duration) prev.duration = end - prev.time;
-    } else {
-      cellMap.set(key, { midi: pitch, time: start + ci * DENSE_CELL, duration: DENSE_CELL, velocity: note.velocity });
-    }
-    if(!cellPitchCount.has(ci)) cellPitchCount.set(ci, new Set());
-    cellPitchCount.get(ci).add(pitch);
-  }
-  // 力度归一：保留原力度并给一个可听下限，同时按同格音高数限制总幅度，避免削波
-  for(const [key, note] of cellMap){
-    const ci = Math.floor(key / 128);
-    const pc = Math.max(1, (cellPitchCount.get(ci) || new Set()).size);
-    note.velocity = Math.min(Math.max(note.velocity, 0.06), 1.5 / pc);
-  }
-  const collapsed = Array.from(cellMap.values());
-  // 4) 用折叠结果替换密集区中的病态音符（其余原样保留）
-  const out = [];
-  cur = 0;
-  for(let i = 0; i < n; i++){
-    cur += diff[i];
-    if(!(cur > 0 && isPathological(notes[i]))) out.push(notes[i]);
-  }
-  for(const c of collapsed) out.push(c);
-  out.sort((a, b) => a.time - b.time);
-  return out;
-}
-
 // 通用：解析MIDI并准备播放
 function parseAndPlayMidi(buf, filename){
   const midi = new Midi(buf);
@@ -2971,9 +2892,6 @@ function parseAndPlayMidi(buf, filename){
     });
   });
   allNotes.sort((a, b) => a.time - b.time);
-  // 高密度尾段归一化（默认开启）：把 black-MIDI 式超密超短超轻的段落折叠为可听见的和音簇
-  const _rawNoteCount = allNotes.length;
-  allNotes = _normalizeDenseRegions(allNotes);
   totalDuration = maxTime;
   _songEnded = false; // 新谱面：重置「已播完」标记
   // 根据整首谱面平均密度设置自适应同音重触发下限（仅高密度 black-MIDI 生效）
@@ -2989,10 +2907,6 @@ function parseAndPlayMidi(buf, filename){
   console.log('[AudioDebug][INFO] 谱面密度=' + density.toFixed(2) + ' 音符/s（=' + allNotes.length +
     ' 音符 / ' + totalDuration.toFixed(2) + 's，全曲平均），自适应同音重触发下限=' +
     SoundfontLoader.retriggerFloor + 's');
-  if(allNotes.length !== _rawNoteCount){
-    console.log('[AudioDebug][INFO] 高密度尾段归一化：' + _rawNoteCount + ' -> ' + allNotes.length +
-      ' 音符（折叠超密超短超轻的全键重复为持续和音簇，' + (_rawNoteCount - allNotes.length) + ' 个被合并）');
-  }
   document.getElementById('statTracks').textContent = '轨道：' + midi.tracks.length;
   document.getElementById('statTotal').textContent = '音符：' + allNotes.length;
   document.getElementById('statPlayed').textContent = '已播：0/' + allNotes.length;
