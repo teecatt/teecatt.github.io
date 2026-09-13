@@ -224,19 +224,20 @@ function _loadFpsCap(){
 
 // ===== 帧率显示：canvas 左上角，实时帧率（精确到 0.1）=====
 let fpsDisplayOn = true;
-let _fpsLastTs = 0;
+let _fpsLastTs = 0;          // 本刷新窗口的起始时间戳（0=未开始）
 let _fpsRealtime = 0;
+let _fpsWindowFrames = 0;    // 本窗口内已绘制的帧数
+const FPS_REFRESH_MS = 500;  // 帧率显示每 0.5s 刷新一次，取窗口平均值
 function _recordFpsFrame(){
   const t = performance.now();
-  if(_fpsLastTs){
-    const dt = t - _fpsLastTs;
-    if(dt > 0){
-      const inst = 1000 / dt;
-      // 轻度平滑：既保持实时，又避免数字每帧剧烈跳动
-      _fpsRealtime = _fpsRealtime ? (_fpsRealtime * 0.6 + inst * 0.4) : inst;
-    }
+  if(!_fpsLastTs){ _fpsLastTs = t; _fpsWindowFrames = 0; return; }
+  _fpsWindowFrames++;
+  const elapsed = t - _fpsLastTs;
+  if(elapsed >= FPS_REFRESH_MS){
+    _fpsRealtime = _fpsWindowFrames * 1000 / elapsed;
+    _fpsLastTs = t;
+    _fpsWindowFrames = 0;
   }
-  _fpsLastTs = t;
 }
 function _recentFps(){ return _fpsRealtime; }
 function onFpsDisplayChange(){
@@ -3152,7 +3153,7 @@ function startPlay(){
   // 防止重复启动导致多个 rAF 循环同时推进 nextNoteIndex
   if(rafId) cancelAnimationFrame(rafId);
   isPlaying = true;
-  _fpsLastTs = 0; // 重置实时帧率基线，避免把暂停时长当成一帧间隔
+  _fpsLastTs = 0; // 重置帧率刷新窗口，避免把暂停时长算进平均帧率
   if(typeof AudioDebugMonitor !== 'undefined') AudioDebugMonitor.resetClocks();
   playStartTime = audioCtx.currentTime - currentTime / playSpeed;
   nextNoteIndex = lowerBound(allNotes, currentTime);
