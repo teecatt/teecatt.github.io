@@ -788,12 +788,17 @@ async function togglePlay(){
 function fmtTime(s){ if(!isFinite(s))return'00:00'; const m=Math.floor(s/60),ss=Math.floor(s%60); return `${String(m).padStart(2,'0')}:${String(ss).padStart(2,'0')}`; }
 function updateTimeDisplay(){
   const a=CFG.audio;
-  document.getElementById('timeDisplay').textContent=`${fmtTime(a?a.currentTime:0)} / ${fmtTime(a?a.duration:0)}`;
+  if(_seekDragging) return; // 拖动预览期间由 seekPreview 接管时间显示
+  const c=document.getElementById('curTime');
+  const t=document.getElementById('totalTime');
+  if(c) c.textContent=fmtTime(a?a.currentTime:0);
+  if(t) t.textContent=fmtTime(a?a.duration:0);
 }
 let _lastSeekUI = 0;
 function updateSeekUI(){
   const a=CFG.audio;
   if(!a||!a.duration) return;
+  if(_seekDragging) return; // 拖动预览期间不覆盖已拖到位置
   const now=performance.now();
   if(now-_lastSeekUI<100) return; // 100ms 节流，避免每帧写 DOM
   _lastSeekUI=now;
@@ -1467,14 +1472,15 @@ function seekPreview(clientX){
   const rect=seekBar.getBoundingClientRect();
   _seekPreviewPct=Math.max(0,Math.min(1,(clientX-rect.left)/rect.width));
   document.getElementById('seekFill').style.width=(_seekPreviewPct*100)+'%';
-  const sec=CFG.audio.duration*_seekPreviewPct;
-  document.getElementById('timeDisplay').textContent=`${fmtTime(sec)} / ${fmtTime(CFG.audio.duration)}`;
-  // 与 midi_player 一致：拖动过程中即时跳转，可视化同步刷新
-  CFG.audio.currentTime=sec;
+  // 拖动期间只预览：已播时间随拖动变化，但音频进度等松手后才跳转
+  const c=document.getElementById('curTime');
+  if(c) c.textContent=fmtTime(CFG.audio.duration*_seekPreviewPct);
 }
 function seekApply(){
   if(!CFG.audio||!CFG.audio.duration) return;
   CFG.audio.currentTime=_seekPreviewPct*CFG.audio.duration;
+  const c=document.getElementById('curTime');
+  if(c) c.textContent=fmtTime(CFG.audio.currentTime);
 }
 seekBar.addEventListener('mousedown',e=>{_seekDragging=true;seekPreview(e.clientX);});
 document.addEventListener('mousemove',e=>{if(_seekDragging)seekPreview(e.clientX);});

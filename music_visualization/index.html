@@ -12,12 +12,10 @@
 <link rel="preconnect" href="https://testingcf.jsdelivr.net" crossorigin>
 <link rel="dns-prefetch" href="https://testingcf.jsdelivr.net">
 <title>音频可视化</title>
-<style>html,body{background:#0d1117;color:#e6edf3}body{visibility:hidden}#appLoading{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;visibility:visible;z-index:99999}#appLoading::after{content:'';width:34px;height:34px;border:3px solid rgba(230,237,243,.22);border-top-color:#e6edf3;border-radius:50%;animation:appspin .8s linear infinite}@keyframes appspin{to{transform:rotate(360deg)}}</style>
+<style>html,body{background:#000000;color:#e6edf3}body{visibility:hidden}#appLoading{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;visibility:visible;z-index:99999}#appLoading::after{content:'';width:34px;height:34px;border:3px solid rgba(230,237,243,.22);border-top-color:#e6edf3;border-radius:50%;animation:appspin .8s linear infinite}@keyframes appspin{to{transform:rotate(360deg)}}</style>
 <style id="appCss">
-
-
 :root{
-  --bg:#0d1117; --panel:#161b22; --panel2:#1c2128; --line:#30363d;
+  --bg:#000000; --panel:#000000; --panel2:#1c2128; --line:#30363d;
   --text:#e6edf3; --muted:#8b949e; --accent:#ff3f58; --accent2:#c822ff;
   --hover:#21262d; --radius:8px; --panel-w:280px;
 }
@@ -38,6 +36,7 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI","Microsoft Ya
 .ctl-btn{width:32px;height:32px;flex-shrink:0;padding:0;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--text);transition:background .15s,color .15s,box-shadow .15s;filter:grayscale(var(--menu-gray,0))}
 .ctl-btn:hover{background:rgba(255,255,255,.1)}
 .ctl-btn:active{background:rgba(255,255,255,.18);opacity:1}
+.ctl-btn:disabled{opacity:.4;cursor:not-allowed}
 .ctl-btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
 .ctl-btn.primary:hover{box-shadow:inset 0 0 0 999px rgba(0,0,0,.15)}
 .ctl-btn.active{box-shadow:inset 0 0 0 999px rgba(0,0,0,.3)}
@@ -116,19 +115,13 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI","Microsoft Ya
 .stage-wrap{position:relative;box-shadow:none;border-radius:0;overflow:visible;flex-shrink:0;align-self:center}
 #mainCanvas{display:block;cursor:default;touch-action:none;transform-origin:0 0}
 
-.player-bar{width:100%;height:48px;background:rgba(0,0,0,.55);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-top:1px solid rgba(255,255,255,.08);display:flex;align-items:center;padding:0 12px;gap:10px;z-index:5;flex-shrink:0}
-.player-bar .play-btn{width:32px;height:32px;border-radius:50%;background:linear-gradient(120deg,var(--accent),var(--accent2));border:none;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;padding:0}
-.player-bar .play-btn svg{width:14px;height:14px}
-.player-bar .play-btn:disabled{opacity:.4;cursor:not-allowed}
-.player-bar .time{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;min-width:90px;text-align:center;flex-shrink:0}
-.seek-bar{flex:1;height:6px;background:#e5e5e5;border-radius:3px;cursor:pointer;position:relative;overflow:hidden}
+.player-bar{width:100%;background:rgba(0,0,0,.55);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-top:1px solid rgba(255,255,255,.08);display:flex;flex-direction:column;justify-content:center;gap:4px;padding:6px 12px;z-index:5;flex-shrink:0}
+.time-row{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+.time-row #curTime,.time-row #totalTime{flex:0 0 auto}
+.time-row .vol{display:flex;align-items:center;gap:6px;flex:0 0 auto}
+.time-row .vol input{width:70px;accent-color:var(--accent)}
+.seek-bar{width:100%;height:6px;background:#e5e5e5;border-radius:3px;cursor:pointer;position:relative;overflow:hidden}
 .seek-bar .fill{height:100%;background:var(--accent);border-radius:3px;width:0%;transition:width .1s linear}
-.player-bar .vol{display:flex;align-items:center;gap:6px;flex-shrink:0}
-.player-bar .vol input{width:70px;accent-color:var(--accent)}
-.player-bar .loop-btn{background:transparent;border:none;color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;flex-shrink:0;padding:0;transition:all .15s}
-.player-bar .loop-btn svg{width:16px;height:16px}
-.player-bar .loop-btn:hover{color:var(--text);background:rgba(255,255,255,.08)}
-.player-bar .loop-btn.active{color:var(--accent)}
 
 .log-bar{width:100%;flex:1 1 auto;min-height:100px;overflow-y:auto;padding:4px 12px;font-size:10px;font-family:monospace;color:var(--muted);background:rgba(0,0,0,.3);border-top:1px solid var(--line)}
 .log-bar .log-line{line-height:1.5;white-space:pre-wrap;word-break:break-all}
@@ -217,14 +210,10 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI","Microsoft Ya
   .canvas-column{width:100%!important;max-width:100%}
   .stage-wrap{width:100%!important;height:auto!important}
   .stage-wrap canvas{width:100%!important;height:auto!important;transform:none!important}
-  .player-bar{height:36px;padding:0 6px;gap:6px}
-  .player-bar .play-btn{width:28px;height:28px}
-  .player-bar .play-btn svg{width:12px;height:12px}
-  .player-bar .time{font-size:9px;min-width:60px}
-  .player-bar .seek-bar{height:5px}
-  .player-bar .vol{display:none}
-  .player-bar .loop-btn{width:24px;height:24px}
-  .player-bar .loop-btn svg{width:14px;height:14px}
+  .player-bar{padding:5px 6px;gap:3px}
+  .time-row{font-size:9px;gap:6px}
+  .seek-bar{height:5px}
+  .time-row .vol{display:none}
   .log-toolbar .log-btn{padding:2px 4px}
   .log-toolbar .log-btn svg{width:10px;height:10px}
   .props-header{padding:10px 12px;font-size:13px}
@@ -280,8 +269,6 @@ body.fs-active .control-row,
 body.fs-active .panel-dock,
 body.fs-active .log-toolbar,
 body.fs-active .log-bar{display:none!important}
-
-
 </style>
 </head>
 <body>
@@ -312,16 +299,17 @@ body.fs-active .log-bar{display:none!important}
       <canvas id="mainCanvas" width="1920" height="1080"></canvas>
     </div>
 <div class="player-bar">
-        <button class="play-btn" id="playBtn" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg></button>
-        <span class="time" id="timeDisplay">00:00 / 00:00</span>
-        <div class="seek-bar" id="seekBar"><div class="fill" id="seekFill"></div></div>
-        <div class="vol">
-          <input type="range" id="volSlider" min="0" max="1" step="0.01" value="1">
+        <div class="time-row">
+          <span id="curTime">00:00</span>
+          <span class="vol"><input type="range" id="volSlider" min="0" max="1" step="0.01" value="1"></span>
+          <span id="totalTime">00:00</span>
         </div>
-        <button class="loop-btn active" id="loopBtn"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M11 5.466V4H5a4 4 0 0 0-3.584 5.777a.5.5 0 1 1-.896.446A5 5 0 0 1 5 3h6V1.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384l-2.36 1.966a.25.25 0 0 1-.41-.192m3.81.086a.5.5 0 0 1 .67.225A5 5 0 0 1 11 13H5v1.466a.25.25 0 0 1-.41.192l-2.36-1.966a.25.25 0 0 1 0-.384l2.36-1.966a.25.25 0 0 1 .41.192V12h6a4 4 0 0 0 3.585-5.777a.5.5 0 0 1 .225-.67Z"/></svg></button>
+        <div class="seek-bar" id="seekBar"><div class="fill" id="seekFill"></div></div>
       </div>
     <div class="control-row" id="controlRow">
       <div class="ctl-group">
+      <button class="ctl-btn primary" id="playBtn" title="播放" aria-label="播放" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg></button>
+      <button class="ctl-btn primary active" id="loopBtn" title="单曲循环" aria-label="单曲循环"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M11 5.466V4H5a4 4 0 0 0-3.584 5.777a.5.5 0 1 1-.896.446A5 5 0 0 1 5 3h6V1.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384l-2.36 1.966a.25.25 0 0 1-.41-.192m3.81.086a.5.5 0 0 1 .67.225A5 5 0 0 1 11 13H5v1.466a.25.25 0 0 1-.41.192l-2.36-1.966a.25.25 0 0 1 0-.384l2.36-1.966a.25.25 0 0 1 .41.192V12h6a4 4 0 0 0 3.585-5.777a.5.5 0 0 1 .225-.67Z"/></svg></button>
       <button class="ctl-btn primary drop-trigger" id="btnElements" data-tool="elements" title="元素" aria-label="元素">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
       </button>
