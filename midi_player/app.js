@@ -1039,13 +1039,9 @@ async function _decompressBrotli(ab){
   const out = mod.decompress(new Uint8Array(ab));
   return out.buffer.slice(out.byteOffset, out.byteOffset + out.byteLength);
 }
+// 每次进入页面在调试日志最前面打印一行 brotli 支持性
 try{
-  console.log('[AudioDebug][INFO] br 解压支持：原生 DecompressionStream(brotli)=' + _NATIVE_BROTLI +
-    '，原生 gzip=' + _NATIVE_GZIP + (_NATIVE_BROTLI ? '（无需 WASM）' : '（将使用自定义 WASM 解码器）'));
-  const _brEl = document.getElementById('brSupportInfo');
-  if(_brEl) _brEl.textContent = 'br 解压：' + (_NATIVE_BROTLI
-    ? '原生支持 DecompressionStream(brotli)'
-    : '原生不支持 → 使用自定义 WASM 解码器');
+  console.log('[AudioDebug][INFO] brotli支持性：' + (_NATIVE_BROTLI ? '浏览器原生支持' : '需WASM'));
 }catch(e){}
 // 谱面下载：只取 .mid.br，客户端解压（原文已删除，不再回退）
 async function _fetchMediaBlob(relPath, onProgress, quiet){
@@ -1253,21 +1249,8 @@ function _clearWorkletActive(){
   for(const id of _synthWorkletActive.values()) clearTimeout(id);
   _synthWorkletActive.clear();
 }
-// 调试面板：显示当前合成钢琴实际走的是哪条路径
-function _updateSynthPathInfo(){
-  const el = document.getElementById('synthPathInfo');
-  if(!el) return;
-  if(typeof SoundfontLoader !== 'undefined' && SoundfontLoader.current === '__yamaha_c7__'){
-    el.textContent = '雅马哈C7：纯算法合成（6 泛音 + 击弦噪声，零采样）';
-    return;
-  }
-  let txt;
-  if(_synthWorkletReady) txt = 'AudioWorklet（每音符 0 节点，最抗卡顿）';
-  else if(_synthWorkletFailed) txt = '预渲染缓冲区（AudioWorklet 不可用，已回退）';
-  else if(_synthWorkletLoading) txt = 'AudioWorklet 加载中…（暂用预渲染缓冲区）';
-  else txt = '预渲染缓冲区（AudioWorklet 未初始化）';
-  el.textContent = '合成钢琴：' + txt;
-}
+// 合成钢琴路径信息行已移除（改由日志呈现），保留空函数以兼容既有调用
+function _updateSynthPathInfo(){}
 function _initSynthWorklet(){
   if(_synthWorkletReady || _synthWorkletLoading) return _synthWorkletLoading;
   if(!audioCtx || !audioCtx.audioWorklet){

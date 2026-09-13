@@ -317,7 +317,7 @@ document.getElementById('loopBtn').innerHTML = loopMode === 'one' ? ONE_LOOP_ICO
 - **竞速日志（固化最后一行，不重复打「下载成功」）**：进行中 `_raceLog()` 每 0.5s 覆盖同一行显示领先镜像与速度；完成后 `_raceLogFinal()` 把该行固化为 `竞速[文件名] 完成 <- [镜像] 大小 用时Xs 平均YKB/s` 并**保留不删**，用于指示本次性能。失败时同样保留 `全部镜像失败`。竞速行已含来源/体积/速度/文件名，故不再额外打印 `xx下载成功` 的蓝色日志（缓存命中仍打印）。
 - **压缩收益可观测**：`.mid.br` 解压后打印 `br解压 <压缩体积> -> <解压体积>（压缩比 N×，传输节省 X%）`；音色若被 HTTP 层压缩，也会打印 `HTTP压缩传输 <压缩后> -> <解压后>（压缩比 N×）`。
 - **WASM 二进制同样竞速**：WASM brotli 解码器（`vendor/brotli_dec_wasm_bg.wasm`）通过 `_fetchBlobWithProgress` 走多镜像完整下载竞速，其来源/体积/速度/文件名由竞速最终行打印。
-- **br 支持可观测**：启动时打印 `br 解压支持：原生 DecompressionStream(brotli)=true/false`，并在**调试面板**显示 `br 解压：原生支持 / 需 WASM 解码器`；WASM 解码器的加载过程（JS 模块加载 → WASM 竞速下载 → 初始化 → 就绪）逐条打印。
+- **br 支持可观测**：每次进入页面在**调试日志最前面**打印一行 `brotli支持性：浏览器原生支持 / 需WASM`（`_NATIVE_BROTLI` 判定）；WASM 解码器的加载过程（JS 模块加载 → WASM 竞速下载 → 初始化 → 就绪）逐条打印。调试面板内原有的「br 解压」与「合成钢琴路径」两行常驻信息已移除，改为日志呈现。
 - **预解码**：`predecodeAll` 按每批 8 个解码 88 个音，避免一次性解码阻塞主线程与音频时间线。
 - **合成回退（预渲染循环波形，零重采样）**：`__synth__` 分支先用 `_getSynthLoopBuffers()` **解析式预渲染**每个音高的无缝循环 `AudioBuffer`（三角波奇次谐波 + 2/3 次正弦泛音；按 Nyquist 限制谐波数防混叠；循环体内谐波均为整数周期，循环点无缝），再由 **`BufferSource(loop=true)` + 动态包络 Gain** 播放，与采样分支同构（每音符 2 节点）。相比旧的「单振荡器 + `PeriodicWave`」：① 缓冲区采样率 = `AudioContext.sampleRate`，播放时**零重采样**；② 单声道、全部 88 音仅约 130KB；③ 无需 `decodeAudioData`/`OfflineAudioContext`。**注意**：`decodeAudioData` 会把采样音色一次性重采样到 ctx 采样率，所以古钢琴等**播放时同样零重采样**——预渲染让合成钢琴的播放开销**与采样音色相当**（每音符 2 节点），而非更低；要严格更低需改用 AudioWorklet（见下）。`initAudio()` 时用 `setTimeout(...,0)` 预热（约 8ms），首个合成音符不再触发一次性构建。仅在音色加载失败或 buffer 缺失时使用；极端场景无法创建 `AudioBuffer` 时退回单振荡器 `PeriodicWave`。合成钢琴本身**无任何音频文件**（0 字节），因此不需要下载。
 - **合成开销进一步降低（AudioWorklet，渐进增强）**：把整个合成器放进一个 `AudioWorkletProcessor`（源码用 Blob URL 内联，**不增加网络请求**），所有 voice 在同一节点内以查表波表 + 数值包络合成，实现**每音符 0 个 Web Audio 节点、零节点 churn、零 GC**——这是让合成钢琴**严格比采样音色更不易卡顿**的途径。`initAudio()` 后台 `addModule`；就绪前用上面的预渲染缓冲区方案，就绪后无缝切到 worklet，失败自动回退。处理器内建每八度一张限谐波波表（防混叠）与 128 voice 池（满了抢占最旧），并通过 `port` 回报活跃 voice 数供调试面板统计。
@@ -814,6 +814,7 @@ midi_player/
 | Rush E3 默认古钢琴 | `songDefaultTimbre['Rush E 3.mid']='clavinet'`、`COLD_START.timbre='clavinet'`：P0 谱面先用合成钢琴抢跑，P1 下载古钢琴并预解码完成后自动切换 | `_pending_` |
 | 下拉按钮旋转朝向 | 第二行右侧四个下拉触发按钮（管理/设置/配色/调试）默认（收起）不旋转、展开时旋转 180°（此前相反） | `_pending_` |
 | 电脑键盘输入 | 全局：空格播放/暂停，↑/↓ 调钢琴高度、←/→ 调水平偏移（Shift 加速）；可选「键盘映射」二级面板：QWERTY 两排映射 2 个八度、`-`/`=` 平移八度、Shift 轻力度，设置持久化 | `_pending_` |
+| 调试面板信息行精简 | 删除调试面板内「br 解压：…」「合成钢琴：AudioWorklet…」两行常驻信息；改为每次进页面在日志最前面打印 `brotli支持性：浏览器原生支持 / 需WASM` | `_pending_` |
 | 力度图恢复与配色面板整理 | 取色器恢复直角梯形力度条（白键/黑键 + 两端可点选色块）；配色面板取消播放中 2s 无操作自动收起与提示小字；面板始终 100% 不透明；A/B/C/自定义按钮维持 27px 圆形主题色底（字母 + 油漆桶图标），选中方案外圈白框高亮 | `_pending_` |
 | 取消配色面板自动收起 | 移除播放中 2s 无操作自动收起（`schedulePaletteAutoCollapse` 等）与提示小字；面板仅在点击按钮/点击外部时收起 | `_pending_` |
 | 全谱音色检查 + 性能降级切音色 | 所有谱起播前检查配置音色（内置谱 `songDefaultTimbre`，其余用下拉选中音色），本地不存在则先用合成钢琴、下载完成后切过去；性能降级临时切到合成钢琴，恢复时切回（未下完则等下完）；统一入口 `_applyTimbre` + `_desiredTimbre`/`_perfDegraded` | `_pending_` |
