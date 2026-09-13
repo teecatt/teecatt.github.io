@@ -4145,17 +4145,18 @@ function renderStatic(){
     sctx.fillStyle = '#1a1a1a';
     sctx.fillRect(k.x, keyTop, k.w, keyAreaH * 0.62);
   });
-  // 音名：字母大、数字下标小，同一水平线
+  // 音名：字母大、数字下标小，同一水平线；字号随键宽自适应（各设备视觉比例一致，PC 不再被固定上限压小）
   const whiteW = layout.whiteW;
-  const fontSize = Math.max(5 * devicePixelRatio, Math.min(8 * devicePixelRatio, whiteW * 0.55));
+  const fontSize = Math.max(5 * devicePixelRatio, Math.min(whiteW * 0.55, keyAreaH * 0.42));
   const smallFont = fontSize * 0.7;
   sctx.fillStyle = 'rgba(0,0,0,0.45)';
   sctx.textAlign = 'left';
+  // 基线随字号下移，避免大字号时下标被画布底边裁切
+  const baseY = C.h - Math.max(3 * devicePixelRatio, fontSize * 0.25);
   layout.keys.forEach(k => {
     if(k.isBlack) return;
     const name = noteNames[k.midi % 12];
     const oct = Math.floor(k.midi / 12) - 1;
-    const baseY = C.h - 3 * devicePixelRatio;
     // 字母
     sctx.font = `${fontSize}px sans-serif`;
     const letterW = fontSize * 0.55;
