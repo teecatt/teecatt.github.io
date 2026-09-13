@@ -634,20 +634,23 @@ function drawBackground(cfg){
    ============================================================ */
 let _lastFrameTime = 0;
 let _lastDraw = 0;
-// 实时渲染帧率（每 500ms 统计一次实际绘制帧数）
+// 实时渲染帧率：按 0.5s 窗口统计实际绘制帧数（与 midi_player 一致，精确到 0.1）
 let _fpsFrames = 0, _fpsWindowStart = 0, _fpsValue = 0;
+const FPS_REFRESH_MS = 500;
 function _updateFps(now){
+  if(!_fpsWindowStart){ _fpsWindowStart = now; _fpsFrames = 0; return; }
   _fpsFrames++;
-  if(!_fpsWindowStart) _fpsWindowStart = now;
   const elapsed = now - _fpsWindowStart;
-  if(elapsed >= 500){
-    _fpsValue = Math.round(_fpsFrames * 1000 / elapsed);
+  if(elapsed >= FPS_REFRESH_MS){
+    // 长时间挂起（切到后台等）后重新计时，避免把暂停时长算进平均帧率
+    if(elapsed > 1000){ _fpsFrames = 0; _fpsWindowStart = now; return; }
+    _fpsValue = _fpsFrames * 1000 / elapsed;
     _fpsFrames = 0; _fpsWindowStart = now;
   }
 }
 function _drawFps(){
   const lines = [];
-  if(CFG.showFps) lines.push(_fpsValue + ' FPS');
+  if(CFG.showFps) lines.push(_fpsValue.toFixed(1) + ' FPS');
   if(CFG.showRes) lines.push(canvas.width + '×' + canvas.height);
   if(!lines.length) return;
   const fs = Math.max(10, Math.round(canvas.height * 0.035));
