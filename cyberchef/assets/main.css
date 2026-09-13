@@ -15950,7 +15950,7 @@ input.toggle-string {
     padding: 8px;
     padding-left: 12px;
     padding-right: 12px;
-    height: 48px;
+    height: 44px;
     height: var(--title-height);
     border-bottom: 1px solid #ddd;
     border-bottom: 1px solid var(--primary-border-colour);
@@ -15962,7 +15962,7 @@ input.toggle-string {
     color: var(--title-colour);
     background-color: #fafafa;
     background-color: var(--title-background-colour);
-    line-height: calc(48px - 14px);
+    line-height: calc(44px - 14px);
     line-height: calc(var(--title-height) - 14px);
 }
 
@@ -15980,7 +15980,7 @@ input.toggle-string {
 
 .list-area {
     position: absolute;
-    top: 48px;
+    top: 44px;
     top: var(--title-height);
     bottom: 0;
     width: 100%;
@@ -16376,22 +16376,22 @@ input.toggle-string {
 }
 
 #input-wrapper {
-    height: calc(100% - 48px);
+    height: calc(100% - 44px);
     height: calc(100% - var(--title-height));
 }
 
 #output-wrapper {
-    height: calc(100% - 48px);
+    height: calc(100% - 44px);
     height: calc(100% - var(--title-height));
 }
 
 #input-wrapper.show-tabs {
-    height: calc(100% - 40px - 48px);
+    height: calc(100% - 40px - 44px);
     height: calc(100% - var(--tab-height) - var(--title-height));
 }
 
 #output-wrapper.show-tabs {
-    height: calc(100% - 40px - 48px);
+    height: calc(100% - 40px - 44px);
     height: calc(100% - var(--tab-height) - var(--title-height));
 }
 
@@ -17346,5 +17346,509 @@ ul.json-dict, ol.json-array {
 
 .json-details[open] > .json-summary::before {
     transform: rotate(0deg);
+}
+
+/* Minimal chrome overrides (must be last) */
+
+/**
+ * 极简外壳样式（扁平化 + 响应式）
+ *
+ * 在原有 CyberChef 组件样式之后加载，用更克制的边框、扁平按钮与
+ * 移动端分栏导航覆盖默认的 Material Design 外观。
+ * 设计语言参考 encrypted_notes / n.down2.top。
+ *
+ * @license Apache-2.0
+ */
+
+/* ── 基础圆角与滚动条 ── */
+
+:root {
+    --cc-radius: 8px;
+}
+
+* {
+    scrollbar-width: thin;
+    scrollbar-color: #93a1a1 #fdf6e3;
+    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+::-webkit-scrollbar-track {
+    background: #fafafa;
+    background: var(--scrollbar-track);
+}
+
+::-webkit-scrollbar-thumb {
+    background: #ccc;
+    background: var(--scrollbar-thumb);
+    border: 2px solid #fafafa;
+    border: 2px solid var(--scrollbar-track);
+    border-radius: 8px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #bbb;
+    background: var(--scrollbar-hover);
+}
+
+/* ── 顶栏 ── */
+
+#banner {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 48px;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 8px 0 12px;
+    margin: 0;
+    line-height: normal;
+    border-bottom: 1px solid #ddd;
+    border-bottom: 1px solid var(--primary-border-colour);
+    background-color: #fff;
+    background-color: var(--primary-background-colour);
+    color: #333;
+    color: var(--primary-font-colour);
+}
+
+#banner a {
+    color: inherit;
+}
+
+.brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex: 0 0 auto;
+    padding: 5px 7px;
+    border-radius: 8px;
+    border-radius: var(--cc-radius);
+    text-decoration: none;
+    color: #333;
+    color: var(--primary-font-colour);
+}
+
+.brand:hover {
+    background-color: #fafafa;
+    background-color: var(--secondary-background-colour);
+}
+
+.brand-logo {
+    width: 22px;
+    height: 22px;
+    display: block;
+}
+
+.brand-name {
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: .2px;
+}
+
+.brand-sub {
+    font-size: 11px;
+    line-height: 1;
+    color: #999;
+    color: var(--subtext-font-colour);
+    border: 1px solid #ddd;
+    border: 1px solid var(--primary-border-colour);
+    border-radius: 5px;
+    padding: 2px 5px;
+}
+
+#notice-wrapper {
+    flex: 1 1 auto;
+    min-width: 0;
+    text-align: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12px;
+    color: #999;
+    color: var(--subtext-font-colour);
+}
+
+#notice-wrapper a {
+    color: #333;
+    color: var(--primary-font-colour);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.banner-actions {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    flex: 0 0 auto;
+}
+
+.cc-icon-btn {
+    width: 34px;
+    height: 34px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    border-radius: var(--cc-radius);
+    color: #999;
+    color: var(--subtext-font-colour);
+    text-decoration: none;
+    transition: background .15s, color .15s;
+}
+
+.cc-icon-btn:hover {
+    background-color: #fafafa;
+    background-color: var(--secondary-background-colour);
+    color: #333;
+    color: var(--primary-font-colour);
+}
+
+.cc-icon-btn svg {
+    width: 19px;
+    height: 19px;
+    display: block;
+}
+
+/* 工作区从 48px 顶栏下方开始 */
+
+#workspace-wrapper {
+    top: 48px;
+}
+
+/* ── 面板标题 ── */
+
+:root {
+    --title-height: 44px;
+}
+
+.title {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: .2px;
+    padding: 8px 12px;
+}
+
+.category-title {
+    padding: 9px 12px;
+    font-size: 13px;
+    font-weight: 600;
+    background-color: #fff;
+    background-color: var(--primary-background-colour);
+}
+
+/* ── 按钮扁平化 ── */
+
+.btn {
+    box-shadow: none !important;
+    border-radius: 8px !important;
+    border-radius: var(--cc-radius) !important;
+    text-transform: none;
+    letter-spacing: 0;
+    font-weight: 600;
+}
+
+.btn-raised,
+.btn:not(.bmd-btn-fab):not(.bmd-btn-icon) {
+    box-shadow: none !important;
+}
+
+.bmd-btn-icon {
+    box-shadow: none !important;
+    border-radius: 8px !important;
+    border-radius: var(--cc-radius) !important;
+}
+
+.bmd-btn-fab {
+    box-shadow: none !important;
+    border-radius: 8px !important;
+    border-radius: var(--cc-radius) !important;
+}
+
+.bmd-btn-icon:hover {
+    background-color: #fafafa;
+    background-color: var(--secondary-background-colour);
+}
+
+#controls .btn {
+    border-radius: 8px !important;
+    border-radius: var(--cc-radius) !important;
+}
+
+#step {
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+
+#bake {
+    flex: 1 1 auto;
+    width: auto !important;
+    white-space: nowrap;
+}
+
+#bake img {
+    display: none !important;
+}
+
+/* ── 搜索框与操作列表 ── */
+
+#search.form-control {
+    background-image: none !important;
+    border: 1px solid #ddd !important;
+    border: 1px solid var(--primary-border-colour) !important;
+    border-radius: 8px !important;
+    border-radius: var(--cc-radius) !important;
+    height: 34px;
+    margin: 8px;
+    width: calc(100% - 16px);
+    padding: 0 10px !important;
+    background-color: #fafafa;
+    background-color: var(--secondary-background-colour);
+    color: #333;
+    color: var(--primary-font-colour);
+}
+
+#search.form-control:focus {
+    border-color: #333 !important;
+    border-color: var(--primary-font-colour) !important;
+    -webkit-filter: none !important;
+            filter: none !important;
+}
+
+.op-list .operation {
+    background-color: transparent !important;
+    color: #333 !important;
+    color: var(--primary-font-colour) !important;
+    border-bottom: 1px solid #eee !important;
+    border-bottom: 1px solid var(--secondary-border-colour) !important;
+    padding: 9px 12px;
+}
+
+.op-list .operation:hover {
+    background-color: #fafafa !important;
+    background-color: var(--secondary-background-colour) !important;
+    -webkit-filter: none !important;
+            filter: none !important;
+}
+
+.selected-op {
+    background-color: #fcf8e3 !important;
+    background-color: var(--selected-operation-bg-colour) !important;
+}
+
+/* 配方中的操作用卡片样式 */
+
+#rec-list .operation {
+    border: 1px solid #ddd !important;
+    border: 1px solid var(--primary-border-colour) !important;
+    border-radius: 10px;
+    margin: 8px;
+    background-color: #fafafa !important;
+    background-color: var(--secondary-background-colour) !important;
+}
+
+#rec-list .operation.break {
+    border-color: #eed3d7 !important;
+    border-color: var(--breakpoint-border-colour) !important;
+}
+
+/* ── 参数输入框扁平化 ── */
+
+.operation .form-control {
+    background-image: none !important;
+    border: 1px solid #ddd !important;
+    border: 1px solid var(--arg-border-colour) !important;
+    border-radius: 8px !important;
+    border-radius: var(--cc-radius) !important;
+    background-color: #fff;
+    background-color: var(--arg-background);
+    color: #424242;
+    color: var(--arg-font-colour);
+}
+
+.operation .form-control:hover {
+    background-image: none !important;
+    -webkit-filter: none !important;
+            filter: none !important;
+    border-color: #333 !important;
+    border-color: var(--primary-font-colour) !important;
+}
+
+.operation .form-control:focus {
+    background-image: none !important;
+    -webkit-filter: none !important;
+            filter: none !important;
+    border-color: #333 !important;
+    border-color: var(--primary-font-colour) !important;
+}
+
+.input-group-append button {
+    border-radius: 0 8px 8px 0 !important;
+    border-radius: 0 var(--cc-radius) var(--cc-radius) 0 !important;
+}
+
+/* ── 控制栏 ── */
+
+#controls {
+    background-color: #fff;
+    background-color: var(--primary-background-colour);
+    border-top: 1px solid #ddd;
+    border-top: 1px solid var(--primary-border-colour);
+    padding: 8px 0;
+}
+
+#controls-content {
+    padding: 0 8px;
+}
+
+/* ── 弹窗扁平化 ── */
+
+.modal-content {
+    background-color: #fff;
+    background-color: var(--primary-background-colour);
+    color: #333;
+    color: var(--primary-font-colour);
+    border: 1px solid #ddd;
+    border: 1px solid var(--primary-border-colour);
+    border-radius: 12px;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, .35);
+}
+
+.modal-header {
+    border-color: #ddd;
+    border-color: var(--primary-border-colour);
+}
+
+.modal-footer {
+    border-color: #ddd;
+    border-color: var(--primary-border-colour);
+}
+
+/* ── 移动端：底部分栏导航 ── */
+
+#mobile-nav {
+    display: none;
+}
+
+@media (max-width: 820px) {
+    #banner {
+        gap: 6px;
+        padding: 0 6px 0 10px;
+    }
+
+    .brand-sub,
+    #notice-wrapper {
+        display: none;
+    }
+
+    #workspace-wrapper {
+        top: 48px;
+        bottom: 52px;
+    }
+
+    #mobile-nav {
+        display: flex;
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 52px;
+        z-index: 20;
+        border-top: 1px solid #ddd;
+        border-top: 1px solid var(--primary-border-colour);
+        background-color: #fff;
+        background-color: var(--primary-background-colour);
+        padding-bottom: env(safe-area-inset-bottom);
+    }
+
+    #mobile-nav button {
+        flex: 1 1 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 2px;
+        min-width: 0;
+        padding: 4px 0;
+        border: 0;
+        background: none;
+        cursor: pointer;
+        color: #999;
+        color: var(--subtext-font-colour);
+        font-size: 11px;
+        line-height: 1.1;
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    #mobile-nav button svg {
+        width: 20px;
+        height: 20px;
+        display: block;
+    }
+
+    #mobile-nav button.active {
+        color: #333;
+        color: var(--primary-font-colour);
+        font-weight: 600;
+    }
+
+    /* 三个主分栏改为全屏叠放，由 data-mobile-view 控制显示哪一个 */
+    div#operations,
+    div#recipe,
+    div#IO {
+        position: absolute !important;
+        top: 0 !important;
+        left: 0 !important;
+        width: 100% !important;
+        height: 100% !important;
+        float: none !important;
+        display: none;
+    }
+
+    .gutter {
+        display: none !important;
+    }
+
+    body[data-mobile-view="ops"] #operations {
+        display: block;
+    }
+
+    body[data-mobile-view="recipe"] #recipe {
+        display: block;
+    }
+
+    body[data-mobile-view="input"] #IO,
+    body[data-mobile-view="output"] #IO {
+        display: block;
+    }
+
+    body[data-mobile-view="input"] #input {
+        display: block;
+        width: 100% !important;
+        height: 100% !important;
+    }
+
+    body[data-mobile-view="input"] #output {
+        display: none !important;
+    }
+
+    body[data-mobile-view="output"] #output {
+        display: block;
+        width: 100% !important;
+        height: 100% !important;
+    }
+
+    body[data-mobile-view="output"] #input {
+        display: none !important;
+    }
+
+    #rec-list .operation {
+        margin: 6px;
+    }
 }
 
