@@ -22,8 +22,6 @@
 .social a:active{opacity:1;transform:scale(.9)}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Microsoft YaHei',Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;flex-direction:column}
 a{text-decoration:none;color:inherit}
-.topbar{height:56px;display:flex;align-items:center;padding:0 24px;gap:12px;border-bottom:1px solid var(--line);background:var(--surface)}
-.logo{font-size:16px;font-weight:700;background:linear-gradient(120deg,var(--accent),var(--violet));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
 .build-info{color:var(--muted);text-decoration:none}
 .build-info:hover{color:var(--text)}
 .hero{padding:48px 24px 8px;text-align:center}
@@ -71,9 +69,6 @@ footer{border-top:1px solid var(--line);padding:16px 24px;text-align:center;font
 </style>
 </head>
 <body>
-<div class="topbar">
-  <span class="logo">teecatt</span>
-</div>
 <div class="hero">
   <h1>Here we stand open arms<br>This is home where we are</h1>
   <div class="contact-label">Contact me</div>
@@ -131,12 +126,12 @@ footer{border-top:1px solid var(--line);padding:16px 24px;text-align:center;font
 
 <script src="build-info.js"></script>
 <script>
-// 页脚「最近构建」：显示最近一次部署时间，并可点击跳转到对应提交
+// 页脚「最近构建」+ 浏览器标签标题：显示最近一次部署时间，并可点击跳转到对应提交
 (function(){
   const b = window.SITE_BUILD;
   const el = document.getElementById('siteBuildInfo');
   if(!el) return;
-  if(!b || !b.sha){ el.textContent = '最近构建：未知'; return; }
+  if(!b || !b.sha){ el.textContent = '最近构建：未知'; document.title = '构建于未知'; return; }
   function ago(ms){
     const s = Math.max(0, Math.floor(ms/1000));
     if(s < 60) return '刚刚';
@@ -146,8 +141,10 @@ footer{border-top:1px solid var(--line);padding:16px 24px;text-align:center;font
     const mo = Math.floor(d/30); if(mo < 12) return mo + ' 个月前';
     return Math.floor(mo/12) + ' 年前';
   }
-  el.textContent = '最近构建：' + ago(Date.now() - b.time);
+  const label = ago(Date.now() - b.time);
+  el.textContent = '最近构建：' + label;
   el.href = 'https://github.com/teecatt/teecatt.github.io/commit/' + b.sha;
+  document.title = '构建于 ' + label; // 浏览器标签页标题（地址栏本身只显示 URL，无法自定义文字）
 })();
 // 根据卡片数量自动设置布局class
 (function(){
