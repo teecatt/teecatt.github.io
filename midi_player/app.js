@@ -570,6 +570,8 @@ function initAudio(){
     ' outputLatency=' + (audioCtx.outputLatency != null ? (audioCtx.outputLatency * 1000).toFixed(1) + 'ms' : 'N/A') +
     ' state=' + audioCtx.state);
   if(debugEnabled) AudioDebugMonitor.init();
+  // 雅马哈 C7 纯算法钢琴：复用同一 AudioContext 与 masterGain
+  try{ if(typeof YamahaC7 !== 'undefined') YamahaC7.init(audioCtx, masterGain); }catch(e){}
   // 预热合成钢琴预渲染缓冲区（约 8ms），避免首个合成音符触发一次性主线程构建
   setTimeout(() => { try{ _getSynthLoopBuffers(); }catch(e){} }, 0);
   // 后台加载合成钢琴 AudioWorklet（渐进增强）；失败则保持预渲染缓冲区方案
@@ -1229,6 +1231,10 @@ function _clearWorkletActive(){
 function _updateSynthPathInfo(){
   const el = document.getElementById('synthPathInfo');
   if(!el) return;
+  if(typeof SoundfontLoader !== 'undefined' && SoundfontLoader.current === '__yamaha_c7__'){
+    el.textContent = '雅马哈C7：纯算法合成（6 泛音 + 击弦噪声，零采样）';
+    return;
+  }
   let txt;
   if(_synthWorkletReady) txt = 'AudioWorklet（每音符 0 节点，最抗卡顿）';
   else if(_synthWorkletFailed) txt = '预渲染缓冲区（AudioWorklet 不可用，已回退）';
@@ -1310,7 +1316,7 @@ const SoundfontLoader = {
 
   async load(name, onProgress, opts){
     const switchCurrent = !opts || opts.switchCurrent !== false;
-    if(name === '__synth__'){ this.current = '__synth__'; return; }
+    if(name === '__synth__' || name === '__yamaha_c7__'){ this.current = name; return; }
     if(this.loaded[name] && this.loaded[name].ready){ if(switchCurrent) this.current = name; return; }
     if(this.loading) await this.loading;
     this.loading = this._doLoad(name, onProgress);
@@ -1573,6 +1579,8 @@ const SoundfontLoader = {
       _synthWorkletVoices = 0;
     }
     _clearWorkletActive();
+    // 雅马哈 C7 合成引擎：停止全部 voice
+    try{ if(typeof YamahaC7 !== 'undefined') YamahaC7.stopAll(); }catch(e){}
     // 合成钢琴分支的音源节点也必须停掉
     if(this.synthVoices.length){
       const n = this.synthVoices.length;
@@ -1596,6 +1604,7 @@ const SoundfontLoader = {
     }
     const _waTimer = _synthWorkletActive.get(midi);
     if(_waTimer){ clearTimeout(_waTimer); _synthWorkletActive.delete(midi); }
+    try{ if(typeof YamahaC7 !== 'undefined') YamahaC7.stopNote(midi); }catch(e){}
     for(let i = this.activeVoices.length - 1; i >= 0; i--){
       const v = this.activeVoices[i];
       if(v.midi !== midi) continue;
@@ -1652,6 +1661,11 @@ const SoundfontLoader = {
     this.lastTriggerTime[midi] = t;
     // 使用真实时长；仅用 1ms epsilon 防止 0/无效调度（不再强制 30ms）
     const d = Math.max(duration, 0.001);
+    // 雅马哈 C7 纯算法钢琴（零采样）：走独立合成引擎，复用 masterGain
+    if(this.current === '__yamaha_c7__'){
+      try{ if(typeof YamahaC7 !== 'undefined') YamahaC7.playNote(midi, velocity, d); }catch(e){}
+      return;
+    }
     if(this.current !== '__synth__'){
       const entry = this.loaded[this.current];
       // 超出钢琴范围的音符映射到最近有效键，避免永远 miss
@@ -2037,8 +2051,9 @@ async function onTimbreChange(opts){
   initAudio();
   // 切换音色前停止所有正在播放的音符，避免新旧音色叠加导致音量暴增
   SoundfontLoader.stopAll();
-  if(name === '__synth__'){
-    SoundfontLoader.current = '__synth__';
+  if(name === '__synth__' || name === '__yamaha_c7__'){
+    SoundfontLoader.current = name; // 纯算法音色：无需下载，直接切换
+    _updateSynthPathInfo();
     return;
   }
   // 未下载的音色：直接下载并切换（不再要求先点下载按钮）
@@ -2050,6 +2065,7 @@ async function onTimbreChange(opts){
     });
     await SoundfontLoader.predecodeAll();
     setStatus('音色[' + disp + ']完成!');
+    _updateSynthPathInfo();
   }catch(e){
     setStatus('音色[' + disp + ']加载失败，已回退合成钢琴');
     sel.value = '__synth__';
@@ -2065,10 +2081,10 @@ async function _applySongDefaultTimbre(file, fname, timbre){
   const sel = document.getElementById('timbreSel');
   const disp = timbreDisplayName(timbre);
   const songDisp = _songDisplayName(file);
-  if(timbre === '__synth__'){
-    sel.value = '__synth__';
-    SoundfontLoader.current = '__synth__';
-    console.log('[AudioDebug][INFO] 谱面' + _songId(file) + ' 默认使用合成钢琴音色');
+  if(timbre === '__synth__' || timbre === '__yamaha_c7__'){
+    sel.value = timbre;
+    SoundfontLoader.current = timbre;
+    console.log('[AudioDebug][INFO] 谱面' + _songId(file) + ' 默认使用' + disp + '音色');
     return;
   }
   if(SoundfontLoader.cachedNames.has(timbre)){
@@ -2501,7 +2517,7 @@ const TRASH_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" s
 const DOWNLOAD_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
 // 音色列表项右侧动作：已缓存显示垃圾桶，未缓存显示下载（带百分比）；点击未下载项会直接下载并切换
 function _makeTimbreAction(o){
-  if(o.value === '__synth__') return null;
+  if(o.value === '__synth__' || o.value === '__yamaha_c7__') return null;
   const box = document.createElement('span');
   // 需下载体积（br 压缩后传输量）：标注在垃圾桶/下载按钮旁边
   const sz = _makeSizeSpan(_mediaBrSize('soundfonts/' + o.value));
@@ -2547,7 +2563,7 @@ function _makeTimbreAction(o){
 // 点击未下载的音色选项 = 「下载 + 切换」：在下载按钮处显示百分比，
 // 下载完成后才切换并收起下拉（与先点下载再选一致）。返回 true 表示已接管。
 function _deferTimbreChoose(o, optEl, choose){
-  if(!o || o.value === '__synth__') return false;
+  if(!o || o.value === '__synth__' || o.value === '__yamaha_c7__') return false;
   if(SoundfontLoader.cachedNames.has(o.value)) return false; // 已缓存：按默认流程直接切换
   const act = optEl.querySelector('.csel-act');
   if(!act || typeof act._download !== 'function') return false;
@@ -4393,6 +4409,8 @@ function drawScene(notes, startIdx, endIdx, curTime){
   }
   // AudioWorklet 合成钢琴：voice 在 worklet 内，主线程用 _synthWorkletActive 记录按键
   _synthWorkletActive.forEach((_id, m) => activeKeySet.add(m));
+  // 雅马哈 C7 合成引擎：读取其活跃按键
+  try{ if(typeof YamahaC7 !== 'undefined') YamahaC7.active.forEach((_v, m) => activeKeySet.add(m)); }catch(e){}
 
   // 按键高亮
   if(activeKeySet.size > 0){

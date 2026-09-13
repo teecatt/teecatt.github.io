@@ -628,6 +628,7 @@ select:focus{border-color:var(--accent)}
               <label>音色选择</label>
               <select id="timbreSel" onchange="onTimbreChange()">
                 <option value="__synth__" selected>合成钢琴</option>
+                <option value="__yamaha_c7__">雅马哈C7</option>
                 <optgroup label="键盘">
                   <option value="acoustic_grand_piano">三角钢琴</option>
                   <option value="bright_acoustic_piano">亮音钢琴</option>
@@ -738,6 +739,7 @@ select:focus{border-color:var(--accent)}
 
 <script src="vendor/Midi.js"></script>
 <script src="../shared/cdn-race.js"></script>
+<script src="../shared/yamaha-c7.js"></script>
 
 <script id="appLoader">
 (function(){
