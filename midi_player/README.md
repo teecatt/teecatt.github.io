@@ -447,7 +447,7 @@ document.getElementById('loopBtn').innerHTML = loopMode === 'one' ? ONE_LOOP_ICO
 
 - 控制行内的配色按钮（`paletteToggleBtn`，圆形紫色 `.ctl-btn.primary`，图标 `ic:round-color-lens`，收起时旋转 180°）切换 `paletteRow`；**默认收起**，点击从按钮下方展开。
 - **下拉浮层**：`paletteRow` 使用统一 `.drop-panel` 样式（绝对定位在控制行下方），浮在渲染区之上，**不改变渲染区高度，也不影响进度条 / 统计信息位置**；配色面板**始终 100% 不透明**（`#paletteRow{background:#000 !important;backdrop-filter:none !important}`，且不再列入 `_panelTargets`），不受全局面板透明度/模糊影响，便于精准取色。
-- **按钮**：A/B/C/自定义四个 `.pal-btn` 为 **27px** 圆形 `.pal-pie`，按钮本身即**饼图预览**：**上半圆=该方案主题色**；**左下四分之一=黑键力度渐变**（沿切向从左侧「轻」到底部「重」，`PALETTES[name].black` 五级）；**右下四分之一=白键力度渐变**（从右侧「轻」到底部「重」，`PALETTES[name].white` 五级）。A/B/C 中心叠加字母，自定义按钮中心叠加**油漆桶 logo（保持不变）**，饼图颜色随用户自定义设置实时变化。**选中的方案按键高亮**：外圈白框 + 主题色光环（`.pal-btn.pal-pie.active`）。由 `renderPaletteButtons()` 在 `setPalette()` / 初始化时重建，切换配色或实时调色即刷新。
+- **按钮**：A/B/C/自定义四个 `.pal-btn` 为 **27px** 圆形；A/B/C 使用 **Google Sans 常规字重**（`@font-face` 来自 `fonts.googleapis.com`，`font-weight:400`，回退 Product Sans / 系统字体）；**统一为不透明主题色底白字**（`background:var(--accent)`，随主题色变化），A/B/C 显示字母、自定义按钮显示**油漆桶图标（16×16）**；**选中的方案按键高亮**（`.pal-btn.active`：外圈白框 `box-shadow:0 0 0 2px #fff`）。已删除「配色方案」竖排文字标签。
 - **取色器力度图**：`renderPaletteEndpoints()` 恢复**直角梯形力度条**（左底边=右底边一半，左轻右重）：上排「白键」、下排「黑键」，两端为可点选的方形端点色块（`wl`/`wh`/`bl`/`bh`），`白键`/`黑键`/`力度` 文字用 `_swatchLabel()` 叠加在渐变图上；与配色方案按钮的饼图表达一致。
 - **不再自动收起**：已移除播放中 2s 无操作自动收起逻辑（`schedulePaletteAutoCollapse`/`cancelPaletteAutoCollapse`/`.pal-hint` 及 `#paletteSwatch` 面板力度图均删除）；配色面板只在点击按钮或点击面板外时收起。
 - **四个下拉按钮的旋转动画**：`manageBtn` / `settingsBtn` / `paletteToggleBtn` / `debugToggleBtn` 的图标在各自面板**收起时旋转 180°、展开时转回**（`.drop-trigger svg{transition:transform .2s}`），展开/收起双向都有动画；由 `syncDropToggleIcons()` 依据面板 `.open` 状态集中同步，并在 `_closeDropPanelsOnly()` 末尾调用，因此**打开其他面板**或**点击面板外区域**导致收起时图标同样会旋转。
@@ -803,7 +803,7 @@ midi_player/
 | 未下载即下载+切换 | 谱面管理/音色选择点击未下载项 = 下载+切换：在下载按钮处显示百分比，完成后切换并收起面板（与先下载再切换一致） | `_pending_` |
 | Rush E3 默认音色 | Rush E3 默认改用合成钢琴（`songDefaultTimbre` + `COLD_START.timbre`）；古钢琴改到 P2 预配置必下音色 | `_pending_` |
 | 多CDN竞速公共组件 | 抽出 `shared/cdn-race.js`（`CdnRace`）：11 个镜像列表、`buildUrls`、完整/首字节竞速、`makeLiveLogger`（覆盖进行中行、固化最终行）；MIDI 播放器与音频可视化共用，两边同时受益、行为与日志一致 | `_pending_` |
-| 配色按钮饼图与力度图恢复 | A/B/C/自定义按钮改为 27px 圆形**饼图预览**（上半=主题色，左下=黑键力度渐变，右下=白键力度渐变），自定义按钮保留油漆桶 logo、颜色随自定义设置变化；选中方案外圈高亮；取色器恢复直角梯形力度条；配色面板始终 100% 不透明 | `_pending_` |
+| 力度图恢复与配色面板整理 | 取色器恢复直角梯形力度条（白键/黑键 + 两端可点选色块）；配色面板取消播放中 2s 无操作自动收起与提示小字；面板始终 100% 不透明；A/B/C/自定义按钮维持 27px 圆形主题色底（字母 + 油漆桶图标），选中方案外圈白框高亮 | `_pending_` |
 | 取消配色面板自动收起 | 移除播放中 2s 无操作自动收起（`schedulePaletteAutoCollapse` 等）与提示小字；面板仅在点击按钮/点击外部时收起 | `_pending_` |
 | 全谱音色检查 + 性能降级切音色 | 所有谱起播前检查配置音色（内置谱 `songDefaultTimbre`，其余用下拉选中音色），本地不存在则先用合成钢琴、下载完成后切过去；性能降级临时切到合成钢琴，恢复时切回（未下完则等下完）；统一入口 `_applyTimbre` + `_desiredTimbre`/`_perfDegraded` | `_pending_` |
 

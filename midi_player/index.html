@@ -159,28 +159,16 @@ button:active,[onclick]:active,[role="button"]:active,a:active{opacity:.78}
   font-size:12px;font-weight:400;
   transition:background .15s,box-shadow .15s;
 }
-/* 选中：实心主题紫 + 外圈白框标识（与播放控制按钮一致的选中观感） */
-.pal-btn.active{background:var(--accent);color:#fff}
+/* 选中：实心主题色 + 外圈白框标识（与播放控制按钮一致的选中观感） */
+.pal-btn.active{background:var(--accent);color:#fff;box-shadow:0 0 0 2px #fff}
 .pal-btn:hover{box-shadow:inset 0 0 0 999px rgba(0,0,0,.15)}
+.pal-btn.active:hover{box-shadow:0 0 0 2px #fff,inset 0 0 0 999px rgba(0,0,0,.15)}
 /* 按下反馈 */
 .pal-btn:active{box-shadow:inset 0 0 0 999px rgba(0,0,0,.28);opacity:1}
+.pal-btn.active:active{box-shadow:0 0 0 2px #fff,inset 0 0 0 999px rgba(0,0,0,.28)}
 .pal-btn:focus{outline:none}
 /* 键盘焦点轮廓跟随圆角（仅键盘触发，触屏不显示） */
 .pal-btn:focus-visible{outline:2px solid #fff;outline-offset:2px}
-
-/* 配色方案按钮：圆形饼图预览（上半=主题色，左下=黑键力度渐变，右下=白键力度渐变） */
-.pal-btn.pal-pie{position:relative;background:transparent;overflow:hidden;color:#fff}
-.pal-pie > svg{position:absolute;inset:0;width:100%;height:100%;display:block}
-.pal-pie .pal-glyph{position:relative;z-index:1;display:flex;align-items:center;justify-content:center;
-  font-size:11px;font-weight:600;line-height:1;color:#fff;
-  text-shadow:0 0 2px #000,0 0 2px #000,0 0 3px #000}
-.pal-pie .pal-glyph svg{width:12px;height:12px;display:block;filter:drop-shadow(0 0 2px #000)}
-/* 选中：外圈白框 + 主题色光环 */
-.pal-btn.pal-pie.active{background:transparent;
-  box-shadow:0 0 0 2px #fff,0 0 0 4px var(--accent),0 0 8px var(--accent-a28)}
-.pal-btn.pal-pie:hover{box-shadow:0 0 0 2px rgba(255,255,255,.6)}
-.pal-btn.pal-pie.active:hover{box-shadow:0 0 0 2px #fff,0 0 0 4px var(--accent),0 0 8px var(--accent-a28)}
-.pal-btn.pal-pie:active{opacity:1;box-shadow:inset 0 0 0 999px rgba(0,0,0,.28)}
 
 /* 统一下拉面板：从控制行下方展开，浮在渲染区之上，最大高度约渲染区 2/3 */
 .drop-panel{
@@ -507,10 +495,12 @@ select:focus{border-color:var(--accent)}
           <div id="paletteRow" class="palette-row drop-panel">
             <div class="pal-col">
               <div class="pal-grid">
-              <button class="pal-btn palette-btn pal-pie" data-palette="A" onclick="setPalette('A')" title="纯紫"></button>
-              <button class="pal-btn palette-btn pal-pie active" data-palette="B" onclick="setPalette('B')" title="青蓝×琥珀红"></button>
-              <button class="pal-btn palette-btn pal-pie" data-palette="C" onclick="setPalette('C')" title="青绿×品红"></button>
-              <button class="pal-btn palette-btn pal-pie" id="paletteCustomBtn" data-palette="custom" onclick="setPalette('custom')" title="自定义配色"></button>
+              <button class="pal-btn palette-btn" data-palette="A" onclick="setPalette('A')" title="纯紫">A</button>
+              <button class="pal-btn palette-btn active" data-palette="B" onclick="setPalette('B')" title="青蓝×琥珀红">B</button>
+              <button class="pal-btn palette-btn" data-palette="C" onclick="setPalette('C')" title="青绿×品红">C</button>
+              <button class="pal-btn palette-btn" id="paletteCustomBtn" data-palette="custom" onclick="setPalette('custom')" title="自定义配色">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M8.203 2.004c1.261 0 2.304 1.103 2.476 2.538l8.483 8.484l-7.778 7.778a3 3 0 0 1-4.243 0L2.9 16.562a3 3 0 0 1 0-4.243l2.804-2.805V4.961c0-1.633 1.12-2.957 2.5-2.957m.5 2.957v1.553l-1 1V4.961c0-.327.224-.591.5-.591c.277 0 .5.264.5.591m0 5.914V9.342l-4.39 4.391a1 1 0 0 0 0 1.414l4.243 4.243a1 1 0 0 0 1.414 0l6.364-6.364l-5.63-5.63v3.48l-.003.128h-2.01a1 1 0 0 0 .012-.129" clip-rule="evenodd"/><path d="M16.859 16.875a3 3 0 1 0 4.242 0l-2.121-2.121z"/></svg>
+              </button>
               </div>
             </div>
             <div id="paletteEditor" class="palette-editor">

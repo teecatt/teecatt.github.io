@@ -3713,48 +3713,11 @@ function setPalette(name){
     b.classList.toggle('active', b.dataset.palette === name);
   });
   applyTheme(name === 'custom' ? (paletteEditColors.theme || '#c20c0c') : PALETTE_THEME[name]);
-  renderPaletteButtons();
   if(typeof allNotes !== 'undefined'){
     const fallDur = 2.0 / fallSpeedMultiplier;
     const leftIdx = lowerBound(allNotes, currentTime - fallDur);
     const rightIdx = lowerBound(allNotes, currentTime + fallDur);
     drawScene(allNotes, leftIdx, rightIdx, currentTime);
-  }
-}
-// 方案按钮：圆形饼图预览——上半圆=主题色，左下四分之一=黑键力度渐变（左轻下重），
-// 右下四分之一=白键力度渐变（右轻下重）；自定义按钮同形，颜色随自定义设置变化。
-function _paletteButtonSvg(uid, pal, theme){
-  const grad = (id, cols, x1, y1, x2, y2) =>
-    '<linearGradient id="' + id + '" gradientUnits="userSpaceOnUse" x1="' + x1 + '" y1="' + y1 +
-      '" x2="' + x2 + '" y2="' + y2 + '">' +
-      cols.map((c, i) => '<stop offset="' + (i / (cols.length - 1) * 100).toFixed(1) + '%" stop-color="' + c + '"/>').join('') +
-    '</linearGradient>';
-  const gb = 'pgb_' + uid, gw = 'pgw_' + uid;
-  return '<svg viewBox="0 0 100 100" aria-hidden="true">' +
-    '<defs>' +
-      grad(gb, pal.black, 0, 50, 50, 100) +
-      grad(gw, pal.white, 100, 50, 50, 100) +
-    '</defs>' +
-    '<path d="M0,50 A50,50 0 0 1 100,50 Z" fill="' + theme + '"/>' +
-    '<path d="M50,50 L0,50 A50,50 0 0 0 50,100 Z" fill="url(#' + gb + ')"/>' +
-    '<path d="M50,50 L50,100 A50,50 0 0 0 100,50 Z" fill="url(#' + gw + ')"/>' +
-    '<circle cx="50" cy="50" r="49" fill="none" stroke="rgba(0,0,0,.4)" stroke-width="2"/>' +
-  '</svg>';
-}
-// 油漆桶 logo（与旧「自定义配色」按钮一致，保持不变）
-const PALETTE_CUSTOM_ICON = '<svg viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M8.203 2.004c1.261 0 2.304 1.103 2.476 2.538l8.483 8.484l-7.778 7.778a3 3 0 0 1-4.243 0L2.9 16.562a3 3 0 0 1 0-4.243l2.804-2.805V4.961c0-1.633 1.12-2.957 2.5-2.957m.5 2.957v1.553l-1 1V4.961c0-.327.224-.591.5-.591c.277 0 .5.264.5.591m0 5.914V9.342l-4.39 4.391a1 1 0 0 0 0 1.414l4.243 4.243a1 1 0 0 0 1.414 0l6.364-6.364l-5.63-5.63v3.48l-.003.128h-2.01a1 1 0 0 0 .012-.129" clip-rule="evenodd"/><path d="M16.859 16.875a3 3 0 1 0 4.242 0l-2.121-2.121z"/></svg>';
-function renderPaletteButtons(){
-  [['A', PALETTES.A, PALETTE_THEME.A, 'A'],
-   ['B', PALETTES.B, PALETTE_THEME.B, 'B'],
-   ['C', PALETTES.C, PALETTE_THEME.C, 'C']].forEach(([name, pal, theme, glyph]) => {
-    const btn = document.querySelector('.palette-btn[data-palette="' + name + '"]');
-    if(btn) btn.innerHTML = _paletteButtonSvg(name, pal, theme) + '<span class="pal-glyph">' + glyph + '</span>';
-  });
-  const cust = document.getElementById('paletteCustomBtn');
-  if(cust){
-    const pal = buildCustomPalette(paletteEditColors.wl, paletteEditColors.wh, paletteEditColors.bl, paletteEditColors.bh);
-    cust.innerHTML = _paletteButtonSvg('custom', pal, paletteEditColors.theme || '#c20c0c') +
-      '<span class="pal-glyph">' + PALETTE_CUSTOM_ICON + '</span>';
   }
 }
 // ===== 全彩取色板 =====
@@ -4020,7 +3983,7 @@ function savePaletteCustom(){ _applyCustomLive(); } // 兼容旧调用：实时�
     loadCustomPalette();
     const saved = localStorage.getItem('paletteV2');
     if(saved && PALETTES[saved]) currentPalette = saved;
-    setPalette(currentPalette); // 应用主题、高亮选中方案并渲染饼图按钮
+    setPalette(currentPalette); // 应用主题并高亮选中的方案按钮
   }catch(e){}
 })();
 
