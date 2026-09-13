@@ -141,10 +141,16 @@ footer{border-top:1px solid var(--line);padding:16px 24px;text-align:center;font
     const mo = Math.floor(d/30); if(mo < 12) return mo + ' 个月前';
     return Math.floor(mo/12) + ' 年前';
   }
-  const label = ago(Date.now() - b.time);
-  el.textContent = '最近构建：' + label;
   el.href = 'https://github.com/teecatt/teecatt.github.io/commit/' + b.sha;
-  document.title = '构建于 ' + label; // 浏览器标签页标题（地址栏本身只显示 URL，无法自定义文字）
+  // 标签标题（document.title）可动态更新；地址栏本身只显示 URL，无法自定义文字
+  function render(){
+    const label = ago(Date.now() - b.time);
+    el.textContent = '最近构建：' + label;
+    document.title = '构建于 ' + label;
+  }
+  render();
+  setInterval(render, 30000); // 相对时间随当前时间刷新
+  document.addEventListener('visibilitychange', () => { if(!document.hidden) render(); });
 })();
 // 根据卡片数量自动设置布局class
 (function(){
