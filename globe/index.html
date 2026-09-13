@@ -303,6 +303,7 @@ async function refreshMe(){
     meData=await r.json();
     renderMe();
     applySelection();
+    var c=cityForMe(); if(c) selectCity(c, true);
   }catch(e){}
 }
 
