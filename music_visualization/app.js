@@ -1505,7 +1505,7 @@ function _syncDropIcons(){
       return !!(document.getElementById('library')?.classList.contains('open') && _lastTool===tool);
     if(tool==='props') return !!document.getElementById('propsPanel')?.classList.contains('open');
     if(tool==='perf') return !!document.getElementById('perfPanel')?.classList.contains('open');
-    if(tool==='log') return !!document.getElementById('logPanel')?.classList.contains('open');
+    if(tool==='debug') return !!document.getElementById('logPanel')?.classList.contains('open');
     return false;
   };
   _toolButtons.forEach(b=>{
@@ -1518,6 +1518,7 @@ function _closeAllDropPanels(){
   _setActiveTool(null);
   _lastTool=null;
   _syncDropIcons();
+  requestAnimationFrame(()=>fitCanvas()); // 面板收起，绘制区恢复完整
 }
 function _openToolPanel(tool){
   _lastTool=tool;
@@ -1531,12 +1532,17 @@ function _openToolPanel(tool){
   }else if(tool==='perf'){
     renderPerf();
     document.getElementById('perfPanel')?.classList.add('open');
-  }else if(tool==='log'){
+  }else if(tool==='debug'){
     const lp=document.getElementById('logPanel');
-    if(lp){ lp.classList.add('open'); lp.querySelector('.log-bar')?.scrollTo(0, lp.querySelector('.log-bar').scrollHeight); }
+    if(lp){
+      lp.classList.add('open');
+      const lb=lp.querySelector('.log-bar');
+      if(lb) lb.scrollTop=lb.scrollHeight;
+    }
   }
   _setActiveTool(tool);
   _syncDropIcons();
+  requestAnimationFrame(()=>fitCanvas()); // 面板展开，绘制区重新适配
 }
 function _toggleTool(tool){
   const active=!!_toolButtons.find(b=>b.dataset.tool===tool)?.classList.contains('active');

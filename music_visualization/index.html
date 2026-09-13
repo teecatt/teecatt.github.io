@@ -29,9 +29,9 @@ a:active,button:active,[onclick]:active,[role="button"]:active,.lib-item:active,
 html,body{height:100%;overflow:hidden}
 body{background:var(--bg);color:var(--text);font-family:"Segoe UI","Microsoft YaHei",system-ui,sans-serif;font-size:13px;display:flex;flex-direction:column}
 
-.topbar{display:flex;flex-direction:column;background:var(--panel);border-bottom:1px solid var(--line);flex-shrink:0;position:relative;z-index:1000}
+.topbar{background:var(--panel);border-bottom:1px solid var(--line);flex-shrink:0}
 .topbar-row{height:48px;display:flex;align-items:center;padding:0 16px;gap:12px}
-.control-row{display:flex;align-items:center;gap:8px;padding:0 12px 8px;position:relative}
+.control-row{display:flex;align-items:center;justify-content:center;gap:8px;padding:8px 12px;border-top:1px solid var(--line);background:var(--panel);flex-shrink:0}
 .ctl-spacer{flex:1 1 auto;min-width:0}
 .ctl-group{display:flex;align-items:center;gap:8px}
 .ctl-btn{width:32px;height:32px;flex-shrink:0;padding:0;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--text);transition:background .15s,color .15s,box-shadow .15s;filter:grayscale(var(--menu-gray,0))}
@@ -43,14 +43,15 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI","Microsoft Ya
 .ctl-btn svg{width:16px;height:16px}
 .control-row .ctl-btn svg{width:52%;height:52%}
 .drop-trigger svg{transition:transform .2s}
-/* 统一下拉面板：从控制行下方展开，浮在绘制区之上（参考 midi_player） */
-.drop-panel{position:absolute;top:100%;right:0;z-index:10050;display:none;width:min(92vw,460px);max-height:66.67vh;overflow-y:auto;margin-top:6px;border:1px solid var(--line);border-radius:12px;padding:12px;box-shadow:0 14px 44px rgba(0,0,0,.55);background:rgba(0,0,0,.6);backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px)}
+/* 底部面板容器：位于按钮行下方，向下展开，不遮挡上方绘制区与进度条 */
+.panel-dock{flex:0 0 auto;max-height:58vh;overflow-y:auto;background:var(--panel)}
+.panel-dock:has(.drop-panel.open){border-top:1px solid var(--line)}
+.drop-panel{display:none;padding:12px 16px;background:rgba(0,0,0,.45);backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px)}
 .drop-panel.open{display:block}
-/* 终端日志：悬浮面板（参考 midi_player 调试面板），不占用绘制区高度 */
-#logPanel{padding:0;width:min(94vw,560px);height:52vh;max-height:66.67vh;overflow:hidden;flex-direction:column}
-#logPanel.open{display:flex}
+/* 调试/日志面板：固定高度，内部滚动 */
+#logPanel{padding:0}
 #logPanel .log-toolbar{background:transparent;border-top:none}
-#logPanel .log-bar{flex:1 1 auto;min-height:0;overflow-y:auto;background:transparent;border-top:none}
+#logPanel .log-bar{height:38vh;max-height:42vh;overflow-y:auto;background:transparent;border-top:none}
 .appearance-sliders{display:flex;flex-direction:column;gap:6px;margin:2px 0 10px}
 .appearance-sliders label{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);cursor:pointer}
 .appearance-sliders input[type=range]{flex:1;min-width:0;accent-color:var(--accent)}
@@ -68,7 +69,6 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI","Microsoft Ya
 .topbar select{background:var(--panel2);border:1px solid var(--line);color:var(--text);padding:5px 10px;border-radius:6px;font-size:12px;cursor:pointer;outline:none;flex-shrink:0}
 .topbar select:hover{border-color:var(--accent)}
 
-.main{flex:1;display:flex;overflow:hidden;min-height:0}
 .lib-search{padding:10px;border-bottom:1px solid var(--line)}
 .lib-search input{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--text);padding:7px 10px;border-radius:6px;font-size:12px;outline:none}
 .lib-search input:focus{border-color:var(--accent)}
@@ -83,8 +83,8 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI","Microsoft Ya
 .lib-item svg{width:70%;height:70%}
 .lib-item .label{position:absolute;bottom:2px;left:0;right:0;text-align:center;font-size:9px;color:var(--muted);background:linear-gradient(transparent,rgba(0,0,0,.7));padding:4px 2px 2px}
 
-.canvas-area{flex:1;display:flex;flex-direction:column;overflow:hidden;position:relative;min-height:0;order:3}
-.canvas-stage{flex:1 1 auto;min-height:0;display:flex;justify-content:center;align-items:center;overflow:hidden;padding:0;background:var(--panel)}
+.canvas-area{flex:1;display:flex;flex-direction:column;overflow:hidden;position:relative;min-height:0}
+.canvas-stage{flex:1 1 auto;min-height:0;display:flex;justify-content:center;align-items:flex-start;overflow:hidden;padding:0;background:var(--panel)}
 /* 全屏绘制区 */
 .canvas-area:fullscreen,.canvas-area:-webkit-full-screen{background:var(--bg);padding:0}
 .canvas-area:fullscreen .canvas-stage,.canvas-area:-webkit-full-screen .canvas-stage{flex:1 1 auto;min-height:0;overflow:hidden}
@@ -102,7 +102,7 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI","Microsoft Ya
   transform:scale(var(--canvas-zoom,1))!important;
   transform-origin:0 0!important;
 }
-.stage-wrap{position:relative;box-shadow:none;border-radius:0;overflow:visible;flex-shrink:0;align-self:center}
+.stage-wrap{position:relative;box-shadow:none;border-radius:0;overflow:visible;flex-shrink:0;align-self:flex-start}
 #mainCanvas{display:block;cursor:default;touch-action:none;transform-origin:0 0}
 
 .player-bar{width:100%;height:48px;background:rgba(0,0,0,.55);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-top:1px solid rgba(255,255,255,.08);display:flex;align-items:center;padding:0 12px;gap:10px;z-index:5;flex-shrink:0}
@@ -195,8 +195,7 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI","Microsoft Ya
   .topbar .upload-zone.has-audio .uz-hint span{display:none}
   .topbar .upload-zone.has-audio .uz-hint svg{width:14px;height:14px}
   .topbar select{font-size:10px;padding:3px 5px}
-  .control-row{padding:0 6px 6px;gap:6px}
-  .main{flex:1;min-height:0}
+  .control-row{padding:6px;gap:6px}
   .canvas-area{flex:1;display:flex;flex-direction:column;overflow:hidden}
   .canvas-stage{overflow:auto;padding:0;background:var(--panel)}
   .stage-wrap{width:100%!important;height:auto!important}
@@ -213,7 +212,9 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI","Microsoft Ya
   .log-toolbar .log-btn svg{width:10px;height:10px}
   .props-header{padding:10px 12px;font-size:13px}
   .props-body{padding:0}
-  .drop-panel{width:min(96vw,460px);max-height:62vh;padding:10px}
+  .panel-dock{max-height:52vh}
+  .drop-panel{padding:10px 12px}
+  #logPanel .log-bar{height:34vh;max-height:38vh}
 }
 
 /* 双端点频率滑条 */
@@ -277,81 +278,81 @@ body.fs-active .log-bar{display:none!important}
       </div>
     </div>
     <button class="ctl-btn primary" id="fsToggleBtn" title="全屏绘制区" aria-label="全屏绘制区">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+      <svg id="fsIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"><path d="M9 15L2 22M2 16.1429V22H7.85714"/><path d="M15 9L22 2M22 7.85714V2H16.1429"/></g></svg>
     </button>
     <input type="file" id="fileInput" accept="audio/*">
   </div>
-  <div class="control-row" id="controlRow">
-    <div class="ctl-spacer"></div>
-    <div class="ctl-group">
-      <button class="ctl-btn primary drop-trigger" id="btnElements" data-tool="elements" title="元素" aria-label="元素">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-      </button>
-      <button class="ctl-btn primary drop-trigger" id="btnBackground" data-tool="background" title="背景" aria-label="背景">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
-      </button>
-      <button class="ctl-btn primary drop-trigger" id="btnProps" data-tool="props" title="属性" aria-label="属性">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-      </button>
-      <button class="ctl-btn primary drop-trigger" id="btnPerf" data-tool="perf" title="性能" aria-label="性能">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21a9 9 0 1 1 9-9"/><path d="m12 12 4.5-3.5"/><circle cx="12" cy="12" r="1.2"/></svg>
-      </button>
-      <button class="ctl-btn primary drop-trigger" id="btnLog" data-tool="log" title="终端日志" aria-label="终端日志">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 17 6-6-6-6"/><path d="M12 19h8"/></svg>
-      </button>
+</div>
+
+<div class="canvas-area">
+  <div class="canvas-stage" id="canvasStage">
+    <div class="stage-wrap" id="stageWrap">
+      <canvas id="mainCanvas" width="1280" height="720"></canvas>
     </div>
-    <div class="drop-panel" id="library"><div class="lib-body" id="libBody"></div></div>
-    <div class="drop-panel" id="propsPanel">
-      <div class="props-header"><span class="dot"></span><span id="propsTitle">属性</span><button class="props-del-btn" id="propsDelBtn" style="display:none" onclick="removeSelectedElement()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg></button></div>
-      <div class="props-body" id="propsBody">
-        <div class="empty-props">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-          <div>从「元素」添加可视化风格<br>点击画布上的元素编辑属性</div>
-        </div>
+  </div>
+  <div class="player-bar">
+      <button class="play-btn" id="playBtn" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg></button>
+      <span class="time" id="timeDisplay">00:00 / 00:00</span>
+      <div class="seek-bar" id="seekBar"><div class="fill" id="seekFill"></div></div>
+      <div class="vol">
+        <input type="range" id="volSlider" min="0" max="1" step="0.01" value="1">
       </div>
+      <button class="loop-btn active" id="loopBtn"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M11 5.466V4H5a4 4 0 0 0-3.584 5.777a.5.5 0 1 1-.896.446A5 5 0 0 1 5 3h6V1.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384l-2.36 1.966a.25.25 0 0 1-.41-.192m3.81.086a.5.5 0 0 1 .67.225A5 5 0 0 1 11 13H5v1.466a.25.25 0 0 1-.41.192l-2.36-1.966a.25.25 0 0 1 0-.384l2.36-1.966a.25.25 0 0 1 .41.192V12h6a4 4 0 0 0 3.585-5.777a.5.5 0 0 1 .225-.67Z"/></svg></button>
     </div>
-    <div class="drop-panel" id="perfPanel">
-      <div class="props-header"><span class="dot"></span><span>性能</span></div>
-      <div class="appearance-sliders">
-        <label title="面板透明度（100% 全透明）">透明 <input type="range" id="panelTransparency" min="0" max="100" step="5" value="40" oninput="applyPanelAppearance()"> <span class="pct" id="transparencyPct">40%</span></label>
-        <label title="面板背景模糊">模糊 <input type="range" id="panelBlur" min="0" max="100" step="5" value="0" oninput="applyPanelAppearance()"> <span class="pct" id="blurPct">0%</span></label>
-        <label title="菜单按钮灰度">灰度 <input type="range" id="menuGray" min="0" max="100" step="5" value="0" oninput="applyPanelAppearance()"> <span class="pct" id="grayPct">0%</span></label>
-      </div>
-      <div class="props-body" id="perfBody"></div>
-    </div>
-    <div class="drop-panel" id="logPanel">
-      <div class="log-toolbar" id="logToolbar">
-        <button class="log-btn" onclick="logCopy()" title="复制日志"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="13" height="13" x="9" y="9" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
-        <button class="log-btn" onclick="logClear()" title="清空日志"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18m-2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m-6 5v6m4-6v6"/></svg></button>
-        <button class="log-btn" onclick="logDownload()" title="下载日志"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4m4-5 5 5 5-5m-5 5V3"/></svg></button>
-        <span class="log-spacer"></span>
-        <label class="log-switch" title="开：所有镜像同时完整下载，最快完成者胜出；关：仅竞速首字节响应"><span class="log-switch-label">CDN竞速</span><input id="raceFullSw" type="checkbox" checked onchange="onRaceFullChange()"><span class="track"><span class="knob"></span></span></label>
-        <button class="log-btn" onclick="logScrollTop()" title="滚到顶部"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></svg></button>
-        <button class="log-btn" onclick="logScrollBottom()" title="滚到底部"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
-      </div>
-      <div class="log-bar" id="logBar"></div>
-    </div>
+</div>
+
+<div class="control-row" id="controlRow">
+  <div class="ctl-group">
+    <button class="ctl-btn primary drop-trigger" id="btnElements" data-tool="elements" title="元素" aria-label="元素">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+    </button>
+    <button class="ctl-btn primary drop-trigger" id="btnBackground" data-tool="background" title="背景" aria-label="背景">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+    </button>
+    <button class="ctl-btn primary drop-trigger" id="btnProps" data-tool="props" title="属性" aria-label="属性">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+    </button>
+    <button class="ctl-btn primary drop-trigger" id="btnPerf" data-tool="perf" title="性能" aria-label="性能">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21a9 9 0 1 1 9-9"/><path d="m12 12 4.5-3.5"/><circle cx="12" cy="12" r="1.2"/></svg>
+    </button>
+    <button class="ctl-btn primary drop-trigger" id="btnDebug" data-tool="debug" title="调试" aria-label="调试">
+      <svg viewBox="0 0 32 32" fill="currentColor"><path d="m29.83 20l.34-2l-5.17-.85v-4.38l5.06-1.36l-.51-1.93l-4.83 1.29A9 9 0 0 0 20 5V2h-2v2.23a8.8 8.8 0 0 0-4 0V2h-2v3a9 9 0 0 0-4.71 5.82L2.46 9.48L2 11.41l5 1.36v4.38L1.84 18l.32 2L7 19.18a8.9 8.9 0 0 0 .82 3.57l-4.53 4.54l1.42 1.42l4.19-4.2a9 9 0 0 0 14.2 0l4.19 4.2l1.42-1.42l-4.54-4.54a8.9 8.9 0 0 0 .83-3.57ZM15 25.92A7 7 0 0 1 9 19v-6h6ZM9.29 11a7 7 0 0 1 13.42 0ZM23 19a7 7 0 0 1-6 6.92V13h6Z"/></svg>
+    </button>
   </div>
 </div>
 
-<div class="main">
-  <div class="canvas-area">
-    <div class="canvas-stage" id="canvasStage">
-      <div class="stage-wrap" id="stageWrap">
-        <canvas id="mainCanvas" width="1280" height="720"></canvas>
+<div class="panel-dock" id="panelDock">
+  <div class="drop-panel" id="library"><div class="lib-body" id="libBody"></div></div>
+  <div class="drop-panel" id="propsPanel">
+    <div class="props-header"><span class="dot"></span><span id="propsTitle">属性</span><button class="props-del-btn" id="propsDelBtn" style="display:none" onclick="removeSelectedElement()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg></button></div>
+    <div class="props-body" id="propsBody">
+      <div class="empty-props">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+        <div>从「元素」添加可视化风格<br>点击画布上的元素编辑属性</div>
       </div>
     </div>
-    <div class="player-bar">
-        <button class="play-btn" id="playBtn" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg></button>
-        <span class="time" id="timeDisplay">00:00 / 00:00</span>
-        <div class="seek-bar" id="seekBar"><div class="fill" id="seekFill"></div></div>
-        <div class="vol">
-          <input type="range" id="volSlider" min="0" max="1" step="0.01" value="1">
-        </div>
-        <button class="loop-btn active" id="loopBtn"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M11 5.466V4H5a4 4 0 0 0-3.584 5.777a.5.5 0 1 1-.896.446A5 5 0 0 1 5 3h6V1.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384l-2.36 1.966a.25.25 0 0 1-.41-.192m3.81.086a.5.5 0 0 1 .67.225A5 5 0 0 1 11 13H5v1.466a.25.25 0 0 1-.41.192l-2.36-1.966a.25.25 0 0 1 0-.384l2.36-1.966a.25.25 0 0 1 .41.192V12h6a4 4 0 0 0 3.585-5.777a.5.5 0 0 1 .225-.67Z"/></svg></button>
-      </div>
   </div>
-
+  <div class="drop-panel" id="perfPanel">
+    <div class="props-header"><span class="dot"></span><span>性能</span></div>
+    <div class="appearance-sliders">
+      <label title="面板透明度（100% 全透明）">透明 <input type="range" id="panelTransparency" min="0" max="100" step="5" value="40" oninput="applyPanelAppearance()"> <span class="pct" id="transparencyPct">40%</span></label>
+      <label title="面板背景模糊">模糊 <input type="range" id="panelBlur" min="0" max="100" step="5" value="0" oninput="applyPanelAppearance()"> <span class="pct" id="blurPct">0%</span></label>
+      <label title="菜单按钮灰度">灰度 <input type="range" id="menuGray" min="0" max="100" step="5" value="0" oninput="applyPanelAppearance()"> <span class="pct" id="grayPct">0%</span></label>
+    </div>
+    <div class="props-body" id="perfBody"></div>
+  </div>
+  <div class="drop-panel" id="logPanel">
+    <div class="log-toolbar" id="logToolbar">
+      <button class="log-btn" onclick="logCopy()" title="复制日志"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="13" height="13" x="9" y="9" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+      <button class="log-btn" onclick="logClear()" title="清空日志"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18m-2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m-6 5v6m4-6v6"/></svg></button>
+      <button class="log-btn" onclick="logDownload()" title="下载日志"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4m4-5 5 5 5-5m-5 5V3"/></svg></button>
+      <span class="log-spacer"></span>
+      <label class="log-switch" title="开：所有镜像同时完整下载，最快完成者胜出；关：仅竞速首字节响应"><span class="log-switch-label">CDN竞速</span><input id="raceFullSw" type="checkbox" checked onchange="onRaceFullChange()"><span class="track"><span class="knob"></span></span></label>
+      <button class="log-btn" onclick="logScrollTop()" title="滚到顶部"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></svg></button>
+      <button class="log-btn" onclick="logScrollBottom()" title="滚到底部"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
+    </div>
+    <div class="log-bar" id="logBar"></div>
+  </div>
 </div>
 
 <script src="../shared/cdn-race.js"></script>
