@@ -622,16 +622,17 @@ function _drawFps(){
   if(!lines.length) return;
   const fs = Math.max(10, Math.round(canvas.height * 0.035));
   const pad = Math.round(fs * 0.4);
-  const x = Math.round(fs * 0.6), y = Math.round(fs * 0.6);
+  // 右上角显示，避开左侧悬浮菜单（否则会被图标栏/面板遮挡）
+  const x = canvas.width - Math.round(fs * 0.6), y = Math.round(fs * 0.6);
   const lh = Math.round(fs * 1.35);
   ctx.save();
   ctx.font = '600 ' + fs + 'px ui-monospace,Menlo,Consolas,monospace';
   ctx.textBaseline = 'top';
-  ctx.textAlign = 'left';
+  ctx.textAlign = 'right';
   let maxW = 0;
   for(const t of lines){ maxW = Math.max(maxW, ctx.measureText(t).width); }
   ctx.fillStyle = 'rgba(0,0,0,0.45)';
-  ctx.fillRect(x - pad, y - pad, maxW + pad * 2, lh * lines.length + pad * 2 - (lh - fs));
+  ctx.fillRect(x - maxW - pad, y - pad, maxW + pad * 2, lh * lines.length + pad * 2 - (lh - fs));
   const colors = ['#39d353','#e6edf3'];
   lines.forEach((t,i)=>{ ctx.fillStyle = colors[i] || '#e6edf3'; ctx.fillText(t, x, y + i * lh); });
   ctx.restore();
