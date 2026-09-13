@@ -37,13 +37,13 @@ a{text-decoration:none;color:inherit}
 .grid.cards-4{grid-template-columns:repeat(2,1fr);max-width:720px}
 .grid.cards-5,.grid.cards-6{grid-template-columns:repeat(3,1fr);max-width:1080px}
 .grid.cards-7,.grid.cards-8,.grid.cards-9{grid-template-columns:repeat(3,1fr);max-width:1080px}
-.card{position:relative;background:var(--surface);border:1px solid var(--line);border-radius:24px;padding:28px 24px;cursor:pointer;transition:transform .15s,border-color .15s,box-shadow .15s;display:flex;flex-direction:row;align-items:flex-start;gap:14px;min-width:0}
+.card{position:relative;background:var(--surface);border:1px solid var(--line);border-radius:24px;padding:28px 24px;cursor:pointer;transition:transform .15s,border-color .15s,box-shadow .15s;display:flex;flex-direction:column;gap:10px;min-width:0}
 .card:hover{transform:translateY(-3px);border-color:var(--accent);box-shadow:0 12px 32px rgba(0,0,0,.35)}
-.card .ico{width:64px;height:64px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:34px;flex:0 0 auto}
-.tmp{display:flex;flex-direction:column;gap:8px;flex:1;min-width:0;text-align:left}
+.card .ico{width:64px;height:64px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:34px}
 .card h2{font-size:17px;font-weight:600}
 .card .desc{font-size:13px;color:var(--muted);line-height:1.6;flex:1}
-.card-body{display:flex;flex-direction:row;align-items:flex-start;gap:14px;flex:1;color:inherit;min-width:0}
+.card .go{font-size:13px;color:var(--accent);font-weight:600}
+.card-body{display:flex;flex-direction:column;gap:10px;flex:1;color:inherit;min-width:0}
 .card-audio .ico{background:linear-gradient(135deg,rgba(255,63,88,.25),rgba(200,34,255,.25));border:1px solid rgba(255,63,88,.4)}
 .card-audio{border-color:rgba(255,63,88,.35)}
 .card-audio:hover{border-color:var(--red)}
@@ -87,48 +87,42 @@ footer{border-top:1px solid var(--line);padding:16px 24px;text-align:center;font
   <div class="card card-audio">
     <a class="card-body" href="https://down2.top/music_visualization/" title="音频可视化工具">
       <div class="ico">♫</div>
-      <div class="tmp">
-        <h2>音频可视化 <span class="badge badge-new">在线版</span></h2>
-        <div class="desc">10 种可视化样式 · 频段包络 · 多色渐变 · 多参数可调 · 多CDN竞速</div>
-      </div>
+      <h2>音频可视化 <span class="badge badge-new">在线版</span></h2>
+      <div class="desc">10 种可视化样式 · 频段包络 · 多色渐变 · 多参数可调 · 多CDN竞速</div>
+      <div class="go">进入 →</div>
     </a>
   </div>
   <div class="card card-piano">
     <a class="card-body" href="./midi_player/" title="在线 MIDI 播放器">
       <div class="ico">🎹</div>
-      <div class="tmp">
-        <h2>MIDI 播放器 <span class="badge badge-new">在线版</span></h2>
-        <div class="desc">多种键型钢琴 · FluidR3_GM 音色库共55种 · 变速播放 · 自定义配色 · 音游模式 · 多CDN竞速<br><span style="font-size:11px;color:var(--warn)">💡 低性能设备可能无法流畅播放高密度谱面</span></div>
-      </div>
+      <h2>MIDI 播放器 <span class="badge badge-new">在线版</span></h2>
+      <div class="desc">多种键型钢琴 · FluidR3_GM 音色库共55种 · 变速播放 · 自定义配色 · 音游模式 · 多CDN竞速<br><span style="font-size:11px;color:var(--warn)">💡 低性能设备可能无法流畅播放高密度谱面</span></div>
+      <div class="go">进入 →</div>
     </a>
   </div>
   <a class="card card-tools" href="./library/" title="资源库">
     <div class="ico">⚙</div>
-    <div class="tmp">
-      <h2>资源库</h2>
-      <div class="desc">Git 规范 · 会话查看器 · 进程守护 · 桌面自动化等,按类型整理,一键复制部署命令</div>
-    </div>
+    <h2>资源库</h2>
+    <div class="desc">Git 规范 · 会话查看器 · 进程守护 · 桌面自动化等,按类型整理,一键复制部署命令</div>
+    <div class="go">进入 →</div>
   </a>
   <a class="card card-links" href="./links/" title="外部实用小工具">
     <div class="ico">🔗</div>
-    <div class="tmp">
-      <h2>外部实用小工具</h2>
-      <div class="desc">好用的小玩意</div>
-    </div>
+    <h2>外部实用小工具</h2>
+    <div class="desc">好用的小玩意</div>
+    <div class="go">进入 →</div>
   </a>
   <a class="card card-crypto" href="https://n.down2.top/" title="加密笔记">
     <div class="ico">🔒</div>
-    <div class="tmp">
-      <h2>加密笔记</h2>
-      <div class="desc">Argon2id 派生 · AES-CTR 解密 · 明文不出浏览器</div>
-    </div>
+    <h2>加密笔记</h2>
+    <div class="desc">Argon2id 派生 · AES-CTR 解密 · 明文不出浏览器</div>
+    <div class="go">进入 →</div>
   </a>
   <a class="card card-chef" href="./crypto/" title="加密工具箱 · 常用加解密工具">
     <div class="ico">🧰</div>
-    <div class="tmp">
-      <h2>加密工具箱 <span class="badge badge-new">中文版</span></h2>
-      <div class="desc">Base64 / Hex / MD5 / SHA / HMAC / Argon2id / AES / RSA / 时间戳(ns) / 字符集(GBK) / 正则 · 纯前端本地处理</div>
-    </div>
+    <h2>加密工具箱 <span class="badge badge-new">中文版</span></h2>
+    <div class="desc">Base64 / Hex / MD5 / SHA / HMAC / Argon2id / AES / RSA / 时间戳(ns) / 字符集(GBK) / 正则 · 纯前端本地处理</div>
+    <div class="go">进入 →</div>
   </a>
 </div>
 <footer><a class="build-info" href="https://github.com/teecatt" target="_blank" rel="noopener" title="GitHub 主页">teecatt</a> · <a id="siteBuildInfo" class="build-info" href="#" target="_blank" rel="noopener" title="查看对应提交">最近构建 —</a></footer>
