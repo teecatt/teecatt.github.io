@@ -1448,23 +1448,13 @@ function applyZoom(){
   rs.setProperty('--canvas-h', canvas.height+'px');
 }
 function fitCanvas(){
-  // 等比缩放到「宽高都完整可见」：zoom = min(可用宽/画布宽, 可用高/画布高)，
-  // 保证整个绘制区不被上下遮挡、不出现滚动条；终端紧随缩放后的下边界。
+  // 等比缩放到「宽高都完整可见」：zoom = min(可用宽/画布宽, 可用高/画布高)。
+  // 终端已改为悬浮面板，不再占用绘制区高度，绘制区按实际可用尺寸完整显示。
   const stage=document.getElementById('canvasStage');
   if(!stage) return;
   const availW=stage.clientWidth;
+  const availH=stage.clientHeight;
   if(availW<=0){ CFG.canvas.zoom=1; applyZoom(); return; }
-  // 可用高度 = 绘制区总高 - 进度条 - 日志工具条 - 终端最小高度
-  const area=document.querySelector('.canvas-area');
-  const inFs=!!(document.fullscreenElement||document.webkitFullscreenElement);
-  let availH=0;
-  if(area){
-    const player=area.querySelector('.player-bar');
-    const lt=document.getElementById('logToolbar');
-    // 全屏时进度条/终端已隐藏，不再为其预留高度
-    const logMin=inFs?0:100;
-    availH=area.clientHeight-(player?player.offsetHeight:0)-(lt?lt.offsetHeight:0)-logMin-1;
-  }
   const zW=availW/canvas.width;
   const zH=availH>0?availH/canvas.height:Infinity;
   CFG.canvas.zoom=Math.max(0.05,Math.min(2,Math.min(zW,zH)));
@@ -1515,6 +1505,7 @@ function _syncDropIcons(){
       return !!(document.getElementById('library')?.classList.contains('open') && _lastTool===tool);
     if(tool==='props') return !!document.getElementById('propsPanel')?.classList.contains('open');
     if(tool==='perf') return !!document.getElementById('perfPanel')?.classList.contains('open');
+    if(tool==='log') return !!document.getElementById('logPanel')?.classList.contains('open');
     return false;
   };
   _toolButtons.forEach(b=>{
@@ -1540,6 +1531,9 @@ function _openToolPanel(tool){
   }else if(tool==='perf'){
     renderPerf();
     document.getElementById('perfPanel')?.classList.add('open');
+  }else if(tool==='log'){
+    const lp=document.getElementById('logPanel');
+    if(lp){ lp.classList.add('open'); lp.querySelector('.log-bar')?.scrollTo(0, lp.querySelector('.log-bar').scrollHeight); }
   }
   _setActiveTool(tool);
   _syncDropIcons();

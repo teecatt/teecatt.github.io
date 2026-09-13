@@ -46,6 +46,11 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI","Microsoft Ya
 /* 统一下拉面板：从控制行下方展开，浮在绘制区之上（参考 midi_player） */
 .drop-panel{position:absolute;top:100%;right:0;z-index:10050;display:none;width:min(92vw,460px);max-height:66.67vh;overflow-y:auto;margin-top:6px;border:1px solid var(--line);border-radius:12px;padding:12px;box-shadow:0 14px 44px rgba(0,0,0,.55);background:rgba(0,0,0,.6);backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px)}
 .drop-panel.open{display:block}
+/* 终端日志：悬浮面板（参考 midi_player 调试面板），不占用绘制区高度 */
+#logPanel{padding:0;width:min(94vw,560px);height:52vh;max-height:66.67vh;overflow:hidden;flex-direction:column}
+#logPanel.open{display:flex}
+#logPanel .log-toolbar{background:transparent;border-top:none}
+#logPanel .log-bar{flex:1 1 auto;min-height:0;overflow-y:auto;background:transparent;border-top:none}
 .appearance-sliders{display:flex;flex-direction:column;gap:6px;margin:2px 0 10px}
 .appearance-sliders label{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);cursor:pointer}
 .appearance-sliders input[type=range]{flex:1;min-width:0;accent-color:var(--accent)}
@@ -79,7 +84,7 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI","Microsoft Ya
 .lib-item .label{position:absolute;bottom:2px;left:0;right:0;text-align:center;font-size:9px;color:var(--muted);background:linear-gradient(transparent,rgba(0,0,0,.7));padding:4px 2px 2px}
 
 .canvas-area{flex:1;display:flex;flex-direction:column;overflow:hidden;position:relative;min-height:0;order:3}
-.canvas-stage{flex:0 1 auto;min-height:0;display:flex;justify-content:center;align-items:center;overflow:hidden;padding:0;background:var(--panel)}
+.canvas-stage{flex:1 1 auto;min-height:0;display:flex;justify-content:center;align-items:center;overflow:hidden;padding:0;background:var(--panel)}
 /* 全屏绘制区 */
 .canvas-area:fullscreen,.canvas-area:-webkit-full-screen{background:var(--bg);padding:0}
 .canvas-area:fullscreen .canvas-stage,.canvas-area:-webkit-full-screen .canvas-stage{flex:1 1 auto;min-height:0;overflow:hidden}
@@ -291,6 +296,9 @@ body.fs-active .log-bar{display:none!important}
       <button class="ctl-btn primary drop-trigger" id="btnPerf" data-tool="perf" title="性能" aria-label="性能">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21a9 9 0 1 1 9-9"/><path d="m12 12 4.5-3.5"/><circle cx="12" cy="12" r="1.2"/></svg>
       </button>
+      <button class="ctl-btn primary drop-trigger" id="btnLog" data-tool="log" title="终端日志" aria-label="终端日志">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 17 6-6-6-6"/><path d="M12 19h8"/></svg>
+      </button>
     </div>
     <div class="drop-panel" id="library"><div class="lib-body" id="libBody"></div></div>
     <div class="drop-panel" id="propsPanel">
@@ -311,6 +319,18 @@ body.fs-active .log-bar{display:none!important}
       </div>
       <div class="props-body" id="perfBody"></div>
     </div>
+    <div class="drop-panel" id="logPanel">
+      <div class="log-toolbar" id="logToolbar">
+        <button class="log-btn" onclick="logCopy()" title="复制日志"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="13" height="13" x="9" y="9" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+        <button class="log-btn" onclick="logClear()" title="清空日志"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18m-2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m-6 5v6m4-6v6"/></svg></button>
+        <button class="log-btn" onclick="logDownload()" title="下载日志"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4m4-5 5 5 5-5m-5 5V3"/></svg></button>
+        <span class="log-spacer"></span>
+        <label class="log-switch" title="开：所有镜像同时完整下载，最快完成者胜出；关：仅竞速首字节响应"><span class="log-switch-label">CDN竞速</span><input id="raceFullSw" type="checkbox" checked onchange="onRaceFullChange()"><span class="track"><span class="knob"></span></span></label>
+        <button class="log-btn" onclick="logScrollTop()" title="滚到顶部"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></svg></button>
+        <button class="log-btn" onclick="logScrollBottom()" title="滚到底部"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
+      </div>
+      <div class="log-bar" id="logBar"></div>
+    </div>
   </div>
 </div>
 
@@ -330,16 +350,6 @@ body.fs-active .log-bar{display:none!important}
         </div>
         <button class="loop-btn active" id="loopBtn"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M11 5.466V4H5a4 4 0 0 0-3.584 5.777a.5.5 0 1 1-.896.446A5 5 0 0 1 5 3h6V1.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384l-2.36 1.966a.25.25 0 0 1-.41-.192m3.81.086a.5.5 0 0 1 .67.225A5 5 0 0 1 11 13H5v1.466a.25.25 0 0 1-.41.192l-2.36-1.966a.25.25 0 0 1 0-.384l2.36-1.966a.25.25 0 0 1 .41.192V12h6a4 4 0 0 0 3.585-5.777a.5.5 0 0 1 .225-.67Z"/></svg></button>
       </div>
-    <div class="log-toolbar" id="logToolbar">
-      <button class="log-btn" onclick="logCopy()" title="复制日志"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="13" height="13" x="9" y="9" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
-      <button class="log-btn" onclick="logClear()" title="清空日志"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18m-2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m-6 5v6m4-6v6"/></svg></button>
-      <button class="log-btn" onclick="logDownload()" title="下载日志"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4m4-5 5 5 5-5m-5 5V3"/></svg></button>
-      <span class="log-spacer"></span>
-      <label class="log-switch" title="开：所有镜像同时完整下载，最快完成者胜出；关：仅竞速首字节响应"><span class="log-switch-label">CDN竞速</span><input id="raceFullSw" type="checkbox" checked onchange="onRaceFullChange()"><span class="track"><span class="knob"></span></span></label>
-      <button class="log-btn" onclick="logScrollTop()" title="滚到顶部"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></svg></button>
-      <button class="log-btn" onclick="logScrollBottom()" title="滚到底部"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
-    </div>
-    <div class="log-bar" id="logBar"></div>
   </div>
 
 </div>

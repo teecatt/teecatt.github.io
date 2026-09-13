@@ -31,6 +31,11 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI","Microsoft Ya
 /* 统一下拉面板：从控制行下方展开，浮在绘制区之上（参考 midi_player） */
 .drop-panel{position:absolute;top:100%;right:0;z-index:10050;display:none;width:min(92vw,460px);max-height:66.67vh;overflow-y:auto;margin-top:6px;border:1px solid var(--line);border-radius:12px;padding:12px;box-shadow:0 14px 44px rgba(0,0,0,.55);background:rgba(0,0,0,.6);backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px)}
 .drop-panel.open{display:block}
+/* 终端日志：悬浮面板（参考 midi_player 调试面板），不占用绘制区高度 */
+#logPanel{padding:0;width:min(94vw,560px);height:52vh;max-height:66.67vh;overflow:hidden;flex-direction:column}
+#logPanel.open{display:flex}
+#logPanel .log-toolbar{background:transparent;border-top:none}
+#logPanel .log-bar{flex:1 1 auto;min-height:0;overflow-y:auto;background:transparent;border-top:none}
 .appearance-sliders{display:flex;flex-direction:column;gap:6px;margin:2px 0 10px}
 .appearance-sliders label{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);cursor:pointer}
 .appearance-sliders input[type=range]{flex:1;min-width:0;accent-color:var(--accent)}
@@ -64,7 +69,7 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI","Microsoft Ya
 .lib-item .label{position:absolute;bottom:2px;left:0;right:0;text-align:center;font-size:9px;color:var(--muted);background:linear-gradient(transparent,rgba(0,0,0,.7));padding:4px 2px 2px}
 
 .canvas-area{flex:1;display:flex;flex-direction:column;overflow:hidden;position:relative;min-height:0;order:3}
-.canvas-stage{flex:0 1 auto;min-height:0;display:flex;justify-content:center;align-items:center;overflow:hidden;padding:0;background:var(--panel)}
+.canvas-stage{flex:1 1 auto;min-height:0;display:flex;justify-content:center;align-items:center;overflow:hidden;padding:0;background:var(--panel)}
 /* 全屏绘制区 */
 .canvas-area:fullscreen,.canvas-area:-webkit-full-screen{background:var(--bg);padding:0}
 .canvas-area:fullscreen .canvas-stage,.canvas-area:-webkit-full-screen .canvas-stage{flex:1 1 auto;min-height:0;overflow:hidden}
