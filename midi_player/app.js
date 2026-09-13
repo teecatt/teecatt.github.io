@@ -1296,7 +1296,7 @@ const SoundfontLoader = {
     bufferNullLogged: false, // 是否已打印过 buffer 为 null 的告警
     synthWarned: false,      // 是否已打印过回退合成钢琴的告警
   },
-  timbreGain: { 'acoustic_grand_piano': 10.0, 'clavinet': 5.0 }, // 硬编码音色增益：三角钢琴1000%, 古钢琴500%
+  timbreGain: { '__synth__': 3.0, 'acoustic_grand_piano': 10.0, 'clavinet': 5.0 }, // 硬编码音色增益：合成钢琴300%（默认）, 三角钢琴1000%, 古钢琴500%
 
   init(){
     const names = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
@@ -1729,11 +1729,12 @@ const SoundfontLoader = {
     }
     const synthDur = Math.max(duration, 0.001); // 真实时长，仅 1ms epsilon
     const f = 440 * Math.pow(2, (midi - 69) / 12);
+    const synthGain = this.timbreGain['__synth__'] || 3.0; // 合成钢琴默认 300% 音量增益
     // 渐进增强：AudioWorklet 就绪时走单节点合成器（每音符 0 节点、零 churn）
     if(_synthWorkletReady && _synthWorkletNode){
       try{
         _synthWorkletNode.port.postMessage({ type: 'off', midi: midi }); // 同音先释放
-        _synthWorkletNode.port.postMessage({ type: 'note', midi: midi, freq: f, vel: 0.4 * velocity, dur: synthDur });
+        _synthWorkletNode.port.postMessage({ type: 'note', midi: midi, freq: f, vel: 0.4 * velocity * synthGain, dur: synthDur });
         _markWorkletActive(midi, synthDur); // 登记按键高亮
       }catch(e){}
       return;
@@ -1754,7 +1755,7 @@ const SoundfontLoader = {
     const t0 = audioCtx.currentTime;
     const env = audioCtx.createGain();
     env.gain.setValueAtTime(0, t0);
-    env.gain.linearRampToValueAtTime(0.4 * velocity, t0 + Math.min(0.008, synthDur * 0.5));
+    env.gain.linearRampToValueAtTime(0.4 * velocity * synthGain, t0 + Math.min(0.008, synthDur * 0.5));
     env.gain.exponentialRampToValueAtTime(0.0008, t0 + synthDur);
     env.connect(masterGain);
     // 每音符节点数 7 -> 2：预渲染循环波形经 BufferSource 播放（与采样分支同构）。
