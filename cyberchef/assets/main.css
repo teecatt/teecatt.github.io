@@ -13999,12 +13999,13 @@ h6 {
 /**
  * Minimal theme definitions (极简风)
  * 配色与 https://n.down2.top/ 保持一致：纯黑白、细边框、无多余装饰。
- * 默认浅色，跟随系统深色模式自动切换。
+ * minimal 为深色（与参考站默认一致），minimalLight 为浅色。
  *
  * @license Apache-2.0
  */
 
-:root.minimal {
+:root.minimal,
+:root.minimalLight {
     --primary-font-family: system-ui, -apple-system, BlinkMacSystemFont,
         "Segoe UI", "Microsoft YaHei", Roboto, "Helvetica Neue", Arial, sans-serif;
     --primary-font-colour: #000000;
@@ -14131,8 +14132,9 @@ h6 {
     --input-border-colour: #cccccc;
 }
 
-@media (prefers-color-scheme: dark) {
-    :root.minimal {
+/* 深色（默认，与 n.down2.top 一致） */
+
+:root.minimal {
         --primary-font-colour: #ffffff;
 
         --subtext-font-colour: #9a9a9a;
@@ -14245,7 +14247,6 @@ h6 {
         --input-highlight-colour: #ffffff33;
         --input-border-colour: #3a3a3a;
     }
-}
 
 /**
  * GeoCities theme definitions
@@ -15874,12 +15875,6 @@ input.toggle-string {
 
 .break .form-group * { color: #dc322f !important; color: var(--breakpoint-font-colour) !important; }
 
-@media (prefers-color-scheme: dark) {
-
-    .break .form-group * { color: #dc322f !important; color: var(--breakpoint-font-colour) !important;
-    }
-}
-
 .selected-op {
     color: #c09853 !important;
     color: var(--selected-operation-font-color) !important;
@@ -15890,12 +15885,6 @@ input.toggle-string {
 }
 
 .selected-op .form-group * { color: #586e75 !important; color: var(--selected-operation-font-color) !important; }
-
-@media (prefers-color-scheme: dark) {
-
-    .selected-op .form-group * { color: #586e75 !important; color: var(--selected-operation-font-color) !important;
-    }
-}
 
 .flow-control-op {
     color: #396f3a !important;
@@ -15908,12 +15897,6 @@ input.toggle-string {
 
 .flow-control-op .form-group *:not(.arg) { color: #586e75; color: var(--fc-operation-font-colour) }
 
-@media (prefers-color-scheme: dark) {
-
-    .flow-control-op .form-group *:not(.arg) { color: #586e75; color: var(--fc-operation-font-colour);
-    }
-}
-
 .flow-control-op.break {
     color: #94312f !important;
     color: var(--fc-breakpoint-operation-font-colour) !important;
@@ -15925,12 +15908,6 @@ input.toggle-string {
 
 .flow-control-op.break .form-group * { color: #073642 !important; color: var(--fc-breakpoint-operation-font-colour) !important; }
 
-@media (prefers-color-scheme: dark) {
-
-    .flow-control-op.break .form-group * { color: #073642 !important; color: var(--fc-breakpoint-operation-font-colour) !important;
-    }
-}
-
 .disabled {
     color: #999 !important;
     color: var(--disabled-font-colour) !important;
@@ -15941,12 +15918,6 @@ input.toggle-string {
 }
 
 .disabled .form-group * { color: #93a1a1 !important; color: var(--disabled-font-colour) !important; }
-
-@media (prefers-color-scheme: dark) {
-
-    .disabled .form-group * { color: #93a1a1 !important; color: var(--disabled-font-colour) !important;
-    }
-}
 
 .break .register-list {
     color: #94312f !important;
