@@ -134,16 +134,16 @@ footer{border-top:1px solid var(--line);padding:16px 24px;text-align:center;font
     <div class="go">进入 →</div>
   </a>
 </div>
-<footer><a class="build-info" href="https://github.com/teecatt" target="_blank" rel="noopener" title="GitHub 主页">teecatt</a> · <a id="siteBuildInfo" class="build-info" href="#" target="_blank" rel="noopener" title="查看对应提交">最近构建 —</a></footer>
+<footer><a class="build-info" href="https://github.com/teecatt" target="_blank" rel="noopener" title="GitHub 主页">teecatt</a> · <a id="siteBuildInfo" class="build-info" href="#" target="_blank" rel="noopener" title="查看对应提交">构建于 —</a></footer>
 
 <script src="build-info.js?v=dev"></script>
 <script>
-// 页脚「最近构建」+ 浏览器标签标题：显示最近一次部署时间，并可点击跳转到对应提交
+// 页脚「构建于」+ 浏览器标签标题：显示最近一次部署时间，并可点击跳转到对应提交
 (function(){
   const b = window.SITE_BUILD;
   const el = document.getElementById('siteBuildInfo');
   if(!el) return;
-  if(!b || !b.sha){ el.textContent = '最近构建 未知'; document.title = 'teecatt'; return; }
+  if(!b || !b.sha){ el.textContent = '构建于 未知'; document.title = 'teecatt'; return; }
   function ago(ms){
     const s = Math.max(0, Math.floor(ms/1000));
     if(s < 60) return '刚刚';
@@ -157,7 +157,7 @@ footer{border-top:1px solid var(--line);padding:16px 24px;text-align:center;font
   // 标签标题（document.title）可动态更新；地址栏本身只显示 URL，无法自定义文字
   function render(){
     const label = ago(Date.now() - b.time);
-    el.textContent = '最近构建 ' + label;
+    el.textContent = '构建于 ' + label;
     document.title = 'teecatt · ' + label;
   }
   render();
