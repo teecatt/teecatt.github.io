@@ -307,7 +307,7 @@ async function refreshMe(){
     meData=await r.json();
     renderMe();
     applySelection();
-    var c=cityForMe(); if(c) selectCity(c, true);
+    setTimeout(function(){ document.getElementById('gps').click(); }, 1000);
   }catch(e){}
 }
 
