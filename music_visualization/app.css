@@ -19,7 +19,7 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI","Microsoft Ya
 .control-row{display:flex;align-items:center;justify-content:center;gap:8px;padding:6px 12px;flex-shrink:0}
 .ctl-spacer{flex:1 1 auto;min-width:0}
 .ctl-group{display:flex;align-items:center;gap:8px}
-.ctl-btn{width:32px;height:32px;flex-shrink:0;padding:0;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--text);transition:background .15s,color .15s,box-shadow .15s;filter:grayscale(var(--menu-gray,0))}
+.ctl-btn{width:32px;height:32px;flex-shrink:0;padding:0;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--text);transition:background .15s,color .15s,box-shadow .15s}
 .ctl-btn:hover{background:rgba(255,255,255,.1)}
 .ctl-btn:active{background:rgba(255,255,255,.18);opacity:1}
 .ctl-btn:disabled{opacity:.4;cursor:not-allowed}
@@ -38,10 +38,6 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI","Microsoft Ya
 #logPanel{padding:0}
 #logPanel .log-toolbar{background:transparent;border-top:none}
 #logPanel .log-bar{flex:1 1 auto;min-height:0;overflow-y:auto;background:transparent;border-top:none}
-.appearance-sliders{display:flex;flex-direction:column;gap:6px;margin:2px 0 10px}
-.appearance-sliders label{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);cursor:pointer}
-.appearance-sliders input[type=range]{flex:1;min-width:0;accent-color:var(--accent)}
-.appearance-sliders .pct{min-width:2.8em;text-align:right;font-variant-numeric:tabular-nums}
 .topbar .logo{font-weight:700;font-size:12px;background:linear-gradient(120deg,#58a6ff,#c822ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent;flex-shrink:0;line-height:1.15;text-align:center;display:flex;flex-direction:column;justify-content:center}
 .topbar .center-area{flex:1;display:flex;justify-content:center;align-items:center;min-width:0}
 .topbar .upload-zone{display:flex;align-items:center;gap:8px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:8px 16px;cursor:pointer;transition:all .2s;max-width:500px;width:100%}
@@ -120,14 +116,6 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI","Microsoft Ya
 .log-toolbar .log-btn svg{width:12px;height:12px}
 .log-toolbar .log-spacer{flex:1}
 .log-toolbar .log-hint{font-size:9px;color:var(--muted)}
-/* 终端顶部的「完整竞速」开关 */
-.log-toolbar .log-switch{display:flex;align-items:center;gap:4px;font-size:9px;color:var(--muted);cursor:pointer;user-select:none;white-space:nowrap;flex-shrink:0}
-.log-toolbar .log-switch input{display:none}
-.log-toolbar .log-switch .track{width:26px;height:14px;background:var(--panel2);border:1px solid var(--line);border-radius:7px;position:relative;transition:all .2s;flex-shrink:0}
-.log-toolbar .log-switch input:checked + .track{background:var(--accent);border-color:var(--accent)}
-.log-toolbar .log-switch .knob{position:absolute;top:1px;left:1px;width:10px;height:10px;background:#fff;border-radius:50%;transition:transform .2s}
-.log-toolbar .log-switch input:checked + .track .knob{transform:translateX(12px)}
-.log-toolbar .log-switch-label{color:var(--text);font-size:10px;font-weight:600;opacity:1}
 
 /* 性能面板 */
 .perf-presets{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
@@ -142,7 +130,7 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI","Microsoft Ya
 .perf-unlimited input{accent-color:var(--accent)}
 .perf-live{font-variant-numeric:tabular-nums;color:var(--text);font-weight:600}
 
-.props-header{padding:12px 14px;border-bottom:1px solid var(--line);font-weight:600;font-size:13px;display:flex;align-items:center;gap:8px}
+.props-header{padding:6px 10px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:flex-end;gap:8px}
 .props-header .dot{width:8px;height:8px;border-radius:50%;background:var(--accent)}
 .props-del-btn{margin-left:auto;background:none;border:none;color:var(--muted);cursor:pointer;padding:4px;display:flex;align-items:center;border-radius:6px;transition:all .15s}
 .props-del-btn:hover{color:#ff6b6b;background:rgba(255,107,107,.15)}
@@ -202,7 +190,7 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI","Microsoft Ya
   .time-row .vol{display:none}
   .log-toolbar .log-btn{padding:2px 4px}
   .log-toolbar .log-btn svg{width:10px;height:10px}
-  .props-header{padding:10px 12px;font-size:13px}
+  .props-header{padding:6px 10px}
   .props-body{padding:0}
   /* 移动端：面板在按钮行下方「向下展开」，占满浏览器宽度；仅内容区滚动，避免容器套容器 */
   .panel-dock{flex:0 1 auto;width:100%;max-width:none;min-width:0;overflow:hidden;border-left:none;border-top:1px solid var(--line);display:flex;flex-direction:column}

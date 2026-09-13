@@ -106,12 +106,11 @@ async function _raceDownloadDemo(urls){
     onFinal: _raceLogger.final,
   });
 }
-// 完整下载竞速开关（默认开，可在终端顶部关闭改用首字节竞速）
+// 完整下载竞速开关（默认开，可在性能面板关闭改用首字节竞速）
 let raceFullDownload = true;
 try { raceFullDownload = localStorage.getItem('raceFull') !== '0'; } catch(e){}
-function onRaceFullChange(){
-  const el = document.getElementById('raceFullSw');
-  raceFullDownload = el ? el.checked : true;
+function setRaceFullDownload(v){
+  raceFullDownload = !!v;
   try { localStorage.setItem('raceFull', raceFullDownload ? '1' : '0'); } catch(e){}
   _log('CDN竞速：' + (raceFullDownload ? '开' : '关（改用首字节竞速）'));
 }
@@ -221,47 +220,6 @@ function loadConfig(){
     return true;
   }catch(e){ return false; }
 }
-/* ===== 下拉面板透明度 / 背景模糊（参考 midi_player，持久化到 localStorage） ===== */
-function _panelTargets(){ return Array.from(document.querySelectorAll('.drop-panel')); }
-function _applyAllAppearance(transparency, blurPct, menuGray){
-  const alpha=Math.max(0, Math.min(1, (100-transparency)/100));
-  const blurPx=blurPct*0.2;                          // 100% -> 20px
-  const bf=blurPx>0 ? ('blur('+blurPx.toFixed(1)+'px)') : 'none';
-  _panelTargets().forEach(el=>{
-    el.style.background='rgba(0,0,0,'+alpha+')';
-    el.style.backdropFilter=bf;
-    el.style.webkitBackdropFilter=bf;
-  });
-  document.documentElement.style.setProperty('--menu-gray', Math.max(0, Math.min(1, menuGray/100)));
-  const setV=(id,v)=>{ const e=document.getElementById(id); if(e) e.value=v; };
-  setV('panelTransparency', transparency);
-  setV('panelBlur', blurPct);
-  setV('menuGray', menuGray);
-  const tpct=document.getElementById('transparencyPct'); if(tpct) tpct.textContent=Math.round(transparency)+'%';
-  const bpct=document.getElementById('blurPct'); if(bpct) bpct.textContent=Math.round(blurPct)+'%';
-  const gpct=document.getElementById('grayPct'); if(gpct) gpct.textContent=Math.round(menuGray)+'%';
-  try{
-    localStorage.setItem('mv-panelTransparency', String(transparency));
-    localStorage.setItem('mv-panelBlur', String(blurPct));
-    localStorage.setItem('mv-menuGray', String(menuGray));
-  }catch(e){}
-}
-function applyPanelAppearance(){
-  const tp=document.getElementById('panelTransparency');
-  const bl=document.getElementById('panelBlur');
-  const mg=document.getElementById('menuGray');
-  _applyAllAppearance(tp?parseFloat(tp.value):40, bl?parseFloat(bl.value):0, mg?parseFloat(mg.value):0);
-}
-(function _restorePanelAppearance(){
-  try{
-    const t=localStorage.getItem('mv-panelTransparency');
-    const b=localStorage.getItem('mv-panelBlur');
-    const g=localStorage.getItem('mv-menuGray');
-    if(t!==null){ const el=document.getElementById('panelTransparency'); if(el) el.value=t; }
-    if(b!==null){ const el=document.getElementById('panelBlur'); if(el) el.value=b; }
-    if(g!==null){ const el=document.getElementById('menuGray'); if(el) el.value=g; }
-  }catch(e){}
-})();
 // 重置所有设置（性能面板底部按钮）：清除持久化并恢复出厂默认
 function resetAllSettings(){
   try{ localStorage.removeItem(STORAGE_KEY); }catch(e){}
@@ -273,17 +231,13 @@ function resetAllSettings(){
   CFG.fps=0; CFG.showFps=true; CFG.showRes=true;
   CFG.loop=true; CFG.volume=1; CFG.smoothing=0.8;
   _panelW=280; document.documentElement.style.setProperty('--panel-w', '280px');
-  const _tp=document.getElementById('panelTransparency'); if(_tp) _tp.value=40;
-  const _bl=document.getElementById('panelBlur'); if(_bl) _bl.value=0;
-  const _mg=document.getElementById('menuGray'); if(_mg) _mg.value=0;
-  applyPanelAppearance();
   if(CFG.audio){ CFG.audio.loop=true; CFG.audio.volume=1; }
   const vs=document.getElementById('volSlider'); if(vs) vs.value=1;
   const lb=document.getElementById('loopBtn'); if(lb){ lb.classList.add('active'); lb.innerHTML=LIST_LOOP_ICON; }
   addElement('bars');
   renderLibrary(); renderProps();
   if(_lastTool==='perf') renderPerf();
-  _openToolPanel('props');
+  _openToolPanel('log');
   fitCanvas();
   _log('已重置所有设置', 'warn');
 }
@@ -291,7 +245,7 @@ function resetAllSettings(){
 const PLAY_ICON='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
 const PAUSE_ICON='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>';
 const LIST_LOOP_ICON='<svg viewBox="0 0 16 16" fill="currentColor"><path d="M11 5.466V4H5a4 4 0 0 0-3.584 5.777a.5.5 0 1 1-.896.446A5 5 0 0 1 5 3h6V1.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384l-2.36 1.966a.25.25 0 0 1-.41-.192m3.81.086a.5.5 0 0 1 .67.225A5 5 0 0 1 11 13H5v1.466a.25.25 0 0 1-.41.192l-2.36-1.966a.25.25 0 0 1 0-.384l2.36-1.966a.25.25 0 0 1 .41.192V12h6a4 4 0 0 0 3.585-5.777a.5.5 0 0 1 .225-.67Z"/></svg>';
-const NO_LOOP_ICON='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>';
+const NO_LOOP_ICON='<svg viewBox="0 0 24 24" fill="currentColor"><path d="M2 5.27L3.28 4L20 20.72L18.73 22l-3-3H7v3l-4-4l4-4v3h6.73L7 10.27V11H5V8.27zM17 13h2v4.18l-2-2zm0-8V2l4 4l-4 4V7H8.82l-2-2z"/></svg>';
 let _ac = null;
 function ensureCtx(){ if(!_ac || _ac.state==='closed') _ac = new (window.AudioContext||window.webkitAudioContext)(); return _ac; }
 
@@ -815,10 +769,9 @@ function renderLibrary(){
   if(tool==='elements') items=[...VISUAL_STYLES];
   const cats={};
   items.forEach(i=>{ if(!cats[i.cat])cats[i.cat]=[]; cats[i.cat].push(i); });
-  const catNames={visualizer:'音频可视化'};
   let html='';
   for(const [cat,list] of Object.entries(cats)){
-    html+=`<div class="lib-cat"><div class="lib-cat-title"><span>${catNames[cat]||cat}</span><span class="count">${list.length}</span></div><div class="lib-grid">`;
+    html+=`<div class="lib-cat"><div class="lib-grid">`;
     for(const item of list){
       html+=`<div class="lib-item" data-type="${item.id}" title="${item.name}">${thumbSVG(item.id)}<div class="label">${item.name}</div></div>`;
     }
@@ -913,19 +866,18 @@ function thumbSVG(id){
 function renderProps(){
   const body=document.getElementById('propsBody');
   const sel=getSelected();
-  const title=document.getElementById('propsTitle');
+  const headerBar=document.getElementById('propsHeaderBar');
   const delBtn=document.getElementById('propsDelBtn');
   if(!sel){
-    title.textContent='属性';
+    if(headerBar) headerBar.style.display='none';
     body.innerHTML=`<div class="empty-props"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="21" y1="4" x2="14" y2="4"/><line x1="10" y1="4" x2="3" y2="4"/><line x1="21" y1="12" x2="12" y2="12"/><line x1="8" y1="12" x2="3" y2="12"/><line x1="21" y1="20" x2="16" y2="20"/><line x1="12" y1="20" x2="3" y2="20"/><line x1="14" y1="2" x2="14" y2="6"/><line x1="8" y1="10" x2="8" y2="14"/><line x1="16" y1="18" x2="16" y2="22"/></svg><div>从「元素」添加可视化风格<br>点击画布上的元素编辑属性</div></div>`;
     if(delBtn) delBtn.style.display='none';
     return;
   }
+  if(headerBar) headerBar.style.display='flex';
   if(delBtn) delBtn.style.display='flex';
   const p=sel.params;
   const isVis=VISUAL_STYLES.some(s=>s.id===sel.type);
-  const styleName=VISUAL_STYLES.find(s=>s.id===sel.type)?.name||sel.type;
-  title.textContent=styleName;
 
   let html='';
 
@@ -1040,6 +992,7 @@ function renderPerf(){
     </div>
     <div class="field"><div class="toggle-row"><label style="margin-bottom:0">显示帧率</label><div class="toggle ${CFG.showFps?'on':''}" data-field="showFps"></div></div></div>
     <div class="field"><div class="toggle-row"><label style="margin-bottom:0">显示分辨率</label><div class="toggle ${CFG.showRes?'on':''}" data-field="showRes"></div></div></div>
+    <div class="field"><div class="toggle-row"><label style="margin-bottom:0">CDN 完整竞速</label><div class="toggle ${raceFullDownload?'on':''}" data-field="raceFull"></div></div></div>
     <div class="perf-err" id="perfErr"></div>
     <button type="button" class="perf-reset" id="perfResetBtn">重置所有设置</button>
   `;
@@ -1066,8 +1019,12 @@ function bindPerfFields(){
     _updatePerfLabels();
     _log('帧率上限设为 ' + (f>0?f+'fps':'无限制'),'ok');
   });
-  body.querySelectorAll('[data-field="showFps"],[data-field="showRes"]').forEach(t=>{
-    t.addEventListener('click',()=>{ const f=t.dataset.field; CFG[f]=!CFG[f]; t.classList.toggle('on',CFG[f]); scheduleSave(); });
+  body.querySelectorAll('[data-field="showFps"],[data-field="showRes"],[data-field="raceFull"]').forEach(t=>{
+    t.addEventListener('click',()=>{
+      const f=t.dataset.field;
+      if(f==='raceFull'){ setRaceFullDownload(!raceFullDownload); t.classList.toggle('on',raceFullDownload); }
+      else { CFG[f]=!CFG[f]; t.classList.toggle('on',CFG[f]); scheduleSave(); }
+    });
   });
   const rb=document.getElementById('perfResetBtn');
   if(rb) rb.addEventListener('click',()=>{ if(typeof confirm!=='function' || confirm('确定重置所有设置吗？')) resetAllSettings(); });
@@ -1603,18 +1560,16 @@ if(_restored){
 document.getElementById('volSlider').value = CFG.volume;
 document.getElementById('loopBtn').classList.toggle('active', CFG.loop);
 document.getElementById('loopBtn').innerHTML=CFG.loop?LIST_LOOP_ICON:NO_LOOP_ICON;
-const _rfs=document.getElementById('raceFullSw'); if(_rfs) _rfs.checked=raceFullDownload;
 renderLibrary();
 if(_restored && CFG.elements.length){
-  // 默认选中绘制区中的元素，并打开其属性面板
+  // 默认选中绘制区中的元素
   if(CFG.selectedId==null || !getSelected()) CFG.selectedId=CFG.elements[0].id;
   renderProps();
 }else{
   // 默认添加一个居中元素（x/y=50），addElement 会将其选中
   addElement('bars');
 }
-_openToolPanel('props'); // 默认展开「属性」面板并选中元素
-applyPanelAppearance(); // 应用持久化的面板透明度/模糊
+_openToolPanel('log'); // 默认展示「调试（终端）」面板
 // 等布局完成后按宽度适配一次
 requestAnimationFrame(()=>{ render(); fitCanvas(); });
 window.addEventListener('resize',()=>{ fitCanvas(); });
