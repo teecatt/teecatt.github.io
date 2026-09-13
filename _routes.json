@@ -11,6 +11,8 @@
     "/tools/tools/*",
     "/shared/*",
     "/data/*",
+    "/globe/vendor/*",
+    "/globe/textures/*",
     "/ui-kit/ui-kit.css"
   ]
 }

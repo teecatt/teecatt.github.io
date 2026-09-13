@@ -1,4 +1,4 @@
-// GET /api/stats  —— 返回总量、按省/国聚合、按城市聚合
+// GET /api/stats  —— 公开：总量 + 按省/国聚合 + 按城市聚合（只有地点与次数，不含时间）
 // 依赖 D1 绑定：DB
 const HEADERS = {
   'content-type': 'application/json; charset=utf-8',
@@ -18,8 +18,8 @@ export async function onRequestGet({ env }) {
       `SELECT COALESCE(NULLIF(region_code,''),'')              AS code,
               COALESCE(NULLIF(region,''), NULLIF(country,''), '未知') AS name,
               COALESCE(NULLIF(country,''), '')                 AS country,
+              MAX(region_zh)                                   AS region_zh,
               COUNT(*)                                          AS n,
-              MAX(ts)                                           AS last,
               AVG(lat)                                          AS lat,
               AVG(lon)                                          AS lon
        FROM visits
@@ -32,12 +32,14 @@ export async function onRequestGet({ env }) {
     const c = await env.DB.prepare(
       `SELECT COALESCE(NULLIF(city,''), '未知')                   AS city,
               COALESCE(NULLIF(region,''), NULLIF(country,''), '') AS region,
-              COUNT(*)                                           AS n,
-              MAX(ts)                                            AS last,
-              AVG(lat)                                           AS lat,
-              AVG(lon)                                           AS lon
+              COALESCE(NULLIF(country,''), '')                    AS country,
+              MAX(city_zh)                                        AS city_zh,
+              MAX(region_zh)                                      AS region_zh,
+              COUNT(*)                                            AS n,
+              AVG(lat)                                            AS lat,
+              AVG(lon)                                            AS lon
        FROM visits
-       GROUP BY city, region
+       GROUP BY city, region, country
        ORDER BY n DESC
        LIMIT 500`
     ).all();

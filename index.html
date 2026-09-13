@@ -31,7 +31,7 @@ a{text-decoration:none;color:inherit}
 .social a{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border:1px solid var(--line);border-radius:50%;color:var(--muted);transition:all .2s}
 .social a:hover{border-color:var(--accent);color:var(--text);background:var(--hover)}
 .social a svg{width:16px;height:16px}
-.grid{flex:1;display:grid;gap:20px;justify-content:center;align-content:center;padding:40px 24px 60px;max-width:1080px;margin:0 auto;width:100%}
+.grid{flex:1;display:grid;gap:20px;justify-content:center;align-content:start;padding:32px 24px 60px;max-width:1080px;margin:0 auto;width:100%}
 /* 自适应布局：1-3个横排，4个2x2，5-6个3x2，7-9个3x3 */
 .grid.cards-1,.grid.cards-2,.grid.cards-3{grid-template-columns:repeat(auto-fit,minmax(240px,1fr));max-width:1080px}
 .grid.cards-4{grid-template-columns:repeat(2,1fr);max-width:720px}
@@ -130,7 +130,7 @@ footer{border-top:1px solid var(--line);padding:16px 24px;text-align:center;font
   <a class="card card-globe" href="./globe/" title="访客地图">
     <div class="ico">🌍</div>
     <h2>访客地图 <span class="badge badge-new">新</span></h2>
-    <div class="desc">3D 地球实时展示访客来源 · 精确到省市 · 可查看历史访客记录</div>
+    <div class="desc">3D 地球实时展示访客来源 · 精确到省市</div>
     <div class="go">进入 →</div>
   </a>
 </div>
@@ -158,7 +158,7 @@ footer{border-top:1px solid var(--line);padding:16px 24px;text-align:center;font
   function render(){
     const label = ago(Date.now() - b.time);
     el.textContent = '构建于 ' + label;
-    document.title = 'teecatt · ' + label;
+    document.title = 'teecatt · ' + label + ' 更新';
   }
   render();
   setInterval(render, 30000); // 相对时间随当前时间刷新

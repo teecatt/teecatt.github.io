@@ -6,13 +6,15 @@ CREATE TABLE IF NOT EXISTS visits (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   ts          INTEGER NOT NULL,   -- 毫秒时间戳
   country     TEXT,               -- Cloudflare country（如 CN / US）
-  region      TEXT,               -- 省 / 州名称
+  region      TEXT,               -- 省 / 州名称（英文）
   region_code TEXT,               -- ISO 3166-2（如 CN-GD）
-  city        TEXT,               -- 城市（CF 缺失时用第三方兜底）
+  city        TEXT,               -- 城市（英文）
+  city_zh     TEXT,               -- 城市（中文，Nominatim 懒加载）
+  region_zh   TEXT,               -- 省 / 州（中文）
   lat         REAL,
   lon         REAL,
   colo        TEXT,               -- 落地的 Cloudflare 机房代码
-  ip          TEXT,              -- 访客 IP
+  ip          TEXT,               -- 访客 IP
   ua          TEXT,
   path        TEXT,
   ref         TEXT
@@ -31,5 +33,13 @@ CREATE TABLE IF NOT EXISTS ip_geo (
   city        TEXT,
   lat         REAL,
   lon         REAL,
+  ts          INTEGER
+);
+
+-- 地名中英缓存（按 country|region|city 去重，用 Nominatim 反查中文）
+CREATE TABLE IF NOT EXISTS geo_names (
+  k           TEXT PRIMARY KEY,
+  city_zh     TEXT,
+  region_zh   TEXT,
   ts          INTEGER
 );
