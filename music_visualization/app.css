@@ -30,8 +30,7 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI","Microsoft Ya
 .drop-trigger svg{transition:transform .2s}
 /* 面板容器：PC 端位于绘制区右侧并「向右展开」（推开绘制区，互不遮挡）；
    移动端见媒体查询：在按钮行下方「向下展开」 */
-.panel-dock{flex:0 0 0;width:0;min-width:0;max-width:86vw;overflow:hidden;background:var(--panel);border-left:1px solid transparent;transition:flex-basis .25s ease,width .25s ease}
-.panel-dock.open{flex-basis:360px;width:360px;border-left-color:var(--line)}
+.panel-dock{flex:0 0 33.3333%;width:33.3333%;min-width:0;max-width:33.3333%;overflow:hidden;background:var(--panel);border-left:1px solid var(--line)}
 .panel-dock .drop-panel{display:none;flex-direction:column;height:100%;padding:12px 16px;background:rgba(0,0,0,.45);backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px)}
 .panel-dock .drop-panel.open{display:flex}
 /* 终端日志：在面板内滚动 */
@@ -70,13 +69,18 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI","Microsoft Ya
 .lib-item .label{position:absolute;bottom:2px;left:0;right:0;text-align:center;font-size:9px;color:var(--muted);background:linear-gradient(transparent,rgba(0,0,0,.7));padding:4px 2px 2px}
 
 .canvas-area{flex:1;display:flex;flex-direction:row;overflow:hidden;position:relative;min-height:0}
-.canvas-side{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0}
+.canvas-side{flex:1 1 auto;display:flex;flex-direction:column;min-width:0;min-height:0}
+/* 桌面端：绘制区固定占浏览器宽度 2/3，右侧 1/3 预留为面板区 */
+@media(min-width:769px){
+  .canvas-side{flex:0 0 66.6667%;max-width:66.6667%}
+}
 .canvas-stage{flex:1 1 auto;min-height:0;display:flex;justify-content:center;align-items:flex-start;overflow:hidden;padding:0;background:var(--panel)}
 /* 绘制区 + 进度条 + 按钮行 组成同宽整体：进度条紧贴绘制区下方 */
 .canvas-column{display:flex;flex-direction:column;align-items:stretch;flex-shrink:0;max-width:100%}
 /* 全屏绘制区 */
 .canvas-area:fullscreen,.canvas-area:-webkit-full-screen{background:var(--bg);padding:0}
 .canvas-area:fullscreen .canvas-stage,.canvas-area:-webkit-full-screen .canvas-stage{flex:1 1 auto;min-height:0;overflow:hidden}
+.canvas-area:fullscreen .canvas-side,.canvas-area:-webkit-full-screen .canvas-side{flex:1 1 100%!important;max-width:100%!important}
 /* 全屏只保留绘制区：隐藏进度条、按钮行与面板 */
 .canvas-area:fullscreen .player-bar,.canvas-area:fullscreen .control-row,.canvas-area:fullscreen .panel-dock,
 .canvas-area:fullscreen .log-toolbar,.canvas-area:fullscreen .log-bar,
@@ -101,8 +105,8 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI","Microsoft Ya
 .player-bar .play-btn svg{width:14px;height:14px}
 .player-bar .play-btn:disabled{opacity:.4;cursor:not-allowed}
 .player-bar .time{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;min-width:90px;text-align:center;flex-shrink:0}
-.seek-bar{flex:1;height:4px;background:rgba(255,255,255,.12);border-radius:2px;cursor:pointer;position:relative;overflow:hidden}
-.seek-bar .fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:2px;width:0%}
+.seek-bar{flex:1;height:6px;background:#e5e5e5;border-radius:3px;cursor:pointer;position:relative;overflow:hidden}
+.seek-bar .fill{height:100%;background:var(--accent);border-radius:3px;width:0%;transition:width .1s linear}
 .player-bar .vol{display:flex;align-items:center;gap:6px;flex-shrink:0}
 .player-bar .vol input{width:70px;accent-color:var(--accent)}
 .player-bar .loop-btn{background:transparent;border:none;color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;flex-shrink:0;padding:0;transition:all .15s}
@@ -138,6 +142,10 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI","Microsoft Ya
 .perf-err{display:none;font-size:11px;color:#ff6b6b;background:rgba(255,107,107,.1);border:1px solid rgba(255,107,107,.35);border-radius:5px;padding:6px 8px;margin-top:8px}
 .perf-reset{width:100%;margin-top:12px;padding:8px;background:rgba(255,107,107,.12);border:1px solid rgba(255,107,107,.4);color:#ff6b6b;border-radius:6px;font-size:12px;cursor:pointer;transition:all .15s}
 .perf-reset:hover{background:rgba(255,107,107,.22)}
+.perf-slider-label{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:11px;color:var(--muted);margin-top:4px}
+.perf-unlimited{display:flex;align-items:center;gap:4px;color:var(--muted);cursor:pointer;font-size:11px;white-space:nowrap}
+.perf-unlimited input{accent-color:var(--accent)}
+.perf-live{font-variant-numeric:tabular-nums;color:var(--text);font-weight:600}
 
 .props-header{padding:12px 14px;border-bottom:1px solid var(--line);font-weight:600;font-size:13px;display:flex;align-items:center;gap:8px}
 .props-header .dot{width:8px;height:8px;border-radius:50%;background:var(--accent)}
@@ -187,8 +195,8 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI","Microsoft Ya
   .topbar .upload-zone.has-audio .uz-hint svg{width:14px;height:14px}
   .topbar select{font-size:10px;padding:3px 5px}
   .control-row{padding:6px;gap:6px}
-  .canvas-area{flex:1;display:flex;flex-direction:column;overflow-x:hidden;overflow-y:auto}
-  .canvas-side{flex:0 0 auto;min-height:0}
+  .canvas-area{flex:1;display:flex;flex-direction:column;overflow:hidden}
+  .canvas-side{flex:0 0 auto;min-height:0;max-width:100%}
   .canvas-stage{flex:0 0 auto;overflow:visible;padding:0;background:var(--panel)}
   .canvas-column{width:100%!important;max-width:100%}
   .stage-wrap{width:100%!important;height:auto!important}
@@ -197,7 +205,7 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI","Microsoft Ya
   .player-bar .play-btn{width:28px;height:28px}
   .player-bar .play-btn svg{width:12px;height:12px}
   .player-bar .time{font-size:9px;min-width:60px}
-  .player-bar .seek-bar{height:3px}
+  .player-bar .seek-bar{height:5px}
   .player-bar .vol{display:none}
   .player-bar .loop-btn{width:24px;height:24px}
   .player-bar .loop-btn svg{width:14px;height:14px}
@@ -205,13 +213,12 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI","Microsoft Ya
   .log-toolbar .log-btn svg{width:10px;height:10px}
   .props-header{padding:10px 12px;font-size:13px}
   .props-body{padding:0}
-  /* 移动端：面板在按钮行下方「向下展开」 */
-  .panel-dock{flex:0 1 auto;width:auto;min-width:0;max-height:60vh;overflow-y:auto;border-left:none;border-top:1px solid var(--line);transition:none}
+  /* 移动端：面板在按钮行下方「向下展开」，占满浏览器宽度；仅内容区滚动，避免容器套容器 */
+  .panel-dock{flex:0 1 auto;width:100%;max-width:none;min-width:0;overflow:hidden;border-left:none;border-top:1px solid var(--line);display:flex;flex-direction:column}
   .panel-dock:not(.open){display:none}
-  .panel-dock.open{display:block;flex-basis:auto;width:auto;border-left:none}
-  .panel-dock .drop-panel{height:auto;max-height:60vh;padding:10px 12px}
+  .panel-dock.open{display:flex;flex:1 1 auto;min-height:0;width:100%}
+  .panel-dock .drop-panel{flex:1 1 auto;height:auto;max-height:none;min-height:0;padding:10px 12px;overflow:hidden}
   #logPanel{padding:0}
-  #logPanel .log-bar{min-height:0;max-height:50vh;overflow-y:auto}
 }
 
 /* 双端点频率滑条 */

@@ -168,13 +168,14 @@ const controlRow = document.getElementById('controlRow');
 const panelDock = document.getElementById('panelDock');
 
 const CFG = {
-  canvas: { w:1280, h:720, zoom:1, bgType:'solid', bgColor:'#000000',
+  canvas: { w:1920, h:1080, zoom:1, bgType:'solid', bgColor:'#000000',
     gradColor1:'#00ced1', gradColor2:'#000000', gradStops:[0,25,50,75,100],
     gradAngle:360, gradRadius:640, bgImage:'', bgBlur:0, bgDarken:0 },
   elements: [], selectedId: null,
   audio: null, audioCtx: null, analyser: null, freq: null, wave: null,
   playing: false, loop: true, volume: 1, smoothing: 0.8,
-  fps: 120, showFps: true, showRes: true,
+  // fps=0 表示无限制（不节流，跟随显示器刷新率）；默认无限制
+  fps: 0, showFps: true, showRes: true,
 };
 window.__CFG = CFG;
 
@@ -210,7 +211,7 @@ function loadConfig(){
     if(!d || typeof d!=='object') return false;
     if(d.canvas) Object.assign(CFG.canvas, d.canvas, {bgImage:''});
     if(Array.isArray(d.elements)) CFG.elements=d.elements;
-    if(typeof d.fps==='number' && isFinite(d.fps)) CFG.fps=Math.max(30, Math.min(240, Math.round(d.fps)));
+    if(typeof d.fps==='number' && isFinite(d.fps)) CFG.fps = d.fps>0 ? Math.max(30, Math.round(d.fps)) : 0;
     if(typeof d.showFps==='boolean') CFG.showFps=d.showFps;
     if(typeof d.showRes==='boolean') CFG.showRes=d.showRes;
     if(typeof d.loop==='boolean') CFG.loop=d.loop;
@@ -264,25 +265,25 @@ function applyPanelAppearance(){
 // 重置所有设置（性能面板底部按钮）：清除持久化并恢复出厂默认
 function resetAllSettings(){
   try{ localStorage.removeItem(STORAGE_KEY); }catch(e){}
-  Object.assign(CFG.canvas, { w:1280, h:720, zoom:1, bgType:'solid', bgColor:'#000000',
+  Object.assign(CFG.canvas, { w:1920, h:1080, zoom:1, bgType:'solid', bgColor:'#000000',
     gradColor1:'#00ced1', gradColor2:'#000000', gradStops:[0,25,50,75,100],
     gradAngle:360, gradRadius:640, bgImage:'', bgBlur:0, bgDarken:0 });
-  canvas.width=1280; canvas.height=720;
+  canvas.width=1920; canvas.height=1080;
   CFG.elements=[]; CFG.selectedId=null; _eid=0;
-  CFG.fps=120; CFG.showFps=true; CFG.showRes=true;
+  CFG.fps=0; CFG.showFps=true; CFG.showRes=true;
   CFG.loop=true; CFG.volume=1; CFG.smoothing=0.8;
   _panelW=280; document.documentElement.style.setProperty('--panel-w', '280px');
   const _tp=document.getElementById('panelTransparency'); if(_tp) _tp.value=40;
   const _bl=document.getElementById('panelBlur'); if(_bl) _bl.value=0;
   const _mg=document.getElementById('menuGray'); if(_mg) _mg.value=0;
   applyPanelAppearance();
-  if(typeof _closeAllDropPanels==='function') _closeAllDropPanels();
   if(CFG.audio){ CFG.audio.loop=true; CFG.audio.volume=1; }
   const vs=document.getElementById('volSlider'); if(vs) vs.value=1;
   const lb=document.getElementById('loopBtn'); if(lb){ lb.classList.add('active'); lb.innerHTML=LIST_LOOP_ICON; }
   addElement('bars');
   renderLibrary(); renderProps();
   if(_lastTool==='perf') renderPerf();
+  _openToolPanel('props');
   fitCanvas();
   _log('已重置所有设置', 'warn');
 }
@@ -650,6 +651,8 @@ function _updateFps(now){
     if(elapsed > 1000){ _fpsFrames = 0; _fpsWindowStart = now; return; }
     _fpsValue = _fpsFrames * 1000 / elapsed;
     _fpsFrames = 0; _fpsWindowStart = now;
+    const lv=document.getElementById('perfLiveFps');
+    if(lv) lv.textContent=_fpsValue.toFixed(1);
   }
 }
 function _drawFps(){
@@ -677,9 +680,9 @@ function _drawFps(){
 function render(){
   requestAnimationFrame(render);
   const now = performance.now();
-  // 按目标帧率节流（受浏览器刷新率上限约束）
-  const interval = 1000 / (CFG.fps || 60);
-  if(now - _lastDraw < interval - 0.5) return;
+  // 按目标帧率节流（fps=0 表示无限制，不节流，跟随显示器刷新率）
+  const interval = CFG.fps > 0 ? 1000 / CFG.fps : 0;
+  if(interval > 0 && now - _lastDraw < interval - 0.5) return;
   _lastDraw = now;
   _updateFps(now);
   const dt = _lastFrameTime ? Math.min(0.1, (now-_lastFrameTime)/1000) : 0.016;
@@ -711,18 +714,13 @@ function render(){
     if(fn) fn(ctx, p, ew, eh, el, dt);
     ctx.restore();
   }
-  // 选中框（与元素同一坐标系）
+  // 选中元素：仅保留四角缩放手柄（不再绘制蓝色虚线选框）
   const sel = getSelected();
   if(sel){
     const p = sel.params;
     const ew = canvas.width*p.w/100, eh = canvas.height*p.h/100;
     const ex = canvas.width*p.x/100-ew/2, ey = canvas.height*p.y/100-eh/2;
     ctx.save();
-    ctx.setLineDash([6, 4]);
-    ctx.lineWidth = 1.5;
-    ctx.strokeStyle = 'rgba(88,166,255,0.95)';
-    ctx.strokeRect(ex, ey, ew, eh);
-    ctx.setLineDash([]);
     const hs = 6;
     ctx.fillStyle = 'rgba(88,166,255,0.95)';
     [[ex,ey],[ex+ew,ey],[ex,ey+eh],[ex+ew,ey+eh]].forEach(([hx,hy])=>ctx.fillRect(hx-hs/2,hy-hs/2,hs,hs));
@@ -914,7 +912,7 @@ function renderProps(){
   const delBtn=document.getElementById('propsDelBtn');
   if(!sel){
     title.textContent='属性';
-    body.innerHTML=`<div class="empty-props"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg><div>从「元素」添加可视化风格<br>点击画布上的元素编辑属性</div></div>`;
+    body.innerHTML=`<div class="empty-props"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="21" y1="4" x2="14" y2="4"/><line x1="10" y1="4" x2="3" y2="4"/><line x1="21" y1="12" x2="12" y2="12"/><line x1="8" y1="12" x2="3" y2="12"/><line x1="21" y1="20" x2="16" y2="20"/><line x1="12" y1="20" x2="3" y2="20"/><line x1="14" y1="2" x2="14" y2="6"/><line x1="8" y1="10" x2="8" y2="14"/><line x1="16" y1="18" x2="16" y2="22"/></svg><div>从「元素」添加可视化风格<br>点击画布上的元素编辑属性</div></div>`;
     if(delBtn) delBtn.style.display='none';
     return;
   }
@@ -982,109 +980,87 @@ function renderProps(){
 }
 
 /* ============================================================
-   性能面板：分辨率 / 帧率
+   性能面板：分辨率 / 帧率（滑块控制）
    ============================================================ */
+// 常用流媒体分辨率档位（320p → 4K）
 const RES_PRESETS = [
+  {label:'320p', w:320, h:240},
   {label:'360p', w:640, h:360},
   {label:'480p', w:854, h:480},
   {label:'720p', w:1280, h:720},
   {label:'1080p', w:1920, h:1080},
-  {label:'2K', w:2560, h:1440},
+  {label:'1440p', w:2560, h:1440},
   {label:'4K', w:3840, h:2160},
 ];
-const FPS_PRESETS = [30,60,90,120,144,240];
-const RES_MIN = 100, RES_MAX_W = 4320, RES_MAX_H = 2160;
-const FPS_MIN = 30, FPS_MAX = 240;
-let _maxFps = 60;
-// 采样 requestAnimationFrame 间隔估算浏览器最大帧率。
-// 不做「常见刷新率」归一，保留 165/185/240 等非标值；取最快 25% 间隔的均值，
-// 避开页面初始化卡顿导致的低估。
-function _detectMaxFps(cb){
-  const times=[]; const warmup=5, samples=45;
-  function tick(t){
-    times.push(t);
-    if(times.length < warmup+samples){ requestAnimationFrame(tick); return; }
-    const deltas=[];
-    for(let i=1;i<times.length;i++){ const d=times[i]-times[i-1]; if(d>0) deltas.push(d); }
-    deltas.sort((a,b)=>a-b);
-    const k=Math.max(1, Math.floor(deltas.length*0.25));
-    const fast=deltas.slice(0,k);
-    const avg=fast.reduce((s,x)=>s+x,0)/fast.length;
-    const fps=avg>0?1000/avg:60;
-    _maxFps=Math.max(FPS_MIN, Math.min(FPS_MAX, Math.round(fps)));
-    if(cb) cb();
-  }
-  requestAnimationFrame(tick);
+// 帧率档位：最右端为「无限制」（0 = 不节流，跟随显示器刷新率）
+const FPS_CAP_OPTIONS = [30, 60, 90, 120, 144, 165, 240, 0];
+function _resIndexOf(w,h){
+  const i=RES_PRESETS.findIndex(p=>p.w===w&&p.h===h);
+  if(i>=0) return i;
+  let best=0, bd=Infinity;
+  RES_PRESETS.forEach((p,idx)=>{ const d=Math.abs(p.h-h); if(d<bd){bd=d;best=idx;} });
+  return best;
+}
+function _fpsIndexOf(fps){
+  if(!(fps>0)) return FPS_CAP_OPTIONS.length-1; // 无限制
+  const i=FPS_CAP_OPTIONS.indexOf(Math.round(fps));
+  if(i>=0) return i;
+  let best=0, bd=Infinity;
+  FPS_CAP_OPTIONS.forEach((f,idx)=>{ if(f<=0) return; const d=Math.abs(f-fps); if(d<bd){bd=d;best=idx;} });
+  return best;
+}
+function _updatePerfLabels(){
+  const rs=document.getElementById('perfResSlider');
+  const rl=document.getElementById('perfResLabel');
+  if(rs&&rl){ const p=RES_PRESETS[+rs.value]; if(p) rl.textContent=p.label+' · '+p.w+'×'+p.h; }
+  const fs=document.getElementById('perfFpsSlider');
+  const fl=document.getElementById('perfFpsLabel');
+  if(fs&&fl){ const f=FPS_CAP_OPTIONS[+fs.value]; fl.textContent=(!f)?'无限制（跟随刷新率）':(f+' FPS'); }
 }
 function renderPerf(){
   const body=document.getElementById('perfBody');
   if(!body) return;
-  const w=CFG.canvas.w, h=CFG.canvas.h, fps=CFG.fps;
+  const ri=_resIndexOf(CFG.canvas.w, CFG.canvas.h);
+  const fi=_fpsIndexOf(CFG.fps);
   body.innerHTML=`
     <div class="field">
-      <label>分辨率（宽 × 高）</label>
-      <div class="range-row" style="gap:6px">
-        <input type="number" id="perfW" min="${RES_MIN}" max="${RES_MAX_W}" step="1" value="${w}" style="width:100%">
-        <span style="color:var(--muted)">×</span>
-        <input type="number" id="perfH" min="${RES_MIN}" max="${RES_MAX_H}" step="1" value="${h}" style="width:100%">
-      </div>
-      <div class="perf-presets" id="perfResPresets">
-        ${RES_PRESETS.map(p=>`<button type="button" data-w="${p.w}" data-h="${p.h}">${p.label}</button>`).join('')}
-      </div>
-      <div class="perf-hint">范围 ${RES_MIN}×${RES_MIN} ~ ${RES_MAX_W}×${RES_MAX_H}</div>
+      <label>分辨率</label>
+      <div class="range-row"><input type="range" id="perfResSlider" min="0" max="${RES_PRESETS.length-1}" step="1" value="${ri}"></div>
+      <div class="perf-slider-label"><span id="perfResLabel"></span><span>320p ~ 4K</span></div>
     </div>
     <div class="field">
-      <label>帧率（FPS）</label>
-      <div class="range-row">
-        <input type="number" id="perfFps" min="${FPS_MIN}" max="${FPS_MAX}" step="1" value="${fps}" style="width:100%">
-        <span class="val" id="perfFpsMax">上限 ${_maxFps}</span>
-      </div>
-      <div class="perf-presets" id="perfFpsPresets">
-        ${FPS_PRESETS.map(f=>`<button type="button" data-fps="${f}">${f}</button>`).join('')}
-      </div>
-      <div class="perf-hint">范围 ${FPS_MIN} ~ ${FPS_MAX}；超过浏览器上限 ${_maxFps} 自动取上限</div>
+      <label>帧率上限</label>
+      <div class="range-row"><input type="range" id="perfFpsSlider" min="0" max="${FPS_CAP_OPTIONS.length-1}" step="1" value="${fi}"></div>
+      <div class="perf-slider-label"><span id="perfFpsLabel"></span><span class="perf-unlimited">实时 <b class="perf-live" id="perfLiveFps">-</b> FPS</span></div>
     </div>
     <div class="field"><div class="toggle-row"><label style="margin-bottom:0">显示帧率</label><div class="toggle ${CFG.showFps?'on':''}" data-field="showFps"></div></div></div>
     <div class="field"><div class="toggle-row"><label style="margin-bottom:0">显示分辨率</label><div class="toggle ${CFG.showRes?'on':''}" data-field="showRes"></div></div></div>
     <div class="perf-err" id="perfErr"></div>
     <button type="button" class="perf-reset" id="perfResetBtn">重置所有设置</button>
   `;
+  _updatePerfLabels();
   bindPerfFields();
-  // 打开面板时重新检测浏览器最大帧率（用户此刻在前台，采样更准）
-  _detectMaxFps(()=>{
-    const el=document.getElementById('perfFpsMax');
-    if(el) el.textContent='上限 '+_maxFps;
-  });
 }
 function bindPerfFields(){
   const body=document.getElementById('perfBody');
-  const wEl=document.getElementById('perfW');
-  const hEl=document.getElementById('perfH');
-  const fEl=document.getElementById('perfFps');
   const err=document.getElementById('perfErr');
   function showErr(msg){ if(err){ err.textContent=msg||''; err.style.display=msg?'block':'none'; } }
-  function applyRes(){
-    const w=parseInt(wEl.value,10), h=parseInt(hEl.value,10);
-    if(!Number.isFinite(w)||!Number.isFinite(h)){ showErr('分辨率必须为数字'); return; }
-    if(w<RES_MIN||w>RES_MAX_W||h<RES_MIN||h>RES_MAX_H){ showErr(`分辨率超出范围（${RES_MIN}×${RES_MIN} ~ ${RES_MAX_W}×${RES_MAX_H}）`); return; }
+  const resSlider=document.getElementById('perfResSlider');
+  if(resSlider) resSlider.addEventListener('input',()=>{
+    const p=RES_PRESETS[+resSlider.value];
+    if(!p) return;
     showErr('');
-    setResolution(w,h);
-  }
-  function applyFps(){
-    let f=parseInt(fEl.value,10);
-    if(!Number.isFinite(f)){ showErr('帧率必须为数字'); return; }
-    if(f<FPS_MIN||f>FPS_MAX){ showErr(`帧率超出范围（${FPS_MIN} ~ ${FPS_MAX}）`); return; }
-    showErr('');
-    if(f>_maxFps){ f=_maxFps; fEl.value=f; _log('帧率超过浏览器上限，自动取上限 '+_maxFps+'fps','warn'); }
+    setResolution(p.w,p.h);
+    _updatePerfLabels();
+  });
+  const fpsSlider=document.getElementById('perfFpsSlider');
+  if(fpsSlider) fpsSlider.addEventListener('input',()=>{
+    const f=FPS_CAP_OPTIONS[+fpsSlider.value]||0;
     CFG.fps=f;
     scheduleSave();
-    _log('目标帧率设为 '+f+'fps','ok');
-  }
-  if(wEl) wEl.addEventListener('change',applyRes);
-  if(hEl) hEl.addEventListener('change',applyRes);
-  if(fEl) fEl.addEventListener('change',applyFps);
-  body.querySelectorAll('#perfResPresets button').forEach(b=>b.addEventListener('click',()=>{ wEl.value=b.dataset.w; hEl.value=b.dataset.h; applyRes(); }));
-  body.querySelectorAll('#perfFpsPresets button').forEach(b=>b.addEventListener('click',()=>{ fEl.value=b.dataset.fps; applyFps(); }));
+    _updatePerfLabels();
+    _log('帧率上限设为 ' + (f>0?f+'fps':'无限制'),'ok');
+  });
   body.querySelectorAll('[data-field="showFps"],[data-field="showRes"]').forEach(t=>{
     t.addEventListener('click',()=>{ const f=t.dataset.field; CFG[f]=!CFG[f]; t.classList.toggle('on',CFG[f]); scheduleSave(); });
   });
@@ -1493,6 +1469,8 @@ function seekPreview(clientX){
   document.getElementById('seekFill').style.width=(_seekPreviewPct*100)+'%';
   const sec=CFG.audio.duration*_seekPreviewPct;
   document.getElementById('timeDisplay').textContent=`${fmtTime(sec)} / ${fmtTime(CFG.audio.duration)}`;
+  // 与 midi_player 一致：拖动过程中即时跳转，可视化同步刷新
+  CFG.audio.currentTime=sec;
 }
 function seekApply(){
   if(!CFG.audio||!CFG.audio.duration) return;
@@ -1569,6 +1547,8 @@ document.addEventListener('pointerdown',e=>{
   const t=e.target;
   if(t && t.closest && (t.closest('.drop-panel') || t.closest('.drop-trigger'))) return;
   if(t && t.closest && t.closest('.ctl-btn')) return;
+  // 点击绘制区用于选中元素（selectElement 会展开属性面板），不应立即关闭面板
+  if(t && t.closest && t.closest('.canvas-stage')) return;
   if(document.querySelector('.drop-panel.open')) _closeAllDropPanels();
 });
 // 全屏：全屏绘制区；全屏时画布元素不可选中/点击，双击任意位置退出
@@ -1608,26 +1588,26 @@ window.addEventListener('keydown',e=>{
    ============================================================ */
 const _restored = loadConfig(); // 从 localStorage 恢复分辨率/帧率/元素等设置
 if(_restored){
-  canvas.width=CFG.canvas.w||1280; canvas.height=CFG.canvas.h||720;
+  canvas.width=CFG.canvas.w||1920; canvas.height=CFG.canvas.h||1080;
   _eid = CFG.elements.reduce((m,e)=>Math.max(m, e.id||0), 0);
 }else{
-  // 无历史配置：默认 1280×720
-  canvas.width=1280; canvas.height=720; CFG.canvas.w=1280; CFG.canvas.h=720;
+  // 无历史配置：默认 1920×1080（1080p）
+  canvas.width=1920; canvas.height=1080; CFG.canvas.w=1920; CFG.canvas.h=1080;
 }
 document.getElementById('volSlider').value = CFG.volume;
 document.getElementById('loopBtn').classList.toggle('active', CFG.loop);
 document.getElementById('loopBtn').innerHTML=CFG.loop?LIST_LOOP_ICON:NO_LOOP_ICON;
 const _rfs=document.getElementById('raceFullSw'); if(_rfs) _rfs.checked=raceFullDownload;
-_detectMaxFps();
 renderLibrary();
 if(_restored && CFG.elements.length){
-  CFG.selectedId=null;
+  // 默认选中绘制区中的元素，并打开其属性面板
+  if(CFG.selectedId==null || !getSelected()) CFG.selectedId=CFG.elements[0].id;
   renderProps();
 }else{
-  // 默认添加一个居中元素（x/y=50）
+  // 默认添加一个居中元素（x/y=50），addElement 会将其选中
   addElement('bars');
 }
-_openToolPanel('props'); // 默认展开「属性」面板
+_openToolPanel('props'); // 默认展开「属性」面板并选中元素
 applyPanelAppearance(); // 应用持久化的面板透明度/模糊
 // 等布局完成后按宽度适配一次
 requestAnimationFrame(()=>{ render(); fitCanvas(); });
