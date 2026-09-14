@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
-<link rel="preconnect" href="https://fastly.jsdelivr.net" crossorigin>
-<link rel="dns-prefetch" href="https://fastly.jsdelivr.net">
 <link rel="preconnect" href="https://gcore.jsdelivr.net" crossorigin>
 <link rel="dns-prefetch" href="https://gcore.jsdelivr.net">
 <link rel="preconnect" href="https://testingcf.jsdelivr.net" crossorigin>
 <link rel="dns-prefetch" href="https://testingcf.jsdelivr.net">
+<link rel="preconnect" href="https://ghfast.top" crossorigin>
+<link rel="dns-prefetch" href="https://ghfast.top">
 <title>teecatt</title>
 <style>
 :root{--bg:#000000;--surface:#000000;--surface2:#1c2128;--line:#30363d;--text:#e6edf3;--muted:#8b949e;--accent:#58a6ff;--accent2:#3fb950;--hover:#21262d;--violet:#c822ff;--red:#ff3f58;--warn:#e8b64c}
@@ -288,6 +288,7 @@ body.immersive .links{display:none}
 </aside>
 
 <script src="build-info.js?v=dev"></script>
+<script src="./shared/cdn-race.js"></script>
 <script>
 // 页脚「构建于」+ 浏览器标签标题：显示最近一次部署时间，并可点击跳转到对应提交
 (function(){
@@ -468,9 +469,9 @@ function introFly(){ if(flyDone||!spinAt||!meReady||!globe) return; if(document.
 function init(){
   if(!window.Globe) return;
   globe=Globe()(host);
-  globe.globeImageUrl('./globe/textures/earth-blue-marble.jpg')
-    .bumpImageUrl('./globe/textures/earth-topology.png')
-    .backgroundImageUrl('./globe/textures/night-sky.png')
+  globe.globeImageUrl(ASSET['earth-blue-marble.jpg']||'./globe/textures/earth-blue-marble.jpg')
+    .bumpImageUrl(ASSET['earth-topology.png']||'./globe/textures/earth-topology.png')
+    .backgroundImageUrl(ASSET['night-sky.png']||'./globe/textures/night-sky.png')
     .showAtmosphere(true).atmosphereColor('#7fb8ff').atmosphereAltitude(0.22)
     .pointLat('lat').pointLng('lon')
     .pointAltitude(function(d){ return 0.01+Math.log2((d.n||1)+1)*0.015; })
@@ -497,8 +498,18 @@ function init(){
   meP.then(function(me){ if(me&&me.lat!=null){ meData=me; renderMe(); updateHtml(); var url='https://api.open-meteo.com/v1/forecast?latitude='+me.lat+'&longitude='+me.lon+'&current=temperature_2m,weather_code&timezone=auto'; fetch(url).then(function(r){ return r.json(); }).then(function(wd){ meData.weather=(W_ICON[wd.current&&wd.current.weather_code]||'🌡️')+Math.round((wd.current&&wd.current.temperature_2m)||0)+'°'; updateHtml(); }).catch(function(){}); } meData=me||meData; geoState=(meData&&meData.lat!=null)?'ok':'fail'; if(me) updateHtml(); if(gpsWant&&meData&&meData.lat!=null){ gpsWant=false; setTimeout(doGpsFly,60); } meReady=true; introFly(); });
   setTimeout(function(){ meReady=true; introFly(); },3000);
 }
-var started=false;
-function boot(){ if(started) return; started=true; var sc=document.createElement('script'); sc.src='./globe/vendor/globe.gl.min.js'; sc.async=true; sc.onload=function(){ init(); }; document.head.appendChild(sc); }
+var started=false, ASSET={};
+function boot(){
+  if(started) return; started=true;
+  var CR=window.CdnRace;
+  var texJobs=['earth-blue-marble.jpg','earth-topology.png','night-sky.png'].map(function(f){
+    var j=(CR&&CR.raceImageUrl)?CR.raceImageUrl('','globe/textures/'+f,{label:f}):Promise.resolve(null);
+    return j.then(function(u){ if(u) ASSET[f]=u; });
+  });
+  var lib=(CR&&CR.loadScriptRaced)?CR.loadScriptRaced('','globe/vendor/globe.gl.min.js',{label:'globe.gl.min.js'})
+    :new Promise(function(res,rej){ var sc=document.createElement('script'); sc.src='./globe/vendor/globe.gl.min.js'; sc.async=true; sc.onload=res; sc.onerror=rej; document.head.appendChild(sc); });
+  lib.then(function(){ return Promise.all(texJobs); }).then(init).catch(function(e){ if(window.console) console.error('[globe] init failed',e); });
+}
 function schedule(){ setTimeout(function(){ if(window.requestIdleCallback) requestIdleCallback(boot,{timeout:2000}); else boot(); },500); }
 if(document.readyState==='complete') schedule(); else window.addEventListener('load',schedule);
 })();
