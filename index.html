@@ -29,6 +29,7 @@ a{text-decoration:none;color:inherit}
 .hero-globe-wrap{display:inline-block;position:relative;width:200px;height:200px;margin-bottom:16px;cursor:grab}
 .hero-globe-wrap:active{cursor:grabbing}
 #hero-globe{width:200px;height:200px}
+.globe-info{font-size:12px;color:var(--muted);margin-bottom:12px;min-height:16px}
 .contact-label{font-size:12px;color:var(--muted);margin-bottom:8px;letter-spacing:1px;text-transform:uppercase}
 .social{display:flex;justify-content:center;gap:10px;margin:0}
 .social a{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border:1px solid var(--line);border-radius:50%;color:var(--muted);transition:all .2s}
@@ -71,6 +72,7 @@ footer{border-top:1px solid var(--line);padding:16px 24px;text-align:center;font
   .hero{padding-top:32px}
   .hero-globe-wrap{width:150px;height:150px}
   #hero-globe{width:150px;height:150px}
+  .globe-info{font-size:11px}
   .grid{padding:24px 16px 40px;gap:14px;grid-template-columns:1fr !important;max-width:none !important}
   .card{min-width:0}
   .social{flex-wrap:wrap}
@@ -82,6 +84,7 @@ footer{border-top:1px solid var(--line);padding:16px 24px;text-align:center;font
   <a class="hero-globe-wrap" href="./globe/" title="访客地图">
     <canvas id="hero-globe" width="400" height="400"></canvas>
   </a>
+  <div class="globe-info" id="globe-info"></div>
   <h1>Here we stand open arms<br>This is home where we are</h1>
   <div class="contact-label">Contact me</div>
   <div class="social">
@@ -178,10 +181,14 @@ footer{border-top:1px solid var(--line);padding:16px 24px;text-align:center;font
 </script>
 <script type="module">
 import createGlobe from './vendor/cobe.js';
+const W_ICON={0:'☀️',1:'🌤️',2:'⛅',3:'☁️',45:'🌫️',48:'🌫️',51:'🌦️',53:'🌧️',55:'🌧️',61:'🌧️',63:'🌧️',65:'🌧️',71:'🌨️',73:'🌨️',75:'🌨️',80:'🌦️',81:'🌧️',82:'🌧️',95:'⛈️',96:'⛈️',99:'⛈️'};
 async function loadGlobe(){
   const canvas=document.getElementById('hero-globe');
+  const infoEl=document.getElementById('globe-info');
   if(!canvas) return;
-  let markers=[],phi=0,theta=0.3,dragging=false,lastX=0,lastY=0,autoRotate=true;
+  let markers=[],phi=0,theta=0.3,dragging=false,lastX=0,lastY=0;
+  let velPhi=0,velTheta=0,autoRotate=true;
+  let targetPhi=null,targetTheta=null;
   try{
     const r=await fetch('/api/stats',{cache:'no-store'});
     const st=await r.json();
@@ -199,27 +206,60 @@ async function loadGlobe(){
     markers:markers,
     markerElevation:0.02
   });
-  function onPointerDown(e){ dragging=true; autoRotate=false; lastX=e.clientX||e.touches?.[0]?.clientX||0; lastY=e.clientY||e.touches?.[0]?.clientY||0; e.preventDefault(); }
-  function onPointerMove(e){ if(!dragging) return; const x=e.clientX||e.touches?.[0]?.clientX||0, y=e.clientY||e.touches?.[0]?.clientY||0; phi+=(x-lastX)*0.005; theta=Math.max(-1.2,Math.min(1.2,theta+(y-lastY)*0.005)); lastX=x; lastY=y; e.preventDefault(); }
-  function onPointerUp(){ dragging=false; }
-  canvas.addEventListener('mousedown',onPointerDown);
-  canvas.addEventListener('mousemove',onPointerMove);
-  canvas.addEventListener('mouseup',onPointerUp);
-  canvas.addEventListener('mouseleave',onPointerUp);
-  canvas.addEventListener('touchstart',onPointerDown,{passive:false});
-  canvas.addEventListener('touchmove',onPointerMove,{passive:false});
-  canvas.addEventListener('touchend',onPointerUp);
+  function onDown(e){ dragging=true; autoRotate=false; velPhi=0; velTheta=0; lastX=e.clientX||e.touches?.[0]?.clientX||0; lastY=e.clientY||e.touches?.[0]?.clientY||0; e.preventDefault(); }
+  function onMove(e){ if(!dragging) return; const x=e.clientX||e.touches?.[0]?.clientX||0, y=e.clientY||e.touches?.[0]?.clientY||0; const dx=x-lastX, dy=y-lastY; velPhi=dx*0.005; velTheta=dy*0.005; phi+=velPhi; theta=Math.max(-1.2,Math.min(1.2,theta+velTheta)); lastX=x; lastY=y; e.preventDefault(); }
+  function onUp(){ dragging=false; }
+  canvas.addEventListener('mousedown',onDown);
+  canvas.addEventListener('mousemove',onMove);
+  canvas.addEventListener('mouseup',onUp);
+  canvas.addEventListener('mouseleave',onUp);
+  canvas.addEventListener('touchstart',onDown,{passive:false});
+  canvas.addEventListener('touchmove',onMove,{passive:false});
+  canvas.addEventListener('touchend',onUp);
   function animate(){
-    if(autoRotate) phi+=0.003;
+    if(!dragging){
+      if(targetPhi!==null&&targetTheta!==null){
+        const dPhi=targetPhi-phi, dTheta=targetTheta-theta;
+        if(Math.abs(dPhi)<0.002&&Math.abs(dTheta)<0.002){ targetPhi=null; targetTheta=null; autoRotate=true; }
+        else { phi+=dPhi*0.04; theta+=dTheta*0.04; }
+      } else if(Math.abs(velPhi)>0.0002||Math.abs(velTheta)>0.0002){
+        phi+=velPhi; theta=Math.max(-1.2,Math.min(1.2,theta+velTheta));
+        velPhi*=0.95; velTheta*=0.95;
+      } else if(autoRotate){
+        phi+=0.003;
+      } else {
+        velPhi=0; velTheta=0; autoRotate=true;
+      }
+    }
     globe.update({phi,theta});
     requestAnimationFrame(animate);
   }
   animate();
   setTimeout(async function(){
+    let me=null;
+    try{ const r=await fetch('/api/me',{cache:'no-store'}); if(r.ok) me=await r.json(); }catch(e){}
+    if(!me||me.lat==null) return;
+    targetTheta=Math.max(-1.2,Math.min(1.2,-(me.lat-10)*Math.PI/180));
+    targetPhi=phi+Math.PI;
+    autoRotate=false;
+    markers.push({location:[me.lat,me.lon],size:0.05,color:[1,0.4,0.4]});
+    globe.update({markers});
+    let city=me.city_zh||me.city||'';
+    let prov=me.region_zh||me.region||'';
+    let country='';
+    try{ const rn=new Intl.DisplayNames(['zh-Hans'],{type:'region'}); country=rn.of(me.country)||me.country; }catch(e){ country=me.country||''; }
+    let weather='';
     try{
-      const r=await fetch('/api/me',{cache:'no-store'});
-      if(r.ok){ const me=await r.json(); if(me.lat!=null){ theta=Math.max(-1.2,Math.min(1.2,-(me.lat-10)*Math.PI/180)); } }
+      const wr=await fetch('https://api.open-meteo.com/v1/forecast?latitude='+me.lat+'&longitude='+me.lon+'&current=temperature_2m,weather_code&timezone=auto');
+      const wd=await wr.json();
+      const t=Math.round(wd.current?.temperature_2m||0);
+      const ic=W_ICON[wd.current?.weather_code]||'🌡️';
+      weather=ic+t+'°';
     }catch(e){}
+    if(infoEl){
+      const parts=[city]; if(prov&&prov!==city) parts.push(prov); if(country) parts.push(country);
+      infoEl.textContent=parts.join(' · ')+(weather?' '+weather:'');
+    }
   },1000);
 }
 loadGlobe();
