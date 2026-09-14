@@ -14,10 +14,10 @@ header{position:fixed;top:0;left:0;padding:16px 18px;z-index:10}
 header h1{font-size:15px;font-weight:600;letter-spacing:.5px;text-shadow:0 1px 8px #000}
 
 #panel{position:fixed;top:0;right:0;width:340px;height:100%;z-index:9;display:flex;flex-direction:column;pointer-events:none}
-.panelbox{position:relative;flex:1;min-height:0;display:flex;flex-direction:column;background:var(--panel);backdrop-filter:blur(10px);border-left:1px solid var(--line);margin-top:15px;pointer-events:auto;transition:transform .3s ease}
+.panelbox{position:relative;flex:1;min-height:0;display:flex;flex-direction:column;background:rgba(13,17,23,.2);backdrop-filter:blur(3px);border-left:1px solid var(--line);margin-top:45px;pointer-events:auto;transition:transform .3s ease}
 #panel.collapsed .panelbox{transform:translateY(100%);pointer-events:none}
-.chev{position:absolute;top:-15px;left:50%;transform:translateX(-50%);z-index:12;width:102px;height:15px;display:inline-flex;align-items:center;justify-content:center;color:var(--muted);background:none;border:none;cursor:pointer;transition:color .15s;pointer-events:auto;outline:none}
-.chev:hover{color:var(--text);background:rgba(255,255,255,.08);border-radius:10px}
+.chev{position:absolute;top:-45px;left:0;z-index:12;width:100%;height:45px;display:inline-flex;align-items:center;justify-content:center;color:var(--muted);background:none;border:none;cursor:pointer;transition:color .15s;pointer-events:auto;outline:none}
+.chev:hover{color:var(--text)}
 .chev:focus{outline:none;box-shadow:none}
 .chev svg{width:60px;height:9px;transition:transform .25s ease}
 .chev.up svg{transform:rotate(180deg)}
@@ -38,6 +38,11 @@ header h1{font-size:15px;font-weight:600;letter-spacing:.5px;text-shadow:0 1px 8
 .gps.on{color:var(--accent)}
 .gps.on:hover{color:var(--accent)}
 .gps svg{width:18px;height:18px;display:block}
+.gps-corner{position:fixed;top:6px;right:13px;z-index:13;width:46px;height:46px;display:flex;align-items:center;justify-content:center;color:var(--muted);background:none;border:none;cursor:pointer;padding:0;outline:none;transition:color .15s,transform .15s}
+.gps-corner:hover{color:var(--text);transform:scale(1.06)}
+.gps-corner.on,.gps-corner.on:hover{color:var(--accent)}
+.gps-corner:focus{outline:none}
+.gps-corner svg{width:26px;height:26px;display:block}
 .mecity{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 
 #list{flex:1;overflow-y:auto;padding:0 10px 20px}
@@ -88,6 +93,7 @@ header h1{font-size:15px;font-weight:600;letter-spacing:.5px;text-shadow:0 1px 8
   <div id="list"><div class="empty">Loading…</div></div>
   </div>
 </aside>
+<button class="gps-corner" id="gps-corner" title="Locate me" aria-label="locate me"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 12 12"><path fill="currentColor" d="M6 .5A4.5 4.5 0 0 1 10.5 5c0 1.863-1.42 3.815-4.2 5.9a.5.5 0 0 1-.6 0C2.92 8.815 1.5 6.863 1.5 5A4.5 4.5 0 0 1 6 .5m0 3a1.5 1.5 0 1 0 0 3a1.5 1.5 0 0 0 0-3"/></svg></button>
 
 <script src="./vendor/globe.gl.min.js"></script>
 <script>
@@ -191,7 +197,7 @@ function flyTo(lat,lon){
   if(!globe||lat==null||lon==null) return;
   globe.controls().autoRotate=false;
   var tLat = Math.max(-82, Math.min(82, lat - 15));
-  globe.pointOfView({lat:tLat, lng:lon, altitude:1.5}, 900);
+  globe.pointOfView({lat:tLat, lng:lon, altitude:1.5}, 500);
   clearTimeout(flyTo._t);
   flyTo._t=setTimeout(function(){ globe.controls().autoRotate=true; }, 1000);
 }
@@ -237,8 +243,11 @@ function applySelection(){
     row.classList.toggle('sel', c && isSel(c));
   });
   var gps=document.getElementById('gps');
+  var gc=document.getElementById('gps-corner');
   var mc=cityForMe();
-  if(gps) gps.classList.toggle('on', !!(mc && selCity && rowKey(mc)===rowKey(selCity)));
+  var on=!!(mc && selCity && rowKey(mc)===rowKey(selCity));
+  if(gps) gps.classList.toggle('on', on);
+  if(gc) gc.classList.toggle('on', on);
 }
 
 function renderList(){
@@ -280,6 +289,7 @@ function renderSub(){
     ? cities.length+' 个城市 · 覆盖 '+Object.keys(countries).length+' 个国家/地区'
     : cities.length+' cities · '+Object.keys(countries).length+' countries/regions');
 }
+function cacheTake(k){ try{ var o=JSON.parse(sessionStorage.getItem('tc_'+k)||'null'); sessionStorage.removeItem('tc_'+k); if(o) return o.v; }catch(e){} return null; }
 function renderMe(){
   var el=document.getElementById('mecity'); if(!el) return;
   el.textContent = meData ? nameOf(meData) : '';
@@ -287,8 +297,8 @@ function renderMe(){
 
 async function refresh(){
   try{
-    var rs=await fetch('/api/stats',{cache:'no-store'});
-    var st=await rs.json();
+    var st=cacheTake('stats');
+    if(!st){ var rs=await fetch('/api/stats',{cache:'no-store'}); st=await rs.json(); }
     cities=(st.cities||[]).filter(function(c){return c.city || c.region;});
     document.getElementById('total').textContent=st.total!=null?st.total:'—';
     renderSub();
@@ -305,12 +315,12 @@ async function refresh(){
 }
 async function refreshMe(){
   try{
-    var r=await fetch('/api/me',{cache:'no-store'});
-    if(!r.ok) return;
-    meData=await r.json();
+    var me=cacheTake('me');
+    if(!me){ var r=await fetch('/api/me',{cache:'no-store'}); if(!r.ok) return; me=await r.json(); }
+    meData=me;
     renderMe();
     applySelection();
-    setTimeout(function(){ document.getElementById('gps').click(); }, 1000);
+    setTimeout(function(){ document.getElementById('gps').click(); }, 100);
   }catch(e){}
 }
 
@@ -327,6 +337,7 @@ function expandPanel(){ if(collapsed){ setCollapsed(false); return true; } retur
 document.getElementById('chev').addEventListener('click',function(){ setCollapsed(!collapsed); var b=this; setTimeout(function(){ b.blur(); },1000); });
 document.getElementById('lang').addEventListener('click',function(){ lang = lang==='zh' ? 'en' : 'zh'; applyLang(); var b=this; setTimeout(function(){ b.blur(); },1000); });
 document.getElementById('gps').addEventListener('click',function(){ var c=cityForMe(); if(c) selectCity(c, true); var b=this; setTimeout(function(){ b.blur(); },1000); });
+document.getElementById('gps-corner').addEventListener('click',function(){ setCollapsed(false); var c=cityForMe(); if(c) selectCity(c, true); var b=this; setTimeout(function(){ b.blur(); },1000); });
 
 (async function(){
   if(!window.Globe){ document.getElementById('list').innerHTML='<div class="empty">3D engine failed to load.</div>'; return; }

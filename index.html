@@ -336,9 +336,10 @@ async function loadGlobe(){
       setTimeout(function(){ gpsBtn.style.color=''; }, 500);
     });
   }
-  // 城市点与我的坐标并行请求
-  var statsP=fetch('/api/stats',{cache:'no-store'}).then(function(r){ return r.json(); }).catch(function(){ return null; });
-  var meP=fetch('/api/me',{cache:'no-store'}).then(function(r){ return r.ok?r.json():null; }).catch(function(){ return null; });
+  function cacheSet(k,v){ try{ sessionStorage.setItem('tc_'+k, JSON.stringify({t:Date.now(),v:v})); }catch(e){} }
+  // 城市点与我的坐标并行请求，结果写入 sessionStorage 供 /globe/ 复用
+  var statsP=fetch('/api/stats',{cache:'no-store'}).then(function(r){ return r.json(); }).then(function(st){ cacheSet('stats',st); return st; }).catch(function(){ return null; });
+  var meP=fetch('/api/me',{cache:'no-store'}).then(function(r){ return r.ok?r.json():null; }).then(function(me){ if(me) cacheSet('me',me); return me; }).catch(function(){ return null; });
   statsP.then(function(st){
     if(!st) return;
     cityMarkers=(st.cities||[]).filter(function(c){return c.lat!=null&&c.lon!=null;}).map(function(c){return{location:[c.lat,c.lon],size:0.02+Math.log2((c.n||1)+1)*0.008};});
