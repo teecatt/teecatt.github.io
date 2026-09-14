@@ -191,7 +191,7 @@ function flyTo(lat,lon){
   if(!globe||lat==null||lon==null) return;
   globe.controls().autoRotate=false;
   var tLat = Math.max(-82, Math.min(82, lat - 15));
-  globe.pointOfView({lat:tLat, lng:lon, altitude:1.8}, 900);
+  globe.pointOfView({lat:tLat, lng:lon, altitude:1.5}, 900);
   clearTimeout(flyTo._t);
   flyTo._t=setTimeout(function(){ globe.controls().autoRotate=true; }, 1000);
 }
@@ -237,7 +237,8 @@ function applySelection(){
     row.classList.toggle('sel', c && isSel(c));
   });
   var gps=document.getElementById('gps');
-  if(gps) gps.classList.toggle('on', !!(meData && isSel(meData)));
+  var mc=cityForMe();
+  if(gps) gps.classList.toggle('on', !!(mc && selCity && rowKey(mc)===rowKey(selCity)));
 }
 
 function renderList(){
