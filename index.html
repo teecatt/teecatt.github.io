@@ -24,14 +24,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Microsoft YaHei',H
 a{text-decoration:none;color:inherit}
 .build-info{color:var(--muted);text-decoration:none}
 .build-info:hover{color:var(--text)}
-.hero{padding:48px 24px 8px}
-.hero h1{font-size:16px;font-weight:700;font-family:Arial,sans-serif;letter-spacing:1px;background:linear-gradient(120deg,var(--accent),var(--violet));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
-.hero-inner{display:flex;align-items:center;justify-content:center;gap:28px;max-width:800px;margin:0 auto}
-.hero-left{flex:1;text-align:left}
-.hero-right{position:relative;width:200px;height:200px;flex:0 0 auto}
+.hero{padding:48px 24px 8px;text-align:center}
+.hero h1{font-size:16px;font-weight:700;font-family:Arial,sans-serif;letter-spacing:1px;background:linear-gradient(120deg,var(--accent),var(--violet));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:16px}
+.hero-globe-wrap{display:inline-block;position:relative;width:200px;height:200px;margin-bottom:16px;cursor:grab}
+.hero-globe-wrap:active{cursor:grabbing}
 #hero-globe{width:200px;height:200px}
-.globe-weather{position:absolute;inset:0;pointer-events:none}
-.globe-weather .wt{position:absolute;font-size:9px;color:var(--muted);background:rgba(0,0,0,.7);padding:1px 4px;border-radius:4px;white-space:nowrap}
 .contact-label{font-size:12px;color:var(--muted);margin-bottom:8px;letter-spacing:1px;text-transform:uppercase}
 .social{display:flex;justify-content:center;gap:10px;margin:0}
 .social a{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border:1px solid var(--line);border-radius:50%;color:var(--muted);transition:all .2s}
@@ -71,9 +68,8 @@ a{text-decoration:none;color:inherit}
 .badge-new{background:rgba(255,63,88,.2);color:var(--red);border:1px solid rgba(255,63,88,.4)}
 footer{border-top:1px solid var(--line);padding:16px 24px;text-align:center;font-size:11px;color:var(--muted)}
 @media(max-width:600px){
-  .hero-inner{flex-direction:column-reverse;gap:16px}
-  .hero-left{text-align:center}
-  .hero-right{width:150px;height:150px}
+  .hero{padding-top:32px}
+  .hero-globe-wrap{width:150px;height:150px}
   #hero-globe{width:150px;height:150px}
   .grid{padding:24px 16px 40px;gap:14px;grid-template-columns:1fr !important;max-width:none !important}
   .card{min-width:0}
@@ -83,26 +79,21 @@ footer{border-top:1px solid var(--line);padding:16px 24px;text-align:center;font
 </head>
 <body>
 <div class="hero">
-  <div class="hero-inner">
-    <div class="hero-left">
-      <h1>Here we stand open arms<br>This is home where we are</h1>
-      <div class="contact-label">Contact me</div>
-      <div class="social">
-        <a href="mailto:teecatt@163.com" title="Email">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 4L12 13 2 4"/></svg>
-        </a>
-        <a href="https://github.com/teecatt" target="_blank" rel="noopener" title="GitHub">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
-        </a>
-        <a href="https://space.bilibili.com/412767080" target="_blank" rel="noopener" title="Bilibili">
-          <svg viewBox="0 0 24 24" fill="#00A1D6"><path d="M17.813 4.653h.854c1.51.054 2.769.578 3.773 1.574 1.004.995 1.524 2.249 1.56 3.76v7.36c-.036 1.51-.556 2.769-1.56 3.773s-2.262 1.524-3.773 1.56H5.333c-1.51-.036-2.769-.556-3.773-1.56S.036 18.858 0 17.347v-7.36c.036-1.511.556-2.765 1.56-3.76 1.004-.996 2.262-1.52 3.773-1.574h.774l-1.174-1.12a1.234 1.234 0 0 1-.373-.906c0-.356.124-.658.373-.907l.027-.027c.267-.249.573-.373.92-.373.347 0 .653.124.92.373L9.653 4.44c.071.071.134.142.187.213h4.267a.836.836 0 0 1 .16-.213l2.853-2.747c.267-.249.573-.373.92-.373.347 0 .662.151.929.4.267.249.391.551.391.907 0 .355-.124.657-.373.906zM5.333 7.24c-.746.018-1.373.276-1.88.773-.506.498-.769 1.13-.786 1.894v7.52c.017.764.28 1.395.786 1.893.507.498 1.134.756 1.88.773h13.334c.746-.017 1.373-.275 1.88-.773.506-.498.769-1.129.786-1.893v-7.52c-.017-.765-.28-1.396-.786-1.894-.507-.497-1.134-.755-1.88-.773zM8 11.107c.373 0 .684.124.933.373.25.249.383.569.4.96v1.173c-.017.391-.15.711-.4.96-.249.25-.56.374-.933.374s-.684-.125-.933-.374c-.25-.249-.383-.569-.4-.96V12.44c0-.373.129-.689.386-.947.258-.257.574-.386.947-.386zm8 0c.373 0 .684.124.933.373.25.249.383.569.4.96v1.173c-.017.391-.15.711-.4.96-.249.25-.56.374-.933.374s-.684-.125-.933-.374c-.25-.249-.383-.569-.4-.96V12.44c.017-.391.15-.711.4-.96.249-.249.56-.373.933-.373Z"/></svg>
-        </a>
-      </div>
-    </div>
-    <div class="hero-right">
-      <canvas id="hero-globe" width="400" height="400"></canvas>
-      <div class="globe-weather" id="globe-weather"></div>
-    </div>
+  <a class="hero-globe-wrap" href="./globe/" title="访客地图">
+    <canvas id="hero-globe" width="400" height="400"></canvas>
+  </a>
+  <h1>Here we stand open arms<br>This is home where we are</h1>
+  <div class="contact-label">Contact me</div>
+  <div class="social">
+    <a href="mailto:teecatt@163.com" title="Email">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 4L12 13 2 4"/></svg>
+    </a>
+    <a href="https://github.com/teecatt" target="_blank" rel="noopener" title="GitHub">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+    </a>
+    <a href="https://space.bilibili.com/412767080" target="_blank" rel="noopener" title="Bilibili">
+      <svg viewBox="0 0 24 24" fill="#00A1D6"><path d="M17.813 4.653h.854c1.51.054 2.769.578 3.773 1.574 1.004.995 1.524 2.249 1.56 3.76v7.36c-.036 1.51-.556 2.769-1.56 3.773s-2.262 1.524-3.773 1.56H5.333c-1.51-.036-2.769-.556-3.773-1.56S.036 18.858 0 17.347v-7.36c.036-1.511.556-2.765 1.56-3.76 1.004-.996 2.262-1.52 3.773-1.574h.774l-1.174-1.12a1.234 1.234 0 0 1-.373-.906c0-.356.124-.658.373-.907l.027-.027c.267-.249.573-.373.92-.373.347 0 .653.124.92.373L9.653 4.44c.071.071.134.142.187.213h4.267a.836.836 0 0 1 .16-.213l2.853-2.747c.267-.249.573-.373.92-.373.347 0 .662.151.929.4.267.249.391.551.391.907 0 .355-.124.657-.373.906zM5.333 7.24c-.746.018-1.373.276-1.88.773-.506.498-.769 1.13-.786 1.894v7.52c.017.764.28 1.395.786 1.893.507.498 1.134.756 1.88.773h13.334c.746-.017 1.373-.275 1.88-.773.506-.498.769-1.129.786-1.893v-7.52c-.017-.765-.28-1.396-.786-1.894-.507-.497-1.134-.755-1.88-.773zM8 11.107c.373 0 .684.124.933.373.25.249.383.569.4.96v1.173c-.017.391-.15.711-.4.96-.249.25-.56.374-.933.374s-.684-.125-.933-.374c-.25-.249-.383-.569-.4-.96V12.44c0-.373.129-.689.386-.947.258-.257.574-.386.947-.386zm8 0c.373 0 .684.124.933.373.25.249.383.569.4.96v1.173c-.017.391-.15.711-.4.96-.249.25-.56.374-.933.374s-.684-.125-.933-.374c-.25-.249-.383-.569-.4-.96V12.44c.017-.391.15-.711.4-.96.249-.249.56-.373.933-.373Z"/></svg>
+    </a>
   </div>
 </div>
 <div class="grid">
@@ -187,20 +178,15 @@ footer{border-top:1px solid var(--line);padding:16px 24px;text-align:center;font
 </script>
 <script type="module">
 import createGlobe from './vendor/cobe.js';
-const WEATHER_ICON={0:'☀️',1:'🌤️',2:'⛅',3:'☁️',45:'🌫️',48:'🌫️',51:'🌦️',53:'🌧️',55:'🌧️',61:'🌧️',63:'🌧️',65:'🌧️',71:'🌨️',73:'🌨️',75:'🌨️',80:'🌦️',81:'🌧️',82:'🌧️',95:'⛈️',96:'⛈️',99:'⛈️'};
 async function loadGlobe(){
   const canvas=document.getElementById('hero-globe');
   if(!canvas) return;
-  let markers=[],phi=0,weatherData=[];
+  let markers=[],phi=0,theta=0.3,dragging=false,lastX=0,lastY=0,autoRotate=true;
   try{
     const r=await fetch('/api/stats',{cache:'no-store'});
     const st=await r.json();
-    markers=(st.cities||[]).filter(c=>c.lat!=null&&c.lon!=null).map(c=>({location:[c.lat,c.lon],size:0.02+Math.log2((c.n||1)+1)*0.008,id:c.city}));
-    const top5=(st.cities||[]).filter(c=>c.lat!=null).sort((a,b)=>b.n-a.n).slice(0,5);
-    const wps=top5.map(c=>fetch(`https://api.open-meteo.com/v1/forecast?latitude=${c.lat}&longitude=${c.lon}&current=temperature_2m,weather_code&timezone=auto`).then(r=>r.json()).then(d=>({city:c.city_zh||c.city,lat:c.lat,lon:c.lon,temp:Math.round(d.current?.temperature_2m||0),icon:WEATHER_ICON[d.current?.weather_code]||'🌡️'})).catch(()=>({city:c.city_zh||c.city,lat:c.lat,lon:c.lon,temp:'?',icon:'🌡️'})));
-    weatherData=await Promise.all(wps);
+    markers=(st.cities||[]).filter(c=>c.lat!=null&&c.lon!=null).map(c=>({location:[c.lat,c.lon],size:0.02+Math.log2((c.n||1)+1)*0.008}));
   }catch(e){}
-  const wEl=document.getElementById('globe-weather');
   const globe=createGlobe(canvas,{
     devicePixelRatio:2,width:400,height:400,
     phi:0,theta:0.3,
@@ -213,20 +199,28 @@ async function loadGlobe(){
     markers:markers,
     markerElevation:0.02
   });
+  function onPointerDown(e){ dragging=true; autoRotate=false; lastX=e.clientX||e.touches?.[0]?.clientX||0; lastY=e.clientY||e.touches?.[0]?.clientY||0; e.preventDefault(); }
+  function onPointerMove(e){ if(!dragging) return; const x=e.clientX||e.touches?.[0]?.clientX||0, y=e.clientY||e.touches?.[0]?.clientY||0; phi+=(x-lastX)*0.005; theta=Math.max(-1.2,Math.min(1.2,theta+(y-lastY)*0.005)); lastX=x; lastY=y; e.preventDefault(); }
+  function onPointerUp(){ dragging=false; }
+  canvas.addEventListener('mousedown',onPointerDown);
+  canvas.addEventListener('mousemove',onPointerMove);
+  canvas.addEventListener('mouseup',onPointerUp);
+  canvas.addEventListener('mouseleave',onPointerUp);
+  canvas.addEventListener('touchstart',onPointerDown,{passive:false});
+  canvas.addEventListener('touchmove',onPointerMove,{passive:false});
+  canvas.addEventListener('touchend',onPointerUp);
   function animate(){
-    phi+=0.003;
-    globe.update({phi});
-    if(wEl&&weatherData.length){
-      wEl.innerHTML=weatherData.map(w=>{
-        const angle=Math.atan2(Math.cos(w.lat*Math.PI/180)*Math.sin((w.lon*Math.PI/180)+phi),Math.sin(w.lat*Math.PI/180));
-        const x=50+40*Math.cos(angle);
-        const y=50-40*Math.sin(angle);
-        return '<span class="wt" style="position:absolute;left:'+x+'%;top:'+y+'%;transform:translate(-50%,-50%)">'+w.icon+w.city+' '+w.temp+'°</span>';
-      }).join('');
-    }
+    if(autoRotate) phi+=0.003;
+    globe.update({phi,theta});
     requestAnimationFrame(animate);
   }
   animate();
+  setTimeout(async function(){
+    try{
+      const r=await fetch('/api/me',{cache:'no-store'});
+      if(r.ok){ const me=await r.json(); if(me.lat!=null){ theta=Math.max(-1.2,Math.min(1.2,-(me.lat-10)*Math.PI/180)); } }
+    }catch(e){}
+  },1000);
 }
 loadGlobe();
 </script>
