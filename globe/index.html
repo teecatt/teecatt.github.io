@@ -191,9 +191,9 @@ function flyTo(lat,lon){
   if(!globe||lat==null||lon==null) return;
   globe.controls().autoRotate=false;
   var tLat = Math.max(-82, Math.min(82, lat - 15));
-  globe.pointOfView({lat:tLat, lng:lon, altitude:1.3}, 900);
+  globe.pointOfView({lat:tLat, lng:lon, altitude:1.8}, 900);
   clearTimeout(flyTo._t);
-  flyTo._t=setTimeout(function(){ globe.controls().autoRotate=true; }, 1900);
+  flyTo._t=setTimeout(function(){ globe.controls().autoRotate=true; }, 1000);
 }
 
 function selectCity(c, doScroll){
