@@ -3,7 +3,7 @@
  * ------------------------------------------------------------
  * - CDN_BASES：同一份镜像列表，两个页面同时受益
  * - buildUrls(dir, relPath)：为某仓库子目录下的资源生成 [各镜像..., 同源兜底]
- * - raceDownload / fetchFirstByte / fetchResource：完整下载竞速 / 首字节竞速
+ * - raceDownload / fetchFirstByte / fetchResource：首 128KB 定源竞速 / 首字节竞速
  * - makeLiveLogger：竞速日志「进行中实时覆盖、完成后固化保留」的公共实现
  *
  * 依赖：浏览器环境（fetch / AbortController / Blob）。无外部依赖。
@@ -17,18 +17,13 @@
   const RAW_BASE = 'https://raw.githubusercontent.com/' + REPO_GH + '/' + REPO_REF + '/';
 
   // prefix 同时用于拼接与来源识别；资源 URL = prefix + encode(子目录/相对路径)
+  // 仅保留实测性能最高的 4 个镜像（武汉联通宽带 / 电信5G 双环境基准）
+  // 已移除：jsDelivr-Fastly、ghproxy.net、gh-proxy.com(403)、gh.llkk.cc、gh.xxooo.cf、statically、githack（均超时/无贡献）
   const CDN_BASES = [
-    { name: 'jsDelivr',        prefix: 'https://cdn.jsdelivr.net/gh/' + REPO_GH + '@' + REPO_REF + '/' },
-    { name: 'jsDelivr-Fastly', prefix: 'https://fastly.jsdelivr.net/gh/' + REPO_GH + '@' + REPO_REF + '/' },
-    { name: 'jsDelivr-Gcore',  prefix: 'https://gcore.jsdelivr.net/gh/' + REPO_GH + '@' + REPO_REF + '/' },
-    { name: 'jsDelivr-CF',     prefix: 'https://testingcf.jsdelivr.net/gh/' + REPO_GH + '@' + REPO_REF + '/' },
-    { name: 'ghproxy.net',     prefix: 'https://ghproxy.net/' + RAW_BASE },
-    { name: 'gh-proxy.com',    prefix: 'https://gh-proxy.com/' + RAW_BASE },
-    { name: 'ghfast.top',      prefix: 'https://ghfast.top/' + RAW_BASE },
-    { name: 'gh.llkk.cc',      prefix: 'https://gh.llkk.cc/' + RAW_BASE },
-    { name: 'gh.xxooo.cf',     prefix: 'https://gh.xxooo.cf/' + RAW_BASE },
-    { name: 'statically',      prefix: 'https://cdn.statically.io/gh/' + REPO_GH + '/' + REPO_REF + '/' },
-    { name: 'githack',         prefix: 'https://raw.githack.com/' + REPO_GH + '/' + REPO_REF + '/' },
+    { name: 'jsDelivr',       prefix: 'https://cdn.jsdelivr.net/gh/' + REPO_GH + '@' + REPO_REF + '/' },
+    { name: 'jsDelivr-Gcore', prefix: 'https://gcore.jsdelivr.net/gh/' + REPO_GH + '@' + REPO_REF + '/' },
+    { name: 'jsDelivr-CF',    prefix: 'https://testingcf.jsdelivr.net/gh/' + REPO_GH + '@' + REPO_REF + '/' },
+    { name: 'ghfast.top',     prefix: 'https://ghfast.top/' + RAW_BASE },
   ];
 
   function encPath(p){
@@ -142,11 +137,14 @@
     return new Blob(chunks);
   }
 
-  // 完整下载竞速：所有镜像同时完整下载，最先完成者胜出；其余立即 abort 并丢弃不完整分片。
+  // 首 N 字节竞速（默认前 128KB）：所有镜像同时下载同一文件，最先累计超过 threshold 字节者胜出，
+  // 其余立即 abort（每个落败镜像最多浪费 threshold 字节），胜出者继续读到文件结束。
+  // 文件小于 threshold 时，最先读完（EOF）者胜出。相比全量竞速，浪费量≈threshold×落败镜像数，而非整份文件。
   // 进行中每 0.5s 覆盖一行进度（onLive）；完成后由 onFinal 固化为最终性能行（保留，不被刷掉）。
-  // opts: { label, onProgress(0..100), onLive(text), onFinal(text) }
+  // opts: { label, threshold(默认128KB), onProgress(0..100), onLive(text), onFinal(text) }
   async function raceDownload(list, opts){
     opts = opts || {};
+    const threshold = (opts.threshold > 0) ? opts.threshold : (128 * 1024);
     const onProgress = opts.onProgress, onLive = opts.onLive, onFinal = opts.onFinal;
     const tag = opts.label || '文件';
     if(!list.length) throw new Error('无可用源');
@@ -154,7 +152,7 @@
     const controllers = list.map(() => hasAbort ? new AbortController() : null);
     const states = list.map(url => ({ src: sourceLabel(url), received: 0, total: 0, failed: false }));
     const t0 = performance.now();
-    let lastLog = 0, bestPct = 0, done = false;
+    let claimed = -1, lastLog = 0, bestPct = 0, done = false;
     const report = () => {
       if(done || !onLive) return;
       const now = performance.now();
@@ -165,22 +163,38 @@
       if(!lead || lead.received <= 0) return;
       const elapsed = Math.max((now - t0) / 1000, 0.001);
       const speed = lead.received / elapsed / 1024;
-      const pctTxt = lead.total > 0 ? (lead.received / lead.total * 100).toFixed(0) + '%' : '?';
-      onLive('竞速[' + tag + '] 领先: [' + lead.src + '] ' + fmtSize(lead.received) + '/' +
-        (lead.total > 0 ? fmtSize(lead.total) : '?') + ' ~ ' + pctTxt + ' 平均' + speed.toFixed(0) + 'KB/s');
+      onLive('竞速[' + tag + '] 领先: [' + lead.src + '] ' + fmtSize(lead.received) +
+        (claimed >= 0 ? '（已定源）' : ' / 抢' + fmtSize(threshold)) + ' 平均' + speed.toFixed(0) + 'KB/s');
     };
-    const attempts = list.map((url, i) => downloadBlob(
-      url,
-      (received, total) => {
-        states[i].received = received; states[i].total = total;
-        if(total > 0){
-          const pct = received / total * 100;
-          if(pct > bestPct){ bestPct = pct; if(onProgress) onProgress(bestPct); }
-        }
+    const attempts = list.map((url, i) => (async () => {
+      const resp = await fetch(url, controllers[i] ? { signal: controllers[i].signal } : undefined);
+      if(!resp.ok) throw new Error('HTTP ' + resp.status);
+      const total = (resp.headers && resp.headers.get) ? parseInt(resp.headers.get('content-length') || '0', 10) : 0;
+      states[i].total = total;
+      if(!resp.body || !resp.body.getReader || !total){
+        const blob = new Blob([await resp.arrayBuffer()]);
+        states[i].received = blob.size;
+        if(claimed < 0) claimed = i;
+        return { blob, i, url };
+      }
+      const reader = resp.body.getReader();
+      const chunks = []; let received = 0;
+      for(;;){
+        const rd = await reader.read();
+        if(rd.done) break;
+        chunks.push(rd.value); received += rd.value.length;
+        states[i].received = received;
+        const pct = received / total * 100;
+        if(pct > bestPct){ bestPct = pct; if(onProgress) onProgress(bestPct); }
         report();
-      },
-      controllers[i] ? controllers[i].signal : null
-    ).then(blob => ({ blob, i, url }), err => { states[i].failed = true; throw err; }));
+        if(claimed < 0 && received > threshold){
+          claimed = i; // 先过线者定源，其余立即停
+          controllers.forEach((c, j) => { if(c && j !== i){ try{ c.abort(); }catch(e){} } });
+        }
+      }
+      if(claimed < 0) claimed = i; // 文件比 threshold 小：读完即胜
+      return { blob: new Blob(chunks), i, url };
+    })().then(r => r, err => { states[i].failed = true; throw err; }));
     let winner;
     try{
       winner = await promiseAny(attempts);
@@ -241,6 +255,35 @@
     const list = (Array.isArray(urls) ? urls : [urls]).filter(Boolean);
     if(opts.raceFull) return raceDownload(list, opts);
     return fetchFirstByte(list, opts);
+  }
+
+  // ===== 资源级便捷封装：图片/脚本，走完整下载竞速，失败由调用方回退同源直连 =====
+  // 竞速成 blob URL（调用方自行负责 revoke；失败抛出）
+  function raceBlobUrl(dir, rel, opts){
+    const urls = buildUrls(dir, rel);
+    return raceDownload(urls, opts || {}).then(r => URL.createObjectURL(r.blob));
+  }
+  // 图片等资源：竞速成 blob URL；失败返回 null，调用方回退原路径即可
+  function raceImageUrl(dir, rel, opts){
+    if(typeof URL === 'undefined' || !URL.createObjectURL) return Promise.resolve(null);
+    return raceBlobUrl(dir, rel, opts).catch(() => null);
+  }
+  // 脚本：竞速成 blob URL 后注入 <script>；竞速全败则回退同源直连
+  function loadScriptRaced(dir, rel, opts){
+    const fallback = String(rel).replace(/^\.\//, '');
+    return raceBlobUrl(dir, rel, opts).then(
+      u => injectScript(u, u),
+      () => injectScript(fallback, null)
+    );
+  }
+  function injectScript(src, blobUrl){
+    return new Promise((resolve, reject) => {
+      const sc = document.createElement('script');
+      sc.src = src; sc.async = true;
+      sc.onload = () => { if(blobUrl){ try{ URL.revokeObjectURL(blobUrl); }catch(e){} } resolve(); };
+      sc.onerror = () => reject(new Error('脚本加载失败: ' + src));
+      document.head.appendChild(sc);
+    });
   }
 
   // ===== 竞速日志「进行中覆盖、完成后固化」的公共实现 =====
@@ -317,6 +360,9 @@
     raceDownload: raceDownload,
     fetchFirstByte: fetchFirstByte,
     fetchResource: fetchResource,
+    raceBlobUrl: raceBlobUrl,
+    raceImageUrl: raceImageUrl,
+    loadScriptRaced: loadScriptRaced,
     makeLiveLogger: makeLiveLogger,
   };
 })(typeof window !== 'undefined' ? window : this);

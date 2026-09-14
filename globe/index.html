@@ -4,6 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>访客地图 · teecatt</title>
+<link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
+<link rel="dns-prefetch" href="https://gcore.jsdelivr.net">
+<link rel="dns-prefetch" href="https://testingcf.jsdelivr.net">
+<link rel="dns-prefetch" href="https://ghfast.top">
 <style>
 :root{--bg:#000;--panel:#0d1117cc;--line:#30363d;--text:#e6edf3;--muted:#8b949e;--accent:#58a6ff;--hover:#21262d}
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -95,7 +99,7 @@ header h1{font-size:15px;font-weight:600;letter-spacing:.5px;text-shadow:0 1px 8
 </aside>
 <button class="gps-corner" id="gps-corner" title="Locate me" aria-label="locate me"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 12 12"><path fill="currentColor" d="M6 .5A4.5 4.5 0 0 1 10.5 5c0 1.863-1.42 3.815-4.2 5.9a.5.5 0 0 1-.6 0C2.92 8.815 1.5 6.863 1.5 5A4.5 4.5 0 0 1 6 .5m0 3a1.5 1.5 0 1 0 0 3a1.5 1.5 0 0 0 0-3"/></svg></button>
 
-<script src="./vendor/globe.gl.min.js"></script>
+<script src="../shared/cdn-race.js"></script>
 <script>
 var COLORS = ['#58a6ff','#3fb950','#e8b64c','#ff7b72','#c822ff','#2dd4bf','#ff9e64','#a5d6ff','#f778ba','#7ee787'];
 var _regionNames;
@@ -126,13 +130,13 @@ function isSel(o){ return selKey!=null && o && rowKey(o)===selKey; }
 
 var adminKey = new URLSearchParams(location.search).get('key') || '';
 var lang = 'en';
-var globe, cities=[], adminVisits=[], meData=null, selKey=null, selCity=null, collapsed=false;
+var globe, cities=[], adminVisits=[], meData=null, selKey=null, selCity=null, collapsed=false, ASSET_TEX={};
 
 function initGlobe(){
   globe = Globe()(document.getElementById('globe'))
-    .globeImageUrl('./textures/earth-blue-marble.jpg')
-    .bumpImageUrl('./textures/earth-topology.png')
-    .backgroundImageUrl('./textures/night-sky.png')
+    .globeImageUrl(ASSET_TEX['earth-blue-marble.jpg']||'./textures/earth-blue-marble.jpg')
+    .bumpImageUrl(ASSET_TEX['earth-topology.png']||'./textures/earth-topology.png')
+    .backgroundImageUrl(ASSET_TEX['night-sky.png']||'./textures/night-sky.png')
     .showAtmosphere(true)
     .atmosphereColor('#7fb8ff')
     .atmosphereAltitude(0.22)
@@ -338,8 +342,75 @@ document.getElementById('chev').addEventListener('click',function(){ setCollapse
 document.getElementById('lang').addEventListener('click',function(){ lang = lang==='zh' ? 'en' : 'zh'; applyLang(); var b=this; setTimeout(function(){ b.blur(); },1000); });
 document.getElementById('gps').addEventListener('click',function(){ var c=cityForMe(); if(c) selectCity(c, true); var b=this; setTimeout(function(){ b.blur(); },1000); });
 document.getElementById('gps-corner').addEventListener('click',function(){ setCollapsed(false); var c=cityForMe(); if(c) selectCity(c, true); var b=this; setTimeout(function(){ b.blur(); },1000); });
+// 面板手势：列表到顶/快速下滑/顶部非列表区下拉 → 收起；收起时上拖 chev → 展开
+(function(){
+  var panel=document.getElementById('panel'); if(!panel) return;
+  var box=panel.querySelector('.panelbox');
+  var list=document.getElementById('list');
+  var chev=document.getElementById('chev');
+  if(!box||!list) return;
+  var suppress=false;
+  function markSuppress(){ suppress=true; setTimeout(function(){ suppress=false; },400); }
+  document.addEventListener('click',function(e){ if(suppress){ suppress=false; e.stopPropagation(); e.preventDefault(); } },true);
+  function clearDrag(){ box.style.transition=''; box.style.transform=''; }
+  var startY=null, startT=0, startScroll=0, lastY=0, lastT=0, extra=0, dragging=false, fromList=false;
+  box.addEventListener('touchstart',function(e){
+    if(e.touches.length!==1) return;
+    fromList=list.contains(e.target);
+    startY=e.touches[0].clientY; startT=Date.now(); lastY=startY; lastT=startT;
+    startScroll=list.scrollTop; extra=0; dragging=false;
+  },{passive:true});
+  box.addEventListener('touchmove',function(e){
+    if(startY==null) return;
+    var y=e.touches[0].clientY; lastY=y; lastT=Date.now();
+    var dy=y-startY;
+    extra= fromList ? (dy-(startScroll-list.scrollTop)) : dy;
+    var canDrag= fromList ? (list.scrollTop<=0 && extra>0) : (extra>0);
+    if(canDrag){ dragging=true; box.style.transition='none'; box.style.transform='translateY('+Math.min(extra,box.clientHeight)+'px)'; }
+    else if(dragging){ dragging=false; box.style.transition=''; box.style.transform=''; }
+  },{passive:true});
+  box.addEventListener('touchend',function(){
+    if(startY==null) return;
+    var dt=lastT-startT, dy=lastY-startY, v=dt>0?dy/dt:0;
+    var thresh=fromList?72:48;
+    var collapse=(dragging && extra>thresh) || (v>0.6 && dy>100);
+    if(dragging) markSuppress();
+    startY=null; dragging=false;
+    box.style.transition=''; box.style.transform='';
+    if(collapse) setCollapsed(true);
+  },{passive:true});
+  box.addEventListener('touchcancel',function(){ startY=null; dragging=false; clearDrag(); },{passive:true});
+
+  if(chev){
+    var cy0=null, cLast=0, cDrag=false;
+    chev.addEventListener('touchstart',function(e){ if(e.touches.length!==1) return; cy0=e.touches[0].clientY; cLast=cy0; cDrag=false; },{passive:true});
+    chev.addEventListener('touchmove',function(e){
+      if(cy0==null) return;
+      cLast=e.touches[0].clientY;
+      var dy=cLast-cy0;
+      if(dy<0){ cDrag=true; box.style.transition='none'; box.style.transform='translateY(calc(100% - '+Math.min(-dy,box.clientHeight)+'px))'; }
+    },{passive:true});
+    chev.addEventListener('touchend',function(){
+      if(cy0==null) return;
+      var dy=cLast-cy0;
+      if(cDrag && -dy>60){ box.style.transition=''; box.style.transform=''; setCollapsed(false); markSuppress(); }
+      else { box.style.transition=''; box.style.transform=''; }
+      cy0=null; cDrag=false;
+    },{passive:true});
+    chev.addEventListener('touchcancel',function(){ cy0=null; cDrag=false; clearDrag(); },{passive:true});
+  }
+})();
+
 
 (async function(){
+  var texJobs=(window.CdnRace&&CdnRace.raceImageUrl)?['earth-blue-marble.jpg','earth-topology.png','night-sky.png'].map(function(f){
+    return CdnRace.raceImageUrl('globe','textures/'+f,{label:f}).then(function(u){ if(u) ASSET_TEX[f]=u; });
+  }):[];
+  try{
+    if(window.CdnRace&&CdnRace.loadScriptRaced){ await CdnRace.loadScriptRaced('globe','vendor/globe.gl.min.js',{label:'globe.gl.min.js'}); }
+    else { await new Promise(function(res,rej){ var sc=document.createElement('script'); sc.src='./vendor/globe.gl.min.js'; sc.async=true; sc.onload=res; sc.onerror=rej; document.head.appendChild(sc); }); }
+    await Promise.all(texJobs);
+  }catch(e){}
   if(!window.Globe){ document.getElementById('list').innerHTML='<div class="empty">3D engine failed to load.</div>'; return; }
   initGlobe(); applyLang(); await refresh(); refreshMe(); setInterval(refresh, 30000);
 })();
