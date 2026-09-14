@@ -190,9 +190,10 @@ function updateRings(){ if(globe) globe.ringsData(selCity && selCity.lat!=null ?
 function flyTo(lat,lon){
   if(!globe||lat==null||lon==null) return;
   globe.controls().autoRotate=false;
-  // 视角中心取城市以南20°，使城市落在屏幕偏北位置，斜看才能看清计数柱的高度
   var tLat = Math.max(-82, Math.min(82, lat - 15));
   globe.pointOfView({lat:tLat, lng:lon, altitude:1.3}, 900);
+  clearTimeout(flyTo._t);
+  flyTo._t=setTimeout(function(){ globe.controls().autoRotate=true; }, 1900);
 }
 
 function selectCity(c, doScroll){
