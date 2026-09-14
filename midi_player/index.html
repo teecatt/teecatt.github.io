@@ -1,0 +1,817 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=overlays-content">
+<title>MIDI 播放器 · 88键可视化</title>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
+<link rel="preconnect" href="https://fastly.jsdelivr.net" crossorigin>
+<link rel="dns-prefetch" href="https://fastly.jsdelivr.net">
+<link rel="preconnect" href="https://gcore.jsdelivr.net" crossorigin>
+<link rel="dns-prefetch" href="https://gcore.jsdelivr.net">
+<link rel="preconnect" href="https://testingcf.jsdelivr.net" crossorigin>
+<link rel="dns-prefetch" href="https://testingcf.jsdelivr.net">
+<link rel="dns-prefetch" href="https://ghproxy.net">
+<link rel="dns-prefetch" href="https://gh-proxy.com">
+<link rel="dns-prefetch" href="https://ghfast.top">
+<link rel="dns-prefetch" href="https://gh.llkk.cc">
+<link rel="dns-prefetch" href="https://gh.xxooo.cf">
+<link rel="dns-prefetch" href="https://cdn.statically.io">
+<link rel="dns-prefetch" href="https://raw.githack.com">
+<style>html,body{background:#0d0d14;color:#e6edf3}body{visibility:hidden}#appLoading{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;visibility:visible;z-index:99999}#appLoading::after{content:'';width:34px;height:34px;border:3px solid rgba(230,237,243,.22);border-top-color:#e6edf3;border-radius:50%;animation:appspin .8s linear infinite}@keyframes appspin{to{transform:rotate(360deg)}}</style>
+<script>
+/* 首屏主题色：在样式之后、渲染之前同步应用已保存的配色，避免「先紫后红」闪烁 */
+(function(){
+  try{
+    var T = { A:'#8b5cf6', B:'#c20c0c', C:'#fb7299' };
+    var name = localStorage.getItem('paletteV2') || 'B';
+    var color = T[name] || '#c20c0c';
+    if(name === 'custom'){
+      var o = JSON.parse(localStorage.getItem('paletteCustom') || '{}');
+      if(o.theme) color = o.theme;
+    }
+    var h = color.replace('#','');
+    if(h.length === 3) h = h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+    var a = 1;
+    if(h.length === 8){ a = parseInt(h.slice(6,8),16)/255; h = h.slice(0,6); }
+    var n = parseInt(h,16), r=(n>>16)&255, g=(n>>8)&255, b=n&255;
+    var st = document.documentElement.style;
+    st.setProperty('--accent', color);
+    st.setProperty('--accent-a18', 'rgba('+r+','+g+','+b+','+(0.18*a).toFixed(3)+')');
+    st.setProperty('--accent-a28', 'rgba('+r+','+g+','+b+','+(0.28*a).toFixed(3)+')');
+  }catch(e){}
+})();
+</script>
+<style id="appCss">
+
+:root{
+  --bg:#0d0d14; --panel:#16161f; --border:#2a2a3a; --text:#e8e8f0;
+  --dim:#8a8aa0; --accent:#c20c0c; --accent-a18:rgba(194,12,12,.18); --accent-a28:rgba(194,12,12,.28); --accent2:#6366f1; --ok:#2fbf6f; --warn:#e8b64c;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;min-height:100vh;overflow-x:hidden}
+.container{max-width:1200px;margin:0 auto;padding:16px}
+h1{font-size:22px;font-weight:700;margin-bottom:4px}
+.subtitle{color:var(--dim);font-size:13px;margin-bottom:16px}
+.layout{display:grid;grid-template-columns:340px 1fr;gap:16px}
+@media(max-width:800px){
+  .layout{grid-template-columns:1fr}
+  .container{padding:0}
+  h1,.subtitle{display:none}
+  body{overflow:hidden;height:100vh;height:100dvh}
+}
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:16px}
+.visual-panel{padding:12px;position:relative;overflow:hidden}
+.panel h2{font-size:14px;font-weight:600;margin-bottom:12px;color:var(--dim);text-transform:uppercase;letter-spacing:1px}
+
+/* 菜单/调试按钮组（可拖拽，自动淡出） */
+.fab-group{
+  position:fixed;left:0;top:67%;transform:translateY(-50%);
+  z-index:10000;
+  display:flex;flex-direction:column;align-items:center;gap:8px;
+  transition:opacity .4s ease, transform .4s ease, left .3s ease;
+  opacity:1;
+}
+.fab-group.faded{opacity:0.5}
+.fab-group.hidden-btn{display:none !important}
+.menu-btn{
+  display:none;
+  width:44px;height:44px;
+  border-radius:50%;
+  background:rgba(22,22,31,.85);border:1px solid var(--border);
+  color:#2fbf6f;font-size:18px;cursor:grab;
+  align-items:center;justify-content:center;
+  backdrop-filter:blur(8px);
+  touch-action:none;user-select:none;
+  flex:0 0 auto;
+}
+.menu-btn.faded{opacity:0.5}
+.menu-btn:active{cursor:grabbing}
+.menu-btn.hidden-btn{display:none !important}
+@media(max-width:800px){.menu-btn{display:flex}}
+
+/* 调试按钮：与菜单按钮同尺寸，中间绿色 DEBUG 文字；默认位于菜单按钮正上方 */
+.debug-fab{
+  display:flex;
+  width:44px;height:44px;
+  border-radius:50%;
+  background:rgba(22,22,31,.85);border:1px solid var(--border);
+  color:#2fbf6f;font-family:monospace;font-size:9px;font-weight:bold;letter-spacing:.5px;
+  align-items:center;justify-content:center;cursor:pointer;
+  backdrop-filter:blur(8px);user-select:none;
+  flex:0 0 auto;
+}
+
+/* 调色板已并入配色面板：面板内直接展示取色器，不再有独立弹层 */
+.palette-editor{display:block;position:static;margin-top:8px;
+  width:auto;max-height:none;overflow:visible;
+  background:transparent;border:none;border-top:1px solid var(--border,#333);
+  border-radius:0;padding:8px 0 0;box-shadow:none;z-index:auto;
+  backdrop-filter:none;-webkit-backdrop-filter:none}
+/* 配色行允许子面板溢出显示，不裁剪；纵向排列：A/B/C + 取色器 */
+#paletteRow{overflow:visible;max-height:none;flex-direction:column;align-items:stretch}
+.palette-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.palette-head h3{margin:0;color:#fff;font-size:13px;font-weight:600}
+.palette-theme-btn{display:flex;align-items:center;gap:5px;padding:2px 8px;border-radius:6px;cursor:pointer;
+  border:1px solid #333;background:rgba(255,255,255,.04);color:#ddd;font-size:11px}
+.palette-theme-btn.active{border-color:var(--accent);background:var(--accent-a18,rgba(139,92,246,.18));color:#fff}
+.palette-theme-btn .sw{width:14px;height:14px;border-radius:3px;border:1px solid #555}
+#paletteEndpoints{position:relative;display:flex;flex-direction:column;gap:4px;margin-bottom:6px}
+.pe-row{display:flex;align-items:center;gap:6px}
+.pe-bar{position:relative;flex:1;height:20px;min-width:0}
+.pe-bar svg{display:block;width:100%;height:100%}
+.pe-box{width:22px;height:22px;border-radius:6px;border:1px solid #333;background:rgba(255,255,255,.04);display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;flex:0 0 auto}
+.pe-box .sw{width:14px;height:14px;border-radius:3px;border:1px solid #555}
+.pe-box.sel{border-color:var(--accent);background:var(--accent-a18,rgba(194,12,12,.18))}
+.palette-preset-row{display:flex;align-items:center;gap:6px;margin-bottom:6px}
+.pp-title{writing-mode:vertical-rl;text-orientation:upright;font-size:9px;color:#aaa;letter-spacing:1px;line-height:1;flex:0 0 auto}
+.palette-presets{flex:1;display:flex;justify-content:space-between;gap:4px;min-width:0}
+.pp-item{display:flex;flex-direction:column;align-items:center;gap:2px;background:none;border:none;cursor:pointer;padding:0;flex:1;min-width:0}
+.pp-swatch{width:22px;height:22px;border-radius:5px;border:1px solid rgba(255,255,255,.25);display:block;transition:transform .1s}
+.pp-item:hover .pp-swatch{transform:scale(1.1)}
+.pp-item:active .pp-swatch{transform:scale(.94)}
+.pp-name{font-size:7px;line-height:1;color:#aaa;white-space:nowrap;width:22px;text-align:center}
+.palette-colors{display:flex;gap:8px;height:108px;margin-bottom:6px}
+.palette-board-wrap{position:relative;flex:0 0 50%;height:100%}
+.palette-board-wrap canvas{width:100%;height:100%;border-radius:6px;cursor:crosshair;touch-action:none;display:block}
+.hsl-sliders{flex:1;display:grid;grid-template-columns:auto 1fr;grid-auto-rows:1fr;column-gap:5px;row-gap:3px;align-items:center;min-width:0;height:100%}
+.hsl-label{font-size:9px;color:#aaa;text-align:right;white-space:nowrap;line-height:1}
+.hsl-slider{position:relative;height:100%;min-height:0;border-radius:5px;cursor:pointer;border:1px solid #333;touch-action:none}
+.hsl-slider[data-hsl="a"]{background:repeating-conic-gradient(#3a3a44 0% 25%, #26262e 0% 50%) 0 0 / 8px 8px}
+.hsl-handle{position:absolute;top:50%;left:0;width:12px;height:12px;border-radius:50%;background:#fff;border:2px solid #222;transform:translate(-50%,-50%);pointer-events:none;box-shadow:0 0 3px rgba(0,0,0,.8)}
+.color-board-marker{position:absolute;width:12px;height:12px;border-radius:50%;border:2px solid #fff;
+  transform:translate(-50%,-50%);pointer-events:none;box-shadow:0 0 4px rgba(0,0,0,.85)}
+.palette-foot{display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#ccc}
+.palette-foot #palettePickPreview{display:inline-block;width:22px;height:13px;border-radius:3px;border:1px solid #555;vertical-align:middle}
+
+/* 去掉移动端默认点击高亮（按外接矩形绘制、不裁圆角），改用随圆角裁切的按下反馈 */
+*{-webkit-tap-highlight-color:transparent}
+button:active,[onclick]:active,[role="button"]:active,a:active{opacity:.78}
+
+/* 圆形配色按钮（A/B/C 与编辑图标）：与播放控制按钮同尺寸（32px）并对齐 */
+.pal-btn{
+  width:27px;height:27px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  padding:0;border:none;cursor:pointer;
+  background:var(--accent);color:#fff;
+  font-family:'Google Sans','Product Sans',-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  font-size:12px;font-weight:400;
+  transition:background .15s,box-shadow .15s;
+}
+/* 选中：实心主题色 + 外圈白框标识（与播放控制按钮一致的选中观感） */
+.pal-btn.active{background:var(--accent);color:#fff;box-shadow:0 0 0 2px #fff}
+.pal-btn:hover{box-shadow:inset 0 0 0 999px rgba(0,0,0,.15)}
+.pal-btn.active:hover{box-shadow:0 0 0 2px #fff,inset 0 0 0 999px rgba(0,0,0,.15)}
+/* 按下反馈 */
+.pal-btn:active{box-shadow:inset 0 0 0 999px rgba(0,0,0,.28);opacity:1}
+.pal-btn.active:active{box-shadow:0 0 0 2px #fff,inset 0 0 0 999px rgba(0,0,0,.28)}
+.pal-btn:focus{outline:none}
+/* 键盘焦点轮廓跟随圆角（仅键盘触发，触屏不显示） */
+.pal-btn:focus-visible{outline:2px solid #fff;outline-offset:2px}
+
+/* 键盘映射（二级面板）：电脑键盘演奏设置 */
+.kbd-map{margin-top:8px;border-top:1px solid var(--border);padding-top:8px}
+.kbd-map > summary{cursor:pointer;font-size:12px;color:var(--dim);list-style:none;user-select:none;display:flex;align-items:center;gap:6px}
+.kbd-map > summary::-webkit-details-marker{display:none}
+.kbd-map > summary::before{content:'▸';transition:transform .2s;display:inline-block}
+.kbd-map[open] > summary::before{transform:rotate(90deg)}
+.kbd-map-body{margin-top:8px}
+.kbd-map-grid{display:flex;flex-direction:column;gap:4px;margin:6px 0}
+.kbd-map-row{display:flex;gap:3px;flex-wrap:wrap}
+.key-chip{display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:26px;padding:3px 2px;
+  border:1px solid var(--border);border-radius:5px;background:rgba(255,255,255,.04);line-height:1}
+.key-chip .kc-key{font-size:10px;color:var(--text);font-weight:600}
+.key-chip .kc-note{font-size:8px;color:var(--dim);margin-top:2px}
+.key-chip.black .kc-note{color:#9aa0ff}
+.kbd-map-hint{font-size:10px;color:var(--dim);line-height:1.5;margin-top:4px}
+
+/* 统一下拉面板：从控制行下方展开，浮在渲染区之上，最大高度约渲染区 2/3 */
+.drop-panel{
+  position:absolute;top:100%;right:0;z-index:10050;display:none;
+  width:min(92vw,460px);max-height:66.67vh;overflow-y:auto;
+  margin-top:6px;
+  border:1px solid var(--border);border-radius:12px;padding:12px;
+  box-shadow:0 14px 44px rgba(0,0,0,.55);
+  background:rgba(0,0,0,0);
+  backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px);
+}
+.drop-panel.open{display:block}
+/* 全屏时设置面板改挂到渲染区左上角（由 _syncFsLayout 移动并加 .in-fs） */
+.control-panel.in-fs{position:fixed;top:14px;left:62px;right:auto;margin-top:0;max-height:66.67vh}
+.control-panel > .dbg-section:first-of-type{margin-top:0;padding-top:0;border-top:none}
+.overlay-mask{display:none}
+@media(max-width:800px){
+  /* 右侧容器固定全屏 */
+  .layout > div:last-child{position:fixed;inset:0;display:flex;flex-direction:column}
+  .top-bar{flex-shrink:0}
+  .visual-panel{flex:1;border-radius:0;border:none;padding:0;min-height:0;position:relative;overflow:hidden}
+  #visualCanvas{height:100% !important;border-radius:0}
+}
+
+/* 配色方案按钮：与播放控制同尺寸（32px）、单行对齐 */
+.pal-grid{display:flex;gap:6px;flex-shrink:0}
+.pal-col{display:flex;flex-direction:column;gap:3px;flex-shrink:0}
+
+/* 控制行：播放控制 + 设置/调试/配色/全屏 */
+/* 第二行 8 个按钮：等分排满整行宽度；窄屏 / DPI 异常时按钮与图标一起自适应缩小，避免溢出或重叠 */
+.control-row{display:flex;align-items:center;gap:clamp(3px,1.2vw,8px);margin-top:6px;flex-wrap:nowrap;position:relative}
+.ctl-group{display:flex;align-items:center;gap:inherit;flex:0 0 auto}
+.ctl-spacer{flex:1 1 0;min-width:0}
+.control-row > .ctl-group > .ctl-btn{flex:0 0 auto;width:32px;height:32px}
+.ctl-btn{
+  width:32px;height:32px;flex-shrink:0;padding:0;border-radius:50%;
+  display:inline-flex;align-items:center;justify-content:center;cursor:pointer;
+  border:1px solid var(--border);background:rgba(255,255,255,.04);color:var(--text);
+  transition:background .15s,color .15s;
+}
+.ctl-btn:hover{background:rgba(255,255,255,.1)}
+.ctl-btn:active{background:rgba(255,255,255,.18);opacity:1}
+.ctl-btn:disabled{opacity:.4;cursor:not-allowed}
+.ctl-btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.ctl-btn.primary:hover{box-shadow:inset 0 0 0 999px rgba(0,0,0,.15)}
+.ctl-btn svg{width:16px;height:16px}
+.control-row .ctl-btn svg{width:52%;height:52%}
+#settingsBtn svg,#paletteToggleBtn svg,#uploadBtn svg{width:58%;height:58%}
+/* 重播图标放大，让外圈尽量贴近按钮边界 */
+#replayBtn svg{width:30px;height:30px}
+/* 配色面板：从控制行下方展开（absolute，不遮挡按钮） */
+.palette-row{display:none;align-items:stretch;gap:8px;flex-wrap:nowrap;min-width:0}
+.palette-row.open{display:flex}
+/* 配色面板始终 100% 不透明，不受全局面板透明度/模糊影响（便于精准取色） */
+#paletteRow{background:#000 !important;backdrop-filter:none !important;-webkit-backdrop-filter:none !important}
+.drop-trigger svg{transition:transform .2s}
+#paletteToggleIcon{transition:transform .2s}
+
+/* 谱面管理面板：统一下拉浮层 */
+.manage-panel{display:none;flex-direction:column;max-height:65vh}
+.manage-panel.open{display:flex}
+.manage-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+.manage-head h3{margin:0;font-size:14px;color:var(--text);flex:1}
+.manage-appearance{display:flex;gap:10px;font-size:10px;color:var(--dim)}
+.manage-appearance label{display:flex;align-items:center;gap:4px;cursor:pointer}
+.manage-appearance input[type=range]{width:64px}
+.manage-close{background:none;border:none;color:var(--dim);font-size:20px;cursor:pointer;line-height:1}
+.manage-close:hover{color:var(--text)}
+#manageList{overflow-y:auto;flex:1;min-height:0}
+.manage-section{color:var(--dim);font-size:11px;margin:6px 0 2px}
+.manage-empty{color:var(--dim);text-align:center;padding:12px;font-size:12px}
+.manage-row{display:flex;align-items:center;gap:6px;padding:2px 8px;border-radius:4px;margin-bottom:1px;background:rgba(255,255,255,.04);cursor:pointer}
+.manage-row:hover{background:rgba(255,255,255,.1)}
+.manage-row .name{flex:1;font-size:11px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.manage-row .tag{font-size:10px;color:var(--dim)}
+.manage-row .size,.csel-opt .size{font-size:10px;color:var(--dim);white-space:nowrap;margin-left:2px}
+.icon-btn{background:none;border:none;color:var(--dim);cursor:pointer;padding:4px;display:inline-flex;align-items:center;border-radius:6px}
+.icon-btn:hover{color:var(--text);background:rgba(255,255,255,.08)}
+.icon-btn.del:hover{color:#ff6b6b}
+.icon-btn.dl:hover{color:var(--accent)}
+.icon-btn svg{width:16px;height:16px}
+.icon-btn:disabled{opacity:.85;cursor:default;background:none}
+.icon-btn.loading svg{animation:_spin .8s linear infinite}
+.icon-btn .btn-pct{font-size:10px;font-weight:600;color:var(--accent)}
+.csel-act{margin-left:auto;display:inline-flex;align-items:center;flex-shrink:0}
+.csel-act .icon-btn{padding:2px}
+@keyframes _spin{to{transform:rotate(360deg)}}
+
+/* 菜单面板内的调试区 */
+.dbg-section{margin-top:18px;padding-top:12px;border-top:1px solid var(--border)}
+.dbg-toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;font-size:10px;color:var(--dim);margin-bottom:6px}
+.dbg-toolbar label{display:flex;align-items:center;gap:4px;cursor:pointer}
+.dbg-toolbar input[type=range]{width:64px}
+.appearance-sliders{display:flex;flex-direction:column;gap:6px;align-items:flex-start}
+.appearance-sliders .pct{min-width:2.5em;text-align:right;font-variant-numeric:tabular-nums}
+#playModeLabel{color:#fff}
+.dbg-header{flex:0 0 auto}
+.dbg-actions{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:6px}
+.dbg-actions button{background:#333;color:#fff;border:none;width:26px;height:26px;padding:0;cursor:pointer;border-radius:50%;display:inline-flex;align-items:center;justify-content:center}
+.dbg-actions button svg{width:14px;height:14px}
+.dbg-actions button:hover{background:#444}
+.dbg-reset-btn{display:inline-flex;align-items:center;gap:5px;background:#7f1d1d;color:#fff;border:1px solid #b91c1c;border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer;opacity:1;backdrop-filter:none;-webkit-backdrop-filter:none;flex:0 1 auto;min-width:0;white-space:nowrap}
+.dbg-toolbar .dbg-reset-btn:first-of-type{margin-left:auto}
+.dbg-actions #debugCopyBtn{margin-left:auto}
+.dbg-reset-btn:hover{background:#991b1b;color:#fff}
+.dbg-reset-btn:active{background:#6b1616}
+.dbg-reset-btn svg{width:14px;height:14px}
+.dbg-log{
+  flex:1;min-height:0;overflow-y:auto;padding:4px 8px;line-height:1.4;
+  font-family:monospace;font-size:11px;
+  background:rgba(0,0,0,.35);border:1px solid #333;border-radius:6px;
+}
+.dbg-off .dbg-body{display:none}
+.dbg-off .dbg-off-hint{display:block}
+.dbg-off-hint{display:none;font-size:11px;color:var(--dim);padding:6px 2px}
+
+/* 滑动开关（替代勾选框） */
+.switch{display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:11px;color:var(--dim);user-select:none}
+.switch input{position:absolute;opacity:0;width:0;height:0}
+.switch .track{position:relative;width:34px;height:18px;border-radius:9px;background:#c9ccd6;box-shadow:inset 0 0 0 1px rgba(0,0,0,.18);transition:background .15s;flex-shrink:0}
+.switch .knob{position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.4);transition:transform .15s}
+.switch input:checked + .track{background:var(--accent)}
+.switch input:checked + .track .knob{transform:translateX(16px)}
+.switch input:focus-visible + .track{outline:2px solid var(--accent);outline-offset:2px}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:10px 16px;border-radius:14px;border:1px solid var(--border);background:rgba(255,255,255,.04);color:var(--text);font-size:13px;cursor:pointer;transition:all .15s;min-height:40px}
+.btn:hover{background:rgba(255,255,255,.08)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.btn.primary:hover{box-shadow:inset 0 0 0 999px rgba(0,0,0,.15)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.speed-btn{border-radius:10px !important;border:none !important;background:var(--accent-a18,rgba(124,58,237,.15)) !important;color:var(--accent) !important}
+.speed-btn.active{background:var(--accent) !important;color:#fff !important;font-weight:600}
+.speed-btn:hover{background:var(--accent-a28,rgba(124,58,237,.3)) !important}
+.btn-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+
+/* 顶部控制栏（可视化区上方） */
+.top-bar{
+  background:var(--panel);border:1px solid var(--border);
+  border-radius:12px;padding:8px 10px;margin-bottom:8px;
+}
+.top-bar-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.top-bar .btn{padding:4px 6px;min-height:28px;font-size:11px;border-radius:10px;border:none;white-space:nowrap;flex-shrink:0}
+.top-bar select{padding:4px 8px;font-size:12px;border-radius:10px;width:140px;flex:0 0 auto;flex-shrink:0;min-height:28px}
+.top-bar .song-name{font-size:11px;color:var(--dim);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right}
+.top-bar .progress-wrap{margin:4px 0 0}
+.top-bar .progress-bar{height:8px}
+.top-bar .time-row{font-size:11px;margin-top:2px}
+@media(max-width:800px){
+  .top-bar{border-radius:0;border-left:none;border-right:none;border-top:none;margin-bottom:0}
+}
+.row{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.row label{font-size:12px;color:var(--dim);min-width:60px}
+.row input[type=range]{flex:1;accent-color:var(--accent);height:8px;border-radius:4px;cursor:pointer}
+.row input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;border-radius:50%;background:var(--accent);cursor:pointer;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.3)}
+.row input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:var(--accent);cursor:pointer;border:2px solid #fff}
+.row input[type=range]::-webkit-slider-runnable-track{height:8px;border-radius:4px;background:rgba(255,255,255,.1)}
+.row input[type=range]::-moz-range-track{height:8px;border-radius:4px;background:rgba(255,255,255,.1)}
+.row .val{font-size:12px;color:var(--text);min-width:40px;text-align:right}
+/* 键数版型预设按钮 */
+.kb-presets{display:flex;flex-wrap:wrap;gap:5px;flex:1}
+.kb-preset{
+  padding:4px 8px;border-radius:8px;cursor:pointer;font-size:11px;
+  border:1px solid var(--border);background:rgba(255,255,255,.04);color:var(--dim);
+}
+.kb-preset:hover{background:rgba(255,255,255,.1);color:var(--text)}
+.kb-preset.active{background:var(--accent);border-color:var(--accent);color:#fff}
+select{flex:1;background:rgba(255,255,255,.06);border:1px solid var(--border);color:var(--text);border-radius:12px;padding:10px 12px;font-size:13px;outline:none;cursor:pointer}
+select:focus{border-color:var(--accent)}
+
+/* ===== 自定义下拉：替代原生 select，修复桌面端 option 白底白字不可读 ===== */
+.csel{position:relative;min-width:0}
+.row .csel,.top-bar .csel{flex:1;min-width:0}
+.csel-trigger{
+  display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;
+  background:rgba(255,255,255,.06);border:1px solid var(--border);color:var(--text);
+  border-radius:12px;padding:10px 12px;font-size:13px;cursor:pointer;text-align:left;
+  font-family:inherit;min-height:40px;transition:border-color .15s,background .15s;
+}
+.csel-trigger:hover{background:rgba(255,255,255,.09)}
+.csel-trigger:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.csel.open .csel-trigger{border-color:var(--accent)}
+.csel-label{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.csel-caret{flex-shrink:0;width:14px;height:14px;color:var(--dim);transition:transform .15s}
+.csel.open .csel-caret{transform:rotate(180deg)}
+.csel-pop{
+  position:fixed;z-index:10050;display:none;
+  background:#1b1b26;border:1px solid var(--border);border-radius:12px;
+  box-shadow:0 16px 48px rgba(0,0,0,.55);padding:6px;
+}
+.csel-pop.open{display:flex;flex-direction:column}
+.csel-search{
+  width:100%;background:rgba(255,255,255,.06);border:1px solid var(--border);
+  color:var(--text);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;margin-bottom:6px;
+}
+.csel-search:focus{border-color:var(--accent)}
+.csel-list{overflow-y:auto;flex:1;min-height:0;display:flex;flex-direction:column;gap:1px}
+.csel-group{font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;padding:8px 10px 3px;font-weight:600}
+.csel-opt{
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+  padding:8px 10px;border-radius:8px;font-size:13px;color:var(--text);cursor:pointer;
+  white-space:nowrap;overflow:hidden;
+}
+.csel-opt:hover,.csel-opt.active{background:rgba(255,255,255,.08)}
+.csel-opt.selected{background:var(--accent-a28,rgba(139,92,246,.28));color:#fff;font-weight:600}
+.csel-opt .csel-opt-label{overflow:hidden;text-overflow:ellipsis}
+.csel-opt .csel-check{flex-shrink:0;width:14px;height:14px;opacity:0;color:var(--accent)}
+.csel-opt.selected .csel-check{opacity:1}
+.csel-empty{padding:16px;text-align:center;color:var(--dim);font-size:12px}
+.top-bar .csel-trigger{padding:4px 8px;font-size:12px;border-radius:10px;min-height:28px}
+.hint{font-size:11px;color:var(--dim);margin-top:6px;line-height:1.5}
+.progress-wrap{margin:12px 0}
+/* 全屏：进度面板整体悬浮在渲染区顶部中央（绝对定位，不影响渲染区布局） */
+#progressPanel.in-fs{
+  position:absolute;top:8px;left:50%;transform:translateX(-50%);
+  width:min(92%,560px);z-index:6;
+  padding:8px 12px;border-radius:12px;
+  background:rgba(0,0,0,.55);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+  box-shadow:0 8px 28px rgba(0,0,0,.5);
+}
+#progressPanel.in-fs.hidden{display:none}
+#progressPanel.in-fs .stats-bar{margin-top:0}
+#progressPanel.in-fs .progress-wrap{margin:6px 0 0}
+.progress-bar{height:6px;background:#e5e5e5;border-radius:3px;overflow:hidden;cursor:pointer}
+.progress-fill{height:100%;background:var(--accent);width:0%;transition:width .1s linear}
+.time-row{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:11px;color:var(--dim);margin-top:4px}
+.time-row #curTime,.time-row #totalTime{flex:0 0 auto;white-space:nowrap}
+#statusText{flex:1;min-width:0;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none}
+#visualCanvas{width:100%;height:500px;background:#0a0a10;border-radius:8px;display:block}
+/* PC：整页锁定视口高度，绘制区自适应剩余高度，钢琴始终在屏幕底部、无需滚动 */
+@media(min-width:801px){
+  html,body{height:100%}
+  body{height:100vh;height:100dvh;overflow:hidden}
+  .container{height:100%;display:flex;flex-direction:column;padding:12px 16px 8px}
+  .layout{flex:1;min-height:0;display:flex;flex-direction:column}
+  .layout > div:last-child{flex:1;min-height:0;display:flex;flex-direction:column}
+  .top-bar{flex-shrink:0}
+  .visual-panel{flex:1;min-height:0;display:flex;flex-direction:column;padding:8px}
+  #visualCanvas{flex:1;min-height:0;height:auto}
+}
+/* 全屏绘制区 */
+.visual-panel:fullscreen{padding:0;background:#000;display:flex;flex-direction:column;position:relative}
+.visual-panel:fullscreen #visualCanvas{flex:1;min-height:0;width:100%;height:auto !important;border-radius:0}
+/* 全屏悬浮按钮：设置(左上)、退出(右上)；仅全屏显示 */
+.fs-overlay{display:none}
+.visual-panel:fullscreen .fs-overlay,
+.visual-panel:-webkit-full-screen .fs-overlay{display:block}
+.fs-float-btn{
+  position:absolute;z-index:5;width:42px;height:42px;border-radius:50%;padding:0;
+  display:flex;align-items:center;justify-content:center;cursor:pointer;
+  border:1px solid var(--accent);background:var(--accent);color:#fff;
+  opacity:.5;transition:opacity .3s, transform .3s;
+  backdrop-filter:none;-webkit-backdrop-filter:none;filter:none;
+}
+.fs-float-btn:active{opacity:.7}
+.fs-float-btn svg{width:20px;height:20px}
+/* 活跃：内缩 14px 完整显示；空闲：吸附到左右边界只露半边圆 */
+.fs-settings{top:0;left:0;transform:translate(14px,14px)}
+.fs-exit{top:0;right:0;transform:translate(-14px,14px)}
+/* 2s 未点击悬浮按钮：淡到 20% 并向左上/右上角吸附到露出 70% */
+.fs-overlay.faded .fs-float-btn{opacity:.2}
+.fs-overlay.faded .fs-settings{transform:translate(-30%,-30%)}
+.fs-overlay.faded .fs-exit{transform:translate(30%,-30%)}
+/* 调试面板：从控制行下方展开（absolute，不遮挡按钮） */
+.debug-panel{display:none;flex-direction:column;overflow:hidden}
+.debug-panel.open{display:flex}
+.file-info{font-size:12px;color:var(--dim);margin-top:8px;line-height:1.6}
+.file-info b{color:var(--text)}
+.timbre-hint{font-size:11px;color:var(--dim);margin-top:4px;min-height:16px}
+/* 移动端：第一行(重播/选谱/全屏)与第二行(8个按钮)统一按同一网格缩放。
+   左右间距 = 上下间距 = 6px；10 个圆形按钮 aspect-ratio:1 等比缩放，
+   第二行 8 个按钮恰好填满整宽，第一行最左/最右与第二行最左/最右对齐。
+   放在样式表末尾以覆盖基础 .top-bar / .top-bar select / .top-bar-row 规则。 */
+@media(max-width:600px){
+  .top-bar{padding-left:6px;padding-right:6px}
+  .top-bar-row{flex-wrap:nowrap;gap:6px}
+  .top-bar-row > select{width:auto;flex:1 1 auto;min-width:0}
+  .top-bar-row > .ctl-btn{flex:0 0 calc((100% - 42px)/8);width:auto;height:auto;aspect-ratio:1}
+  .control-row{gap:6px;padding:0 6px;margin-top:6px;flex-wrap:nowrap}
+  .ctl-spacer{display:none}
+  .control-row > .ctl-group{flex:1 1 0;gap:6px;min-width:0}
+  .control-row > .ctl-group > .ctl-btn{flex:1 1 0;min-width:0;max-width:none;width:auto;height:auto;aspect-ratio:1;padding:0}
+  .ctl-btn svg{width:52%;height:52%}
+  #replayBtn svg{width:75%;height:75%}
+  #settingsBtn svg,#paletteToggleBtn svg,#uploadBtn svg{width:58%;height:58%}
+  .dbg-toolbar .dbg-reset-btn{padding:2px 5px;font-size:10px;gap:3px}
+  .dbg-toolbar .dbg-reset-btn svg{width:12px;height:12px}
+}
+</style>
+</head>
+<body>
+<div id="appLoading" aria-label="加载中"></div>
+<div class="container">
+  <h1>MIDI 播放器</h1>
+  <p class="subtitle">88 键钢琴可视化 · 多音色 · 变速播放</p>
+
+  <div class="layout">
+    <!-- 右侧：顶部控制栏 + 可视化 -->
+    <div>
+      <div class="top-bar">
+        <div class="top-bar-row">
+          <button class="ctl-btn primary" id="replayBtn" onclick="replayPlay()" disabled title="重播"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="0.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M19 12c0 3.866-3.134 7-7 7s-7-3.134-7-7 3.134-7 7-7a6.986 6.986 0 0 1 5.32 2.45"/><path d="M17.6 5.35V7.8h-2.45"/><path d="M10.5 8.8 15.3 12 10.5 15.2Z" stroke-linejoin="miter"/></svg></button>
+          <select id="songSel" onchange="onSongChange(this.value)" style="flex:1">
+            <option value="">加载谱库…</option>
+          </select>
+          <button class="ctl-btn primary" id="fsBtn" onclick="toggleFullscreen()" title="全屏绘制区" aria-label="全屏绘制区">
+            <svg id="fsIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"><path d="M9 15L2 22M2 16.1429V22H7.85714"/><path d="M15 9L22 2M22 7.85714V2H16.1429"/></g></svg>
+          </button>
+        </div>
+        <div class="control-row">
+          <div class="ctl-group">
+            <button class="ctl-btn primary" id="playBtn" onclick="togglePlay()" disabled title="播放"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><polygon points="5 3 19 12 5 21 5 3"/></svg></button>
+            <button class="ctl-btn primary" id="nextBtn" onclick="nextSong()" disabled title="下一首"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/></svg></button>
+            <button class="ctl-btn primary" id="loopBtn" onclick="toggleLoop()" disabled title="列表循环"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" style="flex-shrink:0"><path d="M11 5.466V4H5a4 4 0 0 0-3.584 5.777a.5.5 0 1 1-.896.446A5 5 0 0 1 5 3h6V1.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384l-2.36 1.966a.25.25 0 0 1-.41-.192m3.81.086a.5.5 0 0 1 .67.225A5 5 0 0 1 11 13H5v1.466a.25.25 0 0 1-.41.192l-2.36-1.966a.25.25 0 0 1 0-.384l2.36-1.966a.25.25 0 0 1 .41.192V12h6a4 4 0 0 0 3.585-5.777a.5.5 0 0 1 .225-.67Z"/></svg></button>
+            <button class="ctl-btn primary" id="uploadBtn" onclick="document.getElementById('midiFile').click()" title="上传MIDI" aria-label="上传MIDI"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="3" style="flex-shrink:0"><path d="M4.5 11.5a3 3 0 0 1 3-3h8.718a4 4 0 0 1 2.325.745l4.914 3.51a4 4 0 0 0 2.325.745H40.5a3 3 0 0 1 3 3v20a3 3 0 0 1-3 3h-33a3 3 0 0 1-3-3z"/><path d="M24 33.5v-14m6.167 6.167L24 19.5l-6.167 6.167"/></svg></button>
+          </div>
+          <div class="ctl-spacer"></div>
+          <div class="ctl-group">
+            <button class="ctl-btn primary drop-trigger" id="manageBtn" onclick="toggleManageModal()" title="管理谱面" aria-label="管理谱面"><svg viewBox="0 0 20 20" fill="currentColor" style="flex-shrink:0"><path d="M16.81 10.548a1.87 1.87 0 1 1 2.644 2.644l-4.829 4.83a2.2 2.2 0 0 1-1.021.578l-1.498.375a.89.89 0 0 1-1.079-1.08l.374-1.497c.097-.387.297-.74.579-1.021zM3.25 13.5a1.25 1.25 0 1 1 0 2.5a1.25 1.25 0 0 1 0-2.5m8.023 1.17a3.2 3.2 0 0 0-.597.83H7.75a.75.75 0 0 1 0-1.5h4.192zM3.25 8.5a1.25 1.25 0 1 1 0 2.5a1.25 1.25 0 0 1 0-2.5m14 .5q.159 0 .297.06c-.53.11-1.034.37-1.445.78l-.659.66H7.75a.75.75 0 0 1 0-1.5zm-14-5.5a1.25 1.25 0 1 1 0 2.5a1.25 1.25 0 0 1 0-2.5m14 .5a.75.75 0 0 1 0 1.5h-9.5a.75.75 0 0 1 0-1.5z"/></svg></button>
+            <button class="ctl-btn primary drop-trigger" id="settingsBtn" onclick="toggleMenu()" title="设置" aria-label="设置"><svg viewBox="0 0 24 24" fill="currentColor" style="flex-shrink:0"><path fill-rule="evenodd" d="M12.4277 2C11.3139 2 10.2995 2.6007 8.27081 3.80211L7.58466 4.20846C5.55594 5.40987 4.54158 6.01057 3.98466 7C3.42773 7.98943 3.42773 9.19084 3.42773 11.5937V12.4063C3.42773 14.8092 3.42773 16.0106 3.98466 17C4.54158 17.9894 5.55594 18.5901 7.58466 19.7915L8.27081 20.1979C10.2995 21.3993 11.3139 22 12.4277 22C13.5416 22 14.5559 21.3993 16.5847 20.1979L17.2708 19.7915C19.2995 18.5901 20.3139 17.9894 20.8708 17C21.4277 16.0106 21.4277 14.8092 21.4277 12.4063V11.5937C21.4277 9.19084 21.4277 7.98943 20.8708 7C20.3139 6.01057 19.2995 5.40987 17.2708 4.20846L16.5847 3.80211C14.5559 2.6007 13.5416 2 12.4277 2ZM8.67773 12C8.67773 9.92893 10.3567 8.25 12.4277 8.25C14.4988 8.25 16.1777 9.92893 16.1777 12C16.1777 14.0711 14.4988 15.75 12.4277 15.75C10.3567 15.75 8.67773 14.0711 8.67773 12Z" clip-rule="evenodd"/></svg></button>
+            <button class="ctl-btn primary drop-trigger" id="paletteToggleBtn" onclick="togglePaletteRow()" title="配色面板" aria-label="配色面板"><svg id="paletteToggleIcon" viewBox="0 0 24 24" fill="currentColor" style="flex-shrink:0"><path d="M12 2C6.49 2 2 6.49 2 12s4.49 10 10 10a2.5 2.5 0 0 0 2.5-2.5c0-.61-.23-1.2-.64-1.67a.53.53 0 0 1-.13-.33c0-.28.22-.5.5-.5H16c3.31 0 6-2.69 6-6c0-4.96-4.49-9-10-9m5.5 11c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5s1.5.67 1.5 1.5s-.67 1.5-1.5 1.5m-3-4c-.83 0-1.5-.67-1.5-1.5S13.67 6 14.5 6s1.5.67 1.5 1.5S15.33 9 14.5 9M5 11.5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5S7.33 13 6.5 13S5 12.33 5 11.5m6-4c0 .83-.67 1.5-1.5 1.5S8 8.33 8 7.5S8.67 6 9.5 6s1.5.67 1.5 1.5"/></svg></button>
+            <button class="ctl-btn primary drop-trigger" id="debugToggleBtn" onclick="toggleDebugPanel()" title="调试面板" aria-label="调试面板"><svg viewBox="0 0 32 32" fill="currentColor" style="flex-shrink:0"><path d="m29.83 20l.34-2l-5.17-.85v-4.38l5.06-1.36l-.51-1.93l-4.83 1.29A9 9 0 0 0 20 5V2h-2v2.23a8.8 8.8 0 0 0-4 0V2h-2v3a9 9 0 0 0-4.71 5.82L2.46 9.48L2 11.41l5 1.36v4.38L1.84 18l.32 2L7 19.18a8.9 8.9 0 0 0 .82 3.57l-4.53 4.54l1.42 1.42l4.19-4.2a9 9 0 0 0 14.2 0l4.19 4.2l1.42-1.42l-4.54-4.54a8.9 8.9 0 0 0 .83-3.57ZM15 25.92A7 7 0 0 1 9 19v-6h6ZM9.29 11a7 7 0 0 1 13.42 0ZM23 19a7 7 0 0 1-6 6.92V13h6Z"/></svg></button>
+          </div>
+          <input type="file" id="midiFile" accept=".mid,.midi" style="display:none" onchange="onMidiFile(event)">
+          <div id="paletteRow" class="palette-row drop-panel">
+            <div class="pal-col">
+              <div class="pal-grid">
+              <button class="pal-btn palette-btn" data-palette="A" onclick="setPalette('A')" title="纯紫">A</button>
+              <button class="pal-btn palette-btn active" data-palette="B" onclick="setPalette('B')" title="青蓝×琥珀红">B</button>
+              <button class="pal-btn palette-btn" data-palette="C" onclick="setPalette('C')" title="青绿×品红">C</button>
+              <button class="pal-btn palette-btn" id="paletteCustomBtn" data-palette="custom" onclick="setPalette('custom')" title="自定义配色">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M8.203 2.004c1.261 0 2.304 1.103 2.476 2.538l8.483 8.484l-7.778 7.778a3 3 0 0 1-4.243 0L2.9 16.562a3 3 0 0 1 0-4.243l2.804-2.805V4.961c0-1.633 1.12-2.957 2.5-2.957m.5 2.957v1.553l-1 1V4.961c0-.327.224-.591.5-.591c.277 0 .5.264.5.591m0 5.914V9.342l-4.39 4.391a1 1 0 0 0 0 1.414l4.243 4.243a1 1 0 0 0 1.414 0l6.364-6.364l-5.63-5.63v3.48l-.003.128h-2.01a1 1 0 0 0 .012-.129" clip-rule="evenodd"/><path d="M16.859 16.875a3 3 0 1 0 4.242 0l-2.121-2.121z"/></svg>
+              </button>
+              </div>
+            </div>
+            <div id="paletteEditor" class="palette-editor">
+              <div class="palette-head">
+                <h3>自定义配色</h3>
+                <button type="button" id="paletteThemeBtn" class="palette-theme-btn" onclick="selectPaletteTarget('theme')" title="主题色（按钮/按键遮罩/开关/滑块）">
+                  <span class="sw" id="paletteThemeSwatch"></span><span>主题色</span>
+                </button>
+              </div>
+              <div id="paletteEndpoints"></div>
+              <div class="palette-preset-row">
+                <span class="pp-title">常用</span>
+                <div id="palettePresets" class="palette-presets"></div>
+              </div>
+              <div class="palette-colors">
+                <div class="palette-board-wrap">
+                  <canvas id="colorBoard" width="240" height="140"></canvas>
+                  <span id="colorBoardMarker" class="color-board-marker"></span>
+                </div>
+                <div class="hsl-sliders">
+                  <span class="hsl-label">色相</span>
+                  <div class="hsl-slider" data-hsl="h"><span class="hsl-handle" id="hslHandleH"></span></div>
+                  <span class="hsl-label">饱和度</span>
+                  <div class="hsl-slider" data-hsl="s"><span class="hsl-handle" id="hslHandleS"></span></div>
+                  <span class="hsl-label">亮度</span>
+                  <div class="hsl-slider" data-hsl="l"><span class="hsl-handle" id="hslHandleL"></span></div>
+                  <span class="hsl-label">透明度</span>
+                  <div class="hsl-slider" data-hsl="a"><span class="hsl-handle" id="hslHandleA"></span></div>
+                </div>
+              </div>
+              <div class="palette-foot">
+                <span>正在设置：<b id="palettePickLabel" style="color:#fff">主题色</b></span>
+                <span style="display:flex;align-items:center;gap:5px;">当前<span id="palettePickPreview"></span></span>
+              </div>
+            </div>
+          </div>
+          <div class="debug-panel drop-panel" id="debugPanel">
+            <div class="dbg-header">
+              <div class="dbg-toolbar">
+                <label class="switch"><input id="dbgEnabled" type="checkbox" checked onchange="onDebugEnabledChange()"><span class="track"><span class="knob"></span></span>启用调试</label>
+                <button class="dbg-reset-btn" id="debugResetBtn" onclick="confirmResetAll()" title="重置所有设置"><span>重置所有选项</span><svg viewBox="0 0 20 20" fill="currentColor"><path d="M5.854 2.646a.5.5 0 0 1 0 .708L4.207 5H11a6 6 0 1 1-6 6a.5.5 0 0 1 1 0a5 5 0 1 0 5-5H4.207l1.647 1.646a.5.5 0 1 1-.708.708l-2.5-2.5a.5.5 0 0 1 0-.708l2.5-2.5a.5.5 0 0 1 .708 0"/></svg></button>
+                <button class="dbg-reset-btn" id="debugClearBtn" onclick="confirmClearDebug()" title="清空日志"><span>清空日志</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18m-2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m-6 5v6m4-6v6"/></svg></button>
+              </div>
+              <div class="dbg-off-hint">调试已关闭，无日志采集与监控。</div>
+              <div class="dbg-body">
+                <div class="dbg-actions">
+                  <label class="switch">
+                    <input id="dbgAutoOpen" type="checkbox" checked onchange="onDbgAutoOpenChange()">
+                    <span class="track"><span class="knob"></span></span>渲染降级自动弹出
+                  </label>
+                  <button class="dbg-icon-btn" id="debugCopyBtn" onclick="copyDebugTerminal()" title="复制"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="13" height="13" x="9" y="9" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+                  <button class="dbg-icon-btn" onclick="downloadDebugLog()" title="下载日志"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4m4-5l5 5l5-5m-5 5V3"/></svg></button>
+                  <button class="dbg-icon-btn" onclick="scrollDebugTop()" title="顶部"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15l-6-6l-6 6"/></svg></button>
+                  <button class="dbg-icon-btn" onclick="scrollDebugBottom()" title="底部"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9l6 6l6-6"/></svg></button>
+                </div>
+              </div>
+            </div>
+            <div id="debugTerminalContent" class="dbg-log"></div>
+          </div>
+          <!-- 左侧控制面板（仅设置项） -->
+          <div class="panel control-panel drop-panel" id="controlPanel">
+            <div class="dbg-section" id="appearanceSection">
+              <div class="dbg-toolbar">
+                <div class="appearance-sliders">
+                  <label title="面板透明度">透明 <input id="panelTransparency" type="range" min="0" max="100" step="5" value="40" oninput="applyPanelAppearance()"> <span class="pct" id="transparencyPct">40%</span></label>
+                  <label title="面板背景模糊">模糊 <input id="panelBlur" type="range" min="0" max="100" step="5" value="0" oninput="applyPanelAppearance()"> <span class="pct" id="blurPct">0%</span></label>
+                </div>
+                <label class="switch" title="音游模式：音符只下落、需点击琴键发声；关闭为欣赏模式：音符自动发声" style="margin-left:auto">
+                  <input id="playModeSw" type="checkbox" onchange="onPlayModeChange()">
+                  <span class="track"><span class="knob"></span></span>
+                  <span id="playModeLabel">音游模式</span>
+                </label>
+              </div>
+            </div>
+            <div class="row">
+              <label>音乐倍速</label>
+              <input type="range" id="speedSlider" min="0.1" max="3" step="0.1" value="1" oninput="onSpeedChange()">
+              <span class="val" id="speedVal">1.0x</span>
+            </div>
+            <div class="row">
+              <label>下落流速</label>
+              <input type="range" id="fallSpeedSlider" min="0.2" max="5" step="0.1" value="1" oninput="onFallSpeedChange()">
+              <span class="val" id="fallSpeedVal">1.0x</span>
+            </div>
+            <div class="row">
+              <label>钢琴高度</label>
+              <input type="range" id="pianoHeightSlider" min="5" max="50" step="1" value="25" oninput="onPianoHeightChange()">
+              <span class="val" id="pianoHeightVal">25%</span>
+            </div>
+            <div class="row">
+              <label>宽度缩放</label>
+              <input type="range" id="pianoWidthSlider" min="1" max="4" step="0.001" value="1" oninput="onPianoWidthChange()">
+              <span class="val" id="pianoWidthVal">1.0×</span>
+            </div>
+            <div class="row">
+              <label>水平偏移</label>
+              <input type="range" id="pianoOffsetSlider" min="0" max="100" step="0.01" value="0" oninput="onPianoOffsetChange()">
+              <span class="val" id="pianoOffsetVal">0%</span>
+            </div>
+            <div class="row">
+              <label>键数版型</label>
+              <input type="range" id="keyboardPresetSlider" min="0" max="6" step="1" value="6" oninput="onKeyboardPresetChange()">
+              <span class="val" id="keyboardPresetVal">88键</span>
+            </div>
+            <div class="row">
+              <label title="可视化渲染帧率上限；不限=跟随显示器刷新率。降低上限可减轻主线程/GPU 负载；渲染降级时会临时降到 30fps">帧率上限</label>
+              <input type="range" id="fpsCapSlider" min="0" max="4" step="1" value="4" oninput="onFpsCapChange()">
+              <span class="val" id="fpsCapVal">不限</span>
+            </div>
+            <div class="row">
+              <label style="min-width:auto" title="开：所有镜像同时完整下载，最快完成者胜出；关：仅竞速首字节响应">CDN竞速</label>
+              <label class="switch">
+                <input id="raceFullSw" type="checkbox" checked onchange="onRaceFullChange()">
+                <span class="track"><span class="knob"></span></span>
+              </label>
+              <label class="switch" style="margin-left:auto" title="在画布左上角显示实时帧率（精确到 0.1）">
+                <span>帧率显示</span>
+                <input id="fpsDisplaySw" type="checkbox" checked onchange="onFpsDisplayChange()">
+                <span class="track"><span class="knob"></span></span>
+              </label>
+            </div>
+            <div class="row">
+              <label>音色选择</label>
+              <select id="timbreSel" onchange="onTimbreChange()">
+                <option value="__synth__" selected>合成钢琴</option>
+                <option value="__yamaha_c7__">雅马哈C7</option>
+                <optgroup label="键盘">
+                  <option value="acoustic_grand_piano">三角钢琴</option>
+                  <option value="bright_acoustic_piano">亮音钢琴</option>
+                  <option value="electric_grand_piano">电三角钢琴</option>
+                  <option value="electric_piano_1">电钢琴1</option>
+                  <option value="electric_piano_2">电钢琴2</option>
+                  <option value="honkytonk_piano">酒吧钢琴</option>
+                  <option value="harpsichord">大键琴</option>
+                  <option value="clavinet">古钢琴</option>
+                </optgroup>
+                <optgroup label="风琴/打击">
+                  <option value="drawbar_organ">拉杆风琴</option>
+                  <option value="percussive_organ">打击风琴</option>
+                  <option value="rock_organ">摇滚风琴</option>
+                  <option value="church_organ">教堂管风琴</option>
+                  <option value="celesta">钢片琴</option>
+                  <option value="vibraphone">颤音琴</option>
+                  <option value="marimba">马林巴</option>
+                  <option value="xylophone">木琴</option>
+                  <option value="tubular_bells">管钟</option>
+                </optgroup>
+                <optgroup label="吉他/贝斯">
+                  <option value="acoustic_guitar_nylon">古典吉他</option>
+                  <option value="acoustic_guitar_steel">民谣吉他</option>
+                  <option value="electric_guitar_jazz">爵士电吉他</option>
+                  <option value="electric_guitar_clean">清音电吉他</option>
+                  <option value="overdriven_guitar">过载吉他</option>
+                  <option value="distortion_guitar">失真吉他</option>
+                  <option value="acoustic_bass">原声贝斯</option>
+                  <option value="electric_bass_finger">指弹电贝斯</option>
+                  <option value="electric_bass_pick">拨片电贝斯</option>
+                  <option value="fretless_bass">无品贝斯</option>
+                </optgroup>
+                <optgroup label="弦乐">
+                  <option value="violin">小提琴</option>
+                  <option value="viola">中提琴</option>
+                  <option value="cello">大提琴</option>
+                  <option value="contrabass">低音提琴</option>
+                  <option value="pizzicato_strings">拨弦弦乐</option>
+                  <option value="orchestral_harp">竖琴</option>
+                  <option value="string_ensemble_1">弦乐合奏1</option>
+                  <option value="string_ensemble_2">弦乐合奏2</option>
+                </optgroup>
+                <optgroup label="铜管/木管">
+                  <option value="trumpet">小号</option>
+                  <option value="trombone">长号</option>
+                  <option value="french_horn">圆号</option>
+                  <option value="tuba">大号</option>
+                  <option value="brass_section">铜管合奏</option>
+                  <option value="soprano_sax">高音萨克斯</option>
+                  <option value="alto_sax">中音萨克斯</option>
+                  <option value="tenor_sax">次中音萨克斯</option>
+                  <option value="baritone_sax">上低音萨克斯</option>
+                  <option value="oboe">双簧管</option>
+                  <option value="bassoon">巴松管</option>
+                  <option value="clarinet">单簧管</option>
+                  <option value="piccolo">短笛</option>
+                  <option value="flute">长笛</option>
+                  <option value="recorder">竖笛</option>
+                  <option value="pan_flute">排箫</option>
+                </optgroup>
+                <optgroup label="合成器">
+                  <option value="lead_1_square">方波主音</option>
+                  <option value="lead_2_sawtooth">锯齿主音</option>
+                  <option value="lead_7_fifths">五度主音</option>
+                  <option value="pad_4_choir">合唱垫音</option>
+                </optgroup>
+              </select>
+            </div>
+            <details class="kbd-map" id="kbdMapDetails">
+              <summary>键盘映射（电脑键盘演奏）</summary>
+              <div class="kbd-map-body">
+                <div class="row">
+                  <label>启用演奏</label>
+                  <label class="switch" style="margin-left:auto" title="开启后可用电脑键盘弹奏钢琴">
+                    <input id="kbdPianoSw" type="checkbox" onchange="onKbdPianoChange()">
+                    <span class="track"><span class="knob"></span></span>
+                  </label>
+                </div>
+                <div class="row">
+                  <label>基准八度</label>
+                  <input type="range" id="kbdOctaveSlider" min="0" max="8" step="1" value="4" oninput="onKbdOctaveChange()">
+                  <span class="val" id="kbdOctaveVal">C4</span>
+                </div>
+                <div class="kbd-map-grid" id="kbdMapGrid"></div>
+                <div class="kbd-map-hint" id="kbdMapHint"></div>
+              </div>
+            </details>
+
+          </div>
+      <div id="manageModal" class="drop-panel manage-panel">
+        <div class="manage-head">
+          <h3>谱面管理</h3>
+          <button class="manage-close" onclick="closeManageModal()" title="关闭">✕</button>
+        </div>
+        <div id="manageList"></div>
+      </div>
+        </div>
+        <div id="progressPanel">
+          <div class="stats-bar" style="font-size:10px;color:var(--dim);margin-top:3px;display:flex;justify-content:space-between">
+            <span><span id="statTracks">轨道：-</span> · <span id="statTotal">音符：-</span></span>
+            <span><span id="statPlayed">已播：-/-</span> · <span id="statPercent">0.00%</span></span>
+          </div>
+          <div class="progress-wrap">
+            <div class="time-row">
+              <span id="curTime">0:00</span>
+              <span id="statusText"></span>
+              <span id="totalTime">0:00</span>
+            </div>
+            <div class="progress-bar" id="progressBar" onmousedown="startSeek(event)" ontouchstart="startSeek(event)">
+              <div class="progress-fill" id="progressFill"></div>
+            </div>
+          </div>
+        </div>
+        <div id="fileInfo" style="display:none"></div>
+      </div>
+      <div class="panel visual-panel">
+        <canvas id="visualCanvas"></canvas>
+        <div class="fs-overlay" id="fsOverlay">
+          <button class="fs-float-btn fs-settings" id="fsSettingsBtn" title="设置" aria-label="设置"><svg viewBox="0 0 24 24" fill="currentColor" style="flex-shrink:0"><path fill-rule="evenodd" d="M12.4277 2C11.3139 2 10.2995 2.6007 8.27081 3.80211L7.58466 4.20846C5.55594 5.40987 4.54158 6.01057 3.98466 7C3.42773 7.98943 3.42773 9.19084 3.42773 11.5937V12.4063C3.42773 14.8092 3.42773 16.0106 3.98466 17C4.54158 17.9894 5.55594 18.5901 7.58466 19.7915L8.27081 20.1979C10.2995 21.3993 11.3139 22 12.4277 22C13.5416 22 14.5559 21.3993 16.5847 20.1979L17.2708 19.7915C19.2995 18.5901 20.3139 17.9894 20.8708 17C21.4277 16.0106 21.4277 14.8092 21.4277 12.4063V11.5937C21.4277 9.19084 21.4277 7.98943 20.8708 7C20.3139 6.01057 19.2995 5.40987 17.2708 4.20846L16.5847 3.80211C14.5559 2.6007 13.5416 2 12.4277 2ZM8.67773 12C8.67773 9.92893 10.3567 8.25 12.4277 8.25C14.4988 8.25 16.1777 9.92893 16.1777 12C16.1777 14.0711 14.4988 15.75 12.4277 15.75C10.3567 15.75 8.67773 14.0711 8.67773 12Z" clip-rule="evenodd"/></svg></button>
+          <button class="fs-float-btn fs-exit" id="fsExitBtn" title="退出全屏" aria-label="退出全屏"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"><path d="M2 22L9 15M9 20.8571V15H3.14286"/><path d="M22 2L15 9M15 3.14286V9H20.8571"/></g></svg></button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="vendor/Midi.js"></script>
+<script src="../shared/cdn-race.js"></script>
+<script src="../shared/yamaha-c7.js"></script>
+
+<script id="appLoader">
+(function(){
+  /* 样式已内联在 <head>（<style id="appCss">），本脚本一执行立即显示布局，不再等 CSS、白圈不再转。
+     入口重代码 app.js 仍优先同源加载（与 HTML 同版本、绝不吃 CDN 陈旧缓存），失败回退 jsDelivr。 */
+  var CDN='https://cdn.jsdelivr.net/gh/teecatt/teecatt.github.io@master/midi_player/';
+  function reveal(){
+    try{
+      var el=document.getElementById('appLoading');
+      if(el && el.parentNode) el.parentNode.removeChild(el);
+      document.body.style.visibility='visible';
+    }catch(e){}
+  }
+  function load(url){
+    return fetch(url, {cache:'no-cache'}).then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.text(); });
+  }
+  function inject(js){
+    var sc=document.createElement('script'); sc.textContent=js+'\n//# sourceURL=app.js'; document.body.appendChild(sc);
+  }
+  function fallback(){
+    try{ var s=document.createElement('script'); s.src=CDN+'app.js'; document.body.appendChild(s); }catch(e){}
+  }
+  reveal(); // 样式已内联：立即显示已样式化的布局
+  try{
+    load('app.js').catch(function(){ return load(CDN+'app.js'); }).then(inject, fallback);
+  }catch(e){ fallback(); }
+})();
+</script>
+<!-- 自定义配色弹窗 -->
+<div id="confirmModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:20001;align-items:center;justify-content:center">
+  <div style="background:#1a1a2e;border-radius:12px;padding:18px;width:86%;max-width:340px;box-shadow:0 14px 44px rgba(0,0,0,.55)">
+    <div id="confirmMsg" style="color:#fff;font-size:14px;line-height:1.6;margin-bottom:16px"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn" onclick="closeConfirm()">取消</button>
+      <button class="btn" id="confirmOkBtn" onclick="confirmOk()" style="background:#7f1d1d;border-color:#b91c1c;color:#fff">确定</button>
+    </div>
+  </div>
+</div>
+<!-- 谱面管理弹窗 -->
+
+</body>
+</html>

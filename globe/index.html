@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>访客地图 · teecatt</title>
+<style>
+:root{--bg:#000;--panel:#0d1117cc;--line:#30363d;--text:#e6edf3;--muted:#8b949e;--accent:#58a6ff;--hover:#21262d}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Microsoft YaHei',Helvetica,Arial,sans-serif}
+#globe{position:fixed;inset:0}
+
+header{position:fixed;top:0;left:0;padding:16px 18px;z-index:10}
+header h1{font-size:15px;font-weight:600;letter-spacing:.5px;text-shadow:0 1px 8px #000}
+
+#panel{position:fixed;top:0;right:0;width:340px;height:100%;z-index:9;display:flex;flex-direction:column;pointer-events:none}
+.panelbox{position:relative;flex:1;min-height:0;display:flex;flex-direction:column;background:var(--panel);backdrop-filter:blur(10px);border-left:1px solid var(--line);margin-top:15px;pointer-events:auto;transition:transform .3s ease}
+#panel.collapsed .panelbox{transform:translateY(100%);pointer-events:none}
+.chev{position:absolute;top:-15px;left:50%;transform:translateX(-50%);z-index:12;width:102px;height:15px;display:inline-flex;align-items:center;justify-content:center;color:var(--muted);background:none;border:none;cursor:pointer;transition:color .15s;pointer-events:auto;outline:none}
+.chev:hover{color:var(--text);background:rgba(255,255,255,.08);border-radius:10px}
+.chev:focus{outline:none;box-shadow:none}
+.chev svg{width:60px;height:9px;transition:transform .25s ease}
+.chev.up svg{transform:rotate(180deg)}
+
+.sum{position:relative;padding:16px 76px 12px 18px;border-bottom:1px solid var(--line)}
+.total-row{display:flex;align-items:center;gap:8px}
+.sum .total{display:inline-flex;align-items:flex-end;gap:4px;font-size:20px;font-weight:700;color:var(--accent)}
+.sum .total .unit{font-size:11px;font-weight:400;color:var(--muted);line-height:1.7}
+.lang{position:absolute;right:14px;top:0;bottom:0;margin:auto 0;width:46px;height:46px;display:inline-flex;align-items:center;justify-content:center;color:var(--muted);background:none;border:none;cursor:pointer;padding:0;transition:color .15s}
+.lang:hover{color:var(--text)}
+.lang:focus{outline:none;box-shadow:none}
+.lang.on{color:var(--accent)}
+.lang svg{width:24px;height:24px;display:block}
+.sum .sub{font-size:12px;color:var(--muted);margin-top:3px;line-height:1.6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gps{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;color:var(--muted);background:none;border:none;cursor:pointer;padding:0;transition:color .15s;flex:0 0 auto}
+.gps:hover{color:var(--text)}
+.gps:focus{outline:none;box-shadow:none}
+.gps.on{color:var(--accent)}
+.gps.on:hover{color:var(--accent)}
+.gps svg{width:18px;height:18px;display:block}
+.mecity{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+
+#list{flex:1;overflow-y:auto;padding:0 10px 20px}
+.sec{font-size:11px;color:var(--muted);letter-spacing:1px;padding:14px 10px 6px;text-transform:uppercase}
+.row{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:10px;cursor:pointer;transition:background .15s}
+.row:hover{background:var(--hover)}
+.row.sel{background:rgba(88,166,255,.16)}
+.row.sel .dot{box-shadow:0 0 0 2px rgba(88,166,255,.5)}
+.row .dot{width:9px;height:9px;border-radius:50%;flex:0 0 auto}
+.row .t{flex:1;min-width:0}
+.row .t .n{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .t .s{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:3px}
+.row .c{font-size:12px;color:var(--accent);font-weight:600;flex:0 0 auto}
+.empty{color:var(--muted);font-size:13px;text-align:center;padding:40px 20px;line-height:1.8}
+
+.map-label{pointer-events:none}
+.map-label .ml-box{transform:translateY(-135%);background:var(--panel);backdrop-filter:blur(8px);border:1px solid var(--line);border-radius:10px;padding:6px 10px;white-space:nowrap;text-align:center;box-shadow:0 6px 22px rgba(0,0,0,.6)}
+.map-label .ml-top{font-size:13px;font-weight:600;color:#fff}
+.map-label .ml-top .ml-n{color:var(--accent)}
+.map-label .ml-sub{font-size:11px;color:var(--muted);margin-top:2px}
+
+@media(max-width:720px){
+  #panel{top:auto;bottom:0;width:100%;height:65%}
+  .panelbox{border-left:none;border-top:1px solid var(--line)}
+  .sum{padding:16px 72px 10px 18px}
+  .sum .total{font-size:18px}
+  header h1{display:none}
+}
+</style>
+</head>
+<body>
+<div id="globe"></div>
+<header><h1>访客地图</h1></header>
+<aside id="panel">
+  <div class="panelbox">
+  <button class="chev" id="chev" title="收起 / 展开" aria-label="toggle panel">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="square" stroke-linejoin="miter"><polyline points="2,2 12,12 22,2"/></svg>
+  </button>
+  <div class="sum">
+    <div class="total-row">
+      <div class="total"><span id="total">—</span><span class="unit" id="unit">visits</span></div>
+      <button class="gps" id="gps" title="Locate me" aria-label="locate me"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 12 12"><path fill="currentColor" d="M6 .5A4.5 4.5 0 0 1 10.5 5c0 1.863-1.42 3.815-4.2 5.9a.5.5 0 0 1-.6 0C2.92 8.815 1.5 6.863 1.5 5A4.5 4.5 0 0 1 6 .5m0 3a1.5 1.5 0 1 0 0 3a1.5 1.5 0 0 0 0-3"/></svg></button>
+      <span class="mecity" id="mecity"></span>
+    </div>
+    <div class="sub"><span id="sub">Loading…</span></div>
+    <button class="lang" id="lang" title="Translate to 中文" aria-label="translate"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32" d="M48 112h288M192 64v48m80 336l96-224l96 224m-162.5-64h133M281.3 112S257 206 199 277S80 384 80 384"/><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32" d="M256 336s-35-27-72-75s-56-85-56-85"/></svg></button>
+  </div>
+  <div id="list"><div class="empty">Loading…</div></div>
+  </div>
+</aside>
+
+<script src="./vendor/globe.gl.min.js"></script>
+<script>
+var COLORS = ['#58a6ff','#3fb950','#e8b64c','#ff7b72','#c822ff','#2dd4bf','#ff9e64','#a5d6ff','#f778ba','#7ee787'];
+var _regionNames;
+function trCountry(code,fallback){
+  if(lang!=='zh' || !code) return fallback||code||'';
+  try{ _regionNames=_regionNames||new Intl.DisplayNames(['zh-Hans'],{type:'region'}); return _regionNames.of(code)||fallback||code; }catch(e){ return fallback||code; }
+}
+function zhCity(o){ if(lang!=='zh') return o.city||''; return o.city_zh||o.city||''; }
+function zhRegion(o){
+  if(lang!=='zh') return o.region||'';
+  var r=o.region_zh;
+  if(!r && o.region){
+    for(var i=0;i<cities.length;i++){
+      if(cities[i].country===o.country && cities[i].region===o.region && cities[i].region_zh){ r=cities[i].region_zh; break; }
+    }
+  }
+  return r||o.region||'';
+}
+function flag(code){ if(!code||String(code).length!==2) return ''; return String.fromCodePoint.apply(null, String(code).toUpperCase().split('').map(function(ch){ return 0x1F1E6 + ch.charCodeAt(0) - 65; })); }
+function nameOf(v){ var c=zhCity(v), r=zhRegion(v), k=trCountry(v.country,v.country); return c||r||k||'?'; }
+function subOf(v,nm){ var seg=[]; var r=zhRegion(v)||zhCity(v)||v.city||''; var k=trCountry(v.country,v.country), f=flag(v.country); if(r) seg.push(r); if(k) seg.push(k+(f?' '+f:'')); return seg.join(' · '); }
+
+function colorFor(s){ s = String(s||'?'); var h=0; for(var i=0;i<s.length;i++) h=(h*31+s.charCodeAt(i))>>>0; return COLORS[h%COLORS.length]; }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+function full(ts){ try{ return new Date(ts).toLocaleString(lang==='zh'?'zh-CN':'en-GB',{hour12:false}); }catch(e){ return new Date(ts).toISOString(); } }
+function rowKey(o){ return [o.country||'',o.region||'',o.city||''].join('|'); }
+function isSel(o){ return selKey!=null && o && rowKey(o)===selKey; }
+
+var adminKey = new URLSearchParams(location.search).get('key') || '';
+var lang = 'en';
+var globe, cities=[], adminVisits=[], meData=null, selKey=null, selCity=null, collapsed=false;
+
+function initGlobe(){
+  globe = Globe()(document.getElementById('globe'))
+    .globeImageUrl('./textures/earth-blue-marble.jpg')
+    .bumpImageUrl('./textures/earth-topology.png')
+    .backgroundImageUrl('./textures/night-sky.png')
+    .showAtmosphere(true)
+    .atmosphereColor('#7fb8ff')
+    .atmosphereAltitude(0.22)
+    .pointLat('lat').pointLng('lon')
+    .pointAltitude(function(d){ return 0.01 + Math.log2((d.n||1)+1) * 0.015; })
+    .pointRadius(0.25)
+    .pointColor(function(d){ return colorFor(d.country || d.region); })
+    .pointsTransitionDuration(250)
+    .ringLat('lat').ringLng('lng')
+    .ringColor(function(){ return function(t){ return 'rgba(88,166,255,'+(1-t).toFixed(3)+')'; }; })
+    .ringMaxRadius(4)
+    .ringPropagationSpeed(3)
+    .ringRepeatPeriod(800)
+    .ringAltitude(0.011)
+    .htmlLat('lat').htmlLng('lon').htmlAltitude(0.06)
+    .htmlElement(function(d){
+      var el=document.createElement('div');
+      el.className='map-label';
+      el.innerHTML='<div class="ml-box"><div class="ml-top">'+esc(nameOf(d))+' · <span class="ml-n">'+d.n+'</span></div><div class="ml-sub">'+esc(subOf(d,nameOf(d)))+'</div></div>';
+      return el;
+    });
+  globe.controls().autoRotate = true;
+  globe.controls().autoRotateSpeed = 0.35;
+  globe.controls().enableDamping = true;
+  var canvas = globe.renderer().domElement;
+  var down = null;
+  canvas.addEventListener('pointerdown', function(e){ down = { x: e.clientX, y: e.clientY }; });
+  canvas.addEventListener('pointerup', function(e){
+    if(!down) return;
+    var moved = Math.sqrt(Math.pow(e.clientX-down.x, 2) + Math.pow(e.clientY-down.y, 2));
+    down = null;
+    if(moved > 6) return;
+    var r = canvas.getBoundingClientRect();
+    var c = pickCity(e.clientX-r.left, e.clientY-r.top);
+    if(c) selectCity(c, true);
+  });
+}
+// 屏幕坐标 -> 地球坐标，再取角距最近的城市；命中范围约 6°，且天然排除地球背面
+function pickCity(px, py){
+  if(!globe || !globe.toGlobeCoords) return null;
+  var p = globe.toGlobeCoords(px, py);
+  if(!p) return null;
+  var best = null, bd = Infinity;
+  for(var i=0;i<cities.length;i++){
+    var c = cities[i];
+    if(c.lat==null || c.lon==null) continue;
+    var d = angularDist(c.lat, c.lon, p.lat, p.lng);
+    if(d < bd){ bd = d; best = c; }
+  }
+  return (best && bd <= 6) ? best : null;
+}
+function angularDist(a, b, c, d){
+  var R = Math.PI/180;
+  var dLat = (c-a)*R, dLon = (d-b)*R;
+  var s = Math.sin(dLat/2)*Math.sin(dLat/2) + Math.cos(a*R)*Math.cos(c*R)*Math.sin(dLon/2)*Math.sin(dLon/2);
+  return 2*Math.asin(Math.min(1, Math.sqrt(s)))/R;
+}
+function setPoints(){ if(globe) globe.pointsData(cities.filter(function(c){ return c.lat!=null && c.lon!=null; })); }
+function updateLabel(){ if(!globe) return; var d = (selCity && selCity.lat!=null) ? [Object.assign({}, selCity)] : []; globe.htmlElementsData(d); }
+function updateRings(){ if(globe) globe.ringsData(selCity && selCity.lat!=null ? [{lat:selCity.lat, lng:selCity.lon}] : []); }
+function flyTo(lat,lon){
+  if(!globe||lat==null||lon==null) return;
+  globe.controls().autoRotate=false;
+  var tLat = Math.max(-82, Math.min(82, lat - 15));
+  globe.pointOfView({lat:tLat, lng:lon, altitude:1.8}, 900);
+  clearTimeout(flyTo._t);
+  flyTo._t=setTimeout(function(){ globe.controls().autoRotate=true; }, 1000);
+}
+
+function selectCity(c, doScroll){
+  if(!c) return;
+  var opening = expandPanel();
+  flyTo(c.lat,c.lon);
+  selCity=c; selKey=rowKey(c);
+  setPoints(); updateLabel(); updateRings(); applySelection();
+  if(doScroll){
+    if(opening) setTimeout(function(){ scrollCityToCenter(c); }, 330);
+    else scrollCityToCenter(c);
+  }
+}
+function selectVisit(v){ flyTo(v.lat,v.lon); }
+function scrollCityToCenter(c){
+  var list=document.getElementById('list');
+  var rows=list.querySelectorAll('.row[data-kind="city"]');
+  for(var i=0;i<rows.length;i++){
+    var cc=cities[+rows[i].getAttribute('data-i')];
+    if(cc && rowKey(cc)===rowKey(c)){
+      var lr=list.getBoundingClientRect(), rr=rows[i].getBoundingClientRect();
+      list.scrollTop += (rr.top-lr.top) - (lr.height-rr.height)/2;
+      break;
+    }
+  }
+}
+function cityForMe(){
+  if(!meData) return null;
+  var k=rowKey(meData);
+  for(var i=0;i<cities.length;i++){ if(rowKey(cities[i])===k) return cities[i]; }
+  var mk=(meData.country||'')+'|'+(meData.city||'');
+  for(var i=0;i<cities.length;i++){
+    if((cities[i].country||'')+'|'+(cities[i].city||'')===mk) return cities[i];
+  }
+  return null;
+}
+function applySelection(){
+  var list=document.getElementById('list');
+  Array.prototype.forEach.call(list.querySelectorAll('.row[data-kind="city"]'), function(row){
+    var c=cities[+row.getAttribute('data-i')];
+    row.classList.toggle('sel', c && isSel(c));
+  });
+  var gps=document.getElementById('gps');
+  if(gps) gps.classList.toggle('on', !!(meData && isSel(meData)));
+}
+
+function renderList(){
+  var list=document.getElementById('list');
+  if(!cities.length && !(adminKey && adminVisits.length)){
+    list.innerHTML='<div class="empty">'+(lang==='zh'?'还没有数据。':'No data yet.')+'</div>'; return;
+  }
+  var html='';
+  cities.forEach(function(c,i){
+    var nm=nameOf(c);
+    html+='<div class="row" data-kind="city" data-i="'+i+'">'
+      +'<span class="dot" style="background:'+colorFor(c.country)+'"></span>'
+      +'<span class="t"><span class="n">'+esc(nm)+'</span> '
+      +'<span class="s">'+esc(subOf(c,nm))+'</span></span>'
+      +'<span class="c">'+c.n+'</span></div>';
+  });
+  if(adminKey && adminVisits.length){
+    html+='<div class="sec">'+(lang==='zh'?'访客明细':'Visitor log')+'</div>';
+    adminVisits.slice(0,200).forEach(function(v,i){
+      html+='<div class="row" data-kind="visit" data-i="'+i+'">'
+        +'<span class="dot" style="background:'+colorFor(v.country)+'"></span>'
+        +'<span class="t"><span class="n">'+esc(nameOf(v))+'</span>'
+        +'<span class="s">'+full(v.ts)+' · '+esc(v.path||'')+'</span></span></div>';
+    });
+  }
+  list.innerHTML=html;
+  Array.prototype.forEach.call(list.querySelectorAll('.row'), function(row){
+    row.addEventListener('click', function(){
+      var i=+row.getAttribute('data-i');
+      if(row.getAttribute('data-kind')==='city') selectCity(cities[i], false); else selectVisit(adminVisits[i]);
+    });
+  });
+  applySelection();
+}
+
+function renderSub(){
+  var countries={}; cities.forEach(function(c){ if(c.country) countries[c.country]=1; });
+  document.getElementById('sub').textContent=(lang==='zh'
+    ? cities.length+' 个城市 · 覆盖 '+Object.keys(countries).length+' 个国家/地区'
+    : cities.length+' cities · '+Object.keys(countries).length+' countries/regions');
+}
+function renderMe(){
+  var el=document.getElementById('mecity'); if(!el) return;
+  el.textContent = meData ? nameOf(meData) : '';
+}
+
+async function refresh(){
+  try{
+    var rs=await fetch('/api/stats',{cache:'no-store'});
+    var st=await rs.json();
+    cities=(st.cities||[]).filter(function(c){return c.city || c.region;});
+    document.getElementById('total').textContent=st.total!=null?st.total:'—';
+    renderSub();
+    setPoints();
+    if(selCity){ for(var i=0;i<cities.length;i++){ if(rowKey(cities[i])===selKey){ selCity=cities[i]; break; } } updateLabel(); updateRings(); }
+  }catch(e){}
+  if(adminKey){
+    try{
+      var rv=await fetch('/api/visits?limit=300&key='+encodeURIComponent(adminKey),{cache:'no-store'});
+      if(rv.ok){ var vv=await rv.json(); adminVisits=(vv.visits||[]).filter(function(v){return v.lat!=null && v.lon!=null;}); }
+    }catch(e){}
+  }
+  renderList();
+}
+async function refreshMe(){
+  try{
+    var r=await fetch('/api/me',{cache:'no-store'});
+    if(!r.ok) return;
+    meData=await r.json();
+    renderMe();
+    applySelection();
+    setTimeout(function(){ document.getElementById('gps').click(); }, 1000);
+  }catch(e){}
+}
+
+function applyLang(){
+  document.documentElement.lang = lang==='zh' ? 'zh-CN' : 'en';
+  document.title = lang==='zh' ? 'teecatt · 访客地图' : 'teecatt · Visitor Map';
+  document.getElementById('unit').textContent = lang==='zh' ? '次访问' : 'visits';
+  document.getElementById('lang').classList.toggle('on', lang==='zh');
+  setPoints(); updateLabel(); updateRings(); renderList(); renderSub(); renderMe();
+}
+
+function setCollapsed(v){ collapsed=v; document.getElementById('panel').classList.toggle('collapsed',v); document.getElementById('chev').classList.toggle('up',v); }
+function expandPanel(){ if(collapsed){ setCollapsed(false); return true; } return false; }
+document.getElementById('chev').addEventListener('click',function(){ setCollapsed(!collapsed); var b=this; setTimeout(function(){ b.blur(); },1000); });
+document.getElementById('lang').addEventListener('click',function(){ lang = lang==='zh' ? 'en' : 'zh'; applyLang(); var b=this; setTimeout(function(){ b.blur(); },1000); });
+document.getElementById('gps').addEventListener('click',function(){ var c=cityForMe(); if(c) selectCity(c, true); var b=this; setTimeout(function(){ b.blur(); },1000); });
+
+(async function(){
+  if(!window.Globe){ document.getElementById('list').innerHTML='<div class="empty">3D engine failed to load.</div>'; return; }
+  initGlobe(); applyLang(); await refresh(); refreshMe(); setInterval(refresh, 30000);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
+<link rel="preconnect" href="https://fastly.jsdelivr.net" crossorigin>
+<link rel="dns-prefetch" href="https://fastly.jsdelivr.net">
+<link rel="preconnect" href="https://gcore.jsdelivr.net" crossorigin>
+<link rel="dns-prefetch" href="https://gcore.jsdelivr.net">
+<link rel="preconnect" href="https://testingcf.jsdelivr.net" crossorigin>
+<link rel="dns-prefetch" href="https://testingcf.jsdelivr.net">
+<title>音频可视化</title>
+<style>html,body{background:#000000;color:#e6edf3}body{visibility:hidden}#appLoading{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;visibility:visible;z-index:99999}#appLoading::after{content:'';width:34px;height:34px;border:3px solid rgba(230,237,243,.22);border-top-color:#e6edf3;border-radius:50%;animation:appspin .8s linear infinite}@keyframes appspin{to{transform:rotate(360deg)}}</style>
+<style id="appCss">
+:root{
+  --bg:#000000; --panel:#000000; --panel2:#1c2128; --line:#30363d;
+  --text:#e6edf3; --muted:#8b949e; --accent:#ff3f58; --accent2:#c822ff;
+  --hover:#21262d; --radius:8px; --panel-w:280px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+/* 统一触屏按下反馈：去掉默认的方形点击高亮（按外接矩形绘制、不裁圆角），
+   改用随元素 border-radius 裁切的反馈（透明度/缩放不影响形状） */
+*{-webkit-tap-highlight-color:transparent}
+a:active,button:active,[onclick]:active,[role="button"]:active,.lib-item:active,.upload-zone:active,.toggle:active{opacity:.78}
+.play-btn:active{opacity:1;transform:scale(.9)}
+html,body{height:100%;overflow:hidden}
+body{background:var(--bg);color:var(--text);font-family:"Segoe UI","Microsoft YaHei",system-ui,sans-serif;font-size:13px;display:flex;flex-direction:column}
+
+.topbar{background:var(--panel);border-bottom:1px solid var(--line);flex-shrink:0}
+.topbar-row{height:48px;display:flex;align-items:center;padding:0 16px;gap:12px}
+.control-row{display:flex;align-items:center;justify-content:center;gap:8px;padding:6px 12px;flex-shrink:0}
+.ctl-spacer{flex:1 1 auto;min-width:0}
+.ctl-group{display:flex;align-items:center;gap:8px}
+.ctl-btn{width:32px;height:32px;flex-shrink:0;padding:0;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--text);transition:background .15s,color .15s,box-shadow .15s}
+.ctl-btn:hover{background:rgba(255,255,255,.1)}
+.ctl-btn:active{background:rgba(255,255,255,.18);opacity:1}
+.ctl-btn:disabled{opacity:.4;cursor:not-allowed}
+.ctl-btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.ctl-btn.primary:hover{box-shadow:inset 0 0 0 999px rgba(0,0,0,.15)}
+.ctl-btn.active{box-shadow:inset 0 0 0 999px rgba(0,0,0,.3)}
+.ctl-btn svg{width:16px;height:16px}
+.control-row .ctl-btn svg{width:52%;height:52%}
+.drop-trigger svg{transition:transform .2s}
+/* 面板容器：PC 端位于绘制区右侧并「向右展开」（推开绘制区，互不遮挡）；
+   移动端见媒体查询：在按钮行下方「向下展开」 */
+.panel-dock{flex:0 0 33.3333%;width:33.3333%;min-width:0;max-width:33.3333%;overflow:hidden;background:var(--panel);border-left:1px solid var(--line)}
+.panel-dock .drop-panel{display:none;flex-direction:column;height:100%;padding:12px 16px;background:rgba(0,0,0,.45);backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px)}
+.panel-dock .drop-panel.open{display:flex}
+/* 终端日志：在面板内滚动 */
+#logPanel{padding:0}
+#logPanel .log-toolbar{background:transparent;border-top:none}
+#logPanel .log-bar{flex:1 1 auto;min-height:0;overflow-y:auto;background:transparent;border-top:none}
+.topbar .logo{font-weight:700;font-size:12px;background:linear-gradient(120deg,#58a6ff,#c822ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent;flex-shrink:0;line-height:1.15;text-align:center;display:flex;flex-direction:column;justify-content:center}
+.topbar .center-area{flex:1;display:flex;justify-content:center;align-items:center;min-width:0}
+.topbar .upload-zone{display:flex;align-items:center;gap:8px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:8px 16px;cursor:pointer;transition:all .2s;max-width:500px;width:100%}
+.topbar .upload-zone:hover{border-color:var(--accent);background:var(--hover)}
+.topbar .upload-zone.has-audio{background:linear-gradient(120deg,rgba(255,63,88,.08),rgba(200,34,255,.08));border-color:rgba(255,63,88,.3)}
+.topbar .upload-zone .uz-filename{font-size:13px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;text-align:left}
+.topbar .upload-zone .uz-hint{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--muted);flex-shrink:0;white-space:nowrap}
+.topbar .upload-zone .uz-hint svg{width:14px;height:14px;fill:currentColor}
+.topbar .upload-zone .uz-icon{font-size:18px;flex-shrink:0}
+.topbar .upload-zone .uz-text{font-size:13px;color:var(--muted)}
+.topbar select{background:var(--panel2);border:1px solid var(--line);color:var(--text);padding:5px 10px;border-radius:6px;font-size:12px;cursor:pointer;outline:none;flex-shrink:0}
+.topbar select:hover{border-color:var(--accent)}
+
+.lib-search{padding:10px;border-bottom:1px solid var(--line)}
+.lib-search input{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--text);padding:7px 10px;border-radius:6px;font-size:12px;outline:none}
+.lib-search input:focus{border-color:var(--accent)}
+.lib-body{flex:1;min-height:0;overflow-y:auto;padding:8px}
+.lib-cat{margin-bottom:14px}
+.lib-cat-title{display:flex;justify-content:space-between;align-items:center;padding:4px 6px;margin-bottom:6px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;font-weight:600}
+.lib-cat-title .count{color:var(--accent)}
+.lib-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.lib-item{aspect-ratio:1.4;background:var(--panel2);border:1px solid var(--line);border-radius:6px;cursor:pointer;display:flex;align-items:center;justify-content:center;overflow:hidden;transition:all .15s;position:relative}
+.lib-item:hover{border-color:var(--accent);transform:translateY(-1px)}
+.lib-item.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.lib-item svg{width:70%;height:70%}
+.lib-item .label{position:absolute;bottom:2px;left:0;right:0;text-align:center;font-size:9px;color:var(--muted);background:linear-gradient(transparent,rgba(0,0,0,.7));padding:4px 2px 2px}
+
+.canvas-area{flex:1;display:flex;flex-direction:row;overflow:hidden;position:relative;min-height:0}
+.canvas-side{flex:1 1 auto;display:flex;flex-direction:column;min-width:0;min-height:0}
+/* 桌面端：绘制区固定占浏览器宽度 2/3，右侧 1/3 预留为面板区 */
+@media(min-width:769px){
+  .canvas-side{flex:0 0 66.6667%;max-width:66.6667%}
+}
+.canvas-stage{flex:1 1 auto;min-height:0;display:flex;justify-content:center;align-items:flex-start;overflow:hidden;padding:0;background:var(--panel)}
+/* 绘制区 + 进度条 + 按钮行 组成同宽整体：进度条紧贴绘制区下方 */
+.canvas-column{display:flex;flex-direction:column;align-items:stretch;flex-shrink:0;max-width:100%}
+/* 全屏绘制区 */
+.canvas-area:fullscreen,.canvas-area:-webkit-full-screen{background:var(--bg);padding:0}
+.canvas-area:fullscreen .canvas-stage,.canvas-area:-webkit-full-screen .canvas-stage{flex:1 1 auto;min-height:0;overflow:hidden}
+.canvas-area:fullscreen .canvas-side,.canvas-area:-webkit-full-screen .canvas-side{flex:1 1 100%!important;max-width:100%!important}
+/* 全屏只保留绘制区：隐藏进度条、按钮行与面板 */
+.canvas-area:fullscreen .player-bar,.canvas-area:fullscreen .control-row,.canvas-area:fullscreen .panel-dock,
+.canvas-area:fullscreen .log-toolbar,.canvas-area:fullscreen .log-bar,
+.canvas-area:-webkit-full-screen .player-bar,.canvas-area:-webkit-full-screen .control-row,.canvas-area:-webkit-full-screen .panel-dock,
+.canvas-area:-webkit-full-screen .log-toolbar,.canvas-area:-webkit-full-screen .log-bar{display:none!important}
+/* 全屏时覆盖移动端「强制宽度 100%」：改用 JS 计算的等比缩放完整显示（contain） */
+.canvas-area:fullscreen .stage-wrap,.canvas-area:-webkit-full-screen .stage-wrap{
+  width:calc(var(--canvas-w,1280px) * var(--canvas-zoom,1))!important;
+  height:calc(var(--canvas-h,720px) * var(--canvas-zoom,1))!important;
+}
+.canvas-area:fullscreen .stage-wrap canvas,.canvas-area:-webkit-full-screen .stage-wrap canvas{
+  width:var(--canvas-w,1280px)!important;
+  height:var(--canvas-h,720px)!important;
+  transform:scale(var(--canvas-zoom,1))!important;
+  transform-origin:0 0!important;
+}
+.stage-wrap{position:relative;box-shadow:none;border-radius:0;overflow:visible;flex-shrink:0;align-self:center}
+#mainCanvas{display:block;cursor:default;touch-action:none;transform-origin:0 0}
+
+.player-bar{width:100%;background:rgba(0,0,0,.55);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-top:1px solid rgba(255,255,255,.08);display:flex;flex-direction:column;justify-content:center;gap:4px;padding:6px 12px;z-index:5;flex-shrink:0}
+.time-row{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+.time-row #curTime,.time-row #totalTime{flex:0 0 auto}
+.time-row .vol{display:flex;align-items:center;gap:6px;flex:0 0 auto}
+.time-row .vol input{width:70px;accent-color:var(--accent)}
+.seek-bar{width:100%;height:6px;background:#e5e5e5;border-radius:3px;cursor:pointer;position:relative;overflow:hidden}
+.seek-bar .fill{height:100%;background:var(--accent);border-radius:3px;width:0%;transition:width .1s linear}
+
+.log-bar{width:100%;flex:1 1 auto;min-height:100px;overflow-y:auto;padding:4px 12px;font-size:10px;font-family:monospace;color:var(--muted);background:rgba(0,0,0,.3);border-top:1px solid var(--line)}
+.log-bar .log-line{line-height:1.5;white-space:pre-wrap;word-break:break-all}
+.log-bar .log-line.err{color:#ff6b6b}
+.log-bar .log-line.ok{color:#2fbf6f}
+.log-bar .log-line.warn{color:#e8b64c}
+.log-toolbar{display:flex;padding:3px 6px;gap:4px;align-items:center;background:var(--panel);border-top:1px solid var(--line);flex-shrink:0}
+.log-toolbar .log-btn{background:transparent;border:1px solid var(--line);color:var(--muted);cursor:pointer;padding:3px 6px;border-radius:4px;display:flex;align-items:center;font-size:10px;transition:all .15s}
+.log-toolbar .log-btn:hover{background:var(--hover);color:var(--text)}
+.log-toolbar .log-btn svg{width:12px;height:12px}
+.log-toolbar .log-spacer{flex:1}
+.log-toolbar .log-hint{font-size:9px;color:var(--muted)}
+
+/* 性能面板 */
+.perf-presets{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.perf-presets button{background:var(--panel2);border:1px solid var(--line);color:var(--muted);padding:4px 8px;border-radius:5px;font-size:11px;cursor:pointer;transition:all .15s}
+.perf-presets button:hover{border-color:var(--accent);color:var(--accent)}
+.perf-hint{font-size:10px;color:var(--muted);margin-top:5px}
+.perf-err{display:none;font-size:11px;color:#ff6b6b;background:rgba(255,107,107,.1);border:1px solid rgba(255,107,107,.35);border-radius:5px;padding:6px 8px;margin-top:8px}
+.perf-reset{width:100%;margin-top:12px;padding:8px;background:rgba(255,107,107,.12);border:1px solid rgba(255,107,107,.4);color:#ff6b6b;border-radius:6px;font-size:12px;cursor:pointer;transition:all .15s}
+.perf-reset:hover{background:rgba(255,107,107,.22)}
+.perf-slider-label{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:11px;color:var(--muted);margin-top:4px}
+.perf-unlimited{display:flex;align-items:center;gap:4px;color:var(--muted);cursor:pointer;font-size:11px;white-space:nowrap}
+.perf-unlimited input{accent-color:var(--accent)}
+.perf-live{font-variant-numeric:tabular-nums;color:var(--text);font-weight:600}
+
+.props-header{padding:6px 10px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:flex-end;gap:8px}
+.props-header .dot{width:8px;height:8px;border-radius:50%;background:var(--accent)}
+.props-del-btn{margin-left:auto;background:none;border:none;color:var(--muted);cursor:pointer;padding:4px;display:flex;align-items:center;border-radius:6px;transition:all .15s}
+.props-del-btn:hover{color:#ff6b6b;background:rgba(255,107,107,.15)}
+.props-del-btn svg{width:16px;height:16px}
+.props-body{flex:1;min-height:0;overflow-y:auto}
+.collapsible{border-bottom:1px solid var(--line)}
+.collapsible .c-head{padding:10px 14px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;font-size:12px;font-weight:600;color:var(--text);user-select:none}
+.collapsible .c-head:hover{background:var(--hover)}
+.collapsible .c-head .arrow{transition:transform .2s;color:var(--muted)}
+.collapsible.open .c-head .arrow{transform:rotate(90deg)}
+.collapsible .c-body{display:none;padding:0 14px 12px}
+.collapsible.open .c-body{display:block}
+
+.field{margin-bottom:10px}
+.field:last-child{margin-bottom:0}
+.field label{display:block;font-size:11px;color:var(--muted);margin-bottom:4px}
+.field input[type=text],.field input[type=number],.field select{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--text);padding:6px 8px;border-radius:5px;font-size:12px;outline:none}
+.field input:focus,.field select:focus{border-color:var(--accent)}
+.field input[type=range]{width:100%;accent-color:var(--accent);height:4px}
+.field .range-row{display:flex;align-items:center;gap:8px}
+.field .range-row input[type=range]{flex:1}
+.field .range-row .val{font-size:11px;color:var(--muted);min-width:40px;text-align:right;font-variant-numeric:tabular-nums}
+.field .color-row{display:flex;gap:6px;align-items:center}
+.field input[type=color]{width:30px;height:26px;border:1px solid var(--line);border-radius:4px;background:transparent;cursor:pointer;padding:1px}
+.field .toggle-row{display:flex;justify-content:space-between;align-items:center}
+.field .toggle{position:relative;width:36px;height:20px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;cursor:pointer;transition:all .2s}
+.field .toggle.on{background:var(--accent);border-color:var(--accent)}
+.field .toggle::after{content:'';position:absolute;top:2px;left:2px;width:14px;height:14px;background:#fff;border-radius:50%;transition:transform .2s}
+.field .toggle.on::after{transform:translateX(16px)}
+.field .seg{display:flex;background:var(--panel2);border:1px solid var(--line);border-radius:5px;overflow:hidden}
+.field .seg button{flex:1;background:transparent;border:none;color:var(--muted);padding:5px;font-size:11px;cursor:pointer;transition:all .15s}
+.field .seg button.active{background:color-mix(in srgb,var(--accent) 25%,transparent);color:#fff}
+.empty-props{padding:40px 20px;text-align:center;color:var(--muted);font-size:12px}
+.empty-props svg{width:40px;height:40px;margin-bottom:10px;opacity:.4}
+
+/* 移动端适配 */
+@media(max-width:768px){
+  html,body{overflow:hidden}
+  .topbar-row{height:40px;padding:0 8px;gap:6px}
+  .topbar .logo{font-size:12px}
+  .topbar .upload-zone{padding:4px 10px}
+  .topbar .upload-zone .uz-filename{font-size:11px}
+  .topbar .upload-zone.has-audio .uz-icon{display:none}
+  .topbar .upload-zone.has-audio .uz-hint span{display:none}
+  .topbar .upload-zone.has-audio .uz-hint svg{width:14px;height:14px}
+  .topbar select{font-size:10px;padding:3px 5px}
+  .control-row{padding:6px;gap:6px}
+  .canvas-area{flex:1;display:flex;flex-direction:column;overflow:hidden}
+  .canvas-side{flex:0 0 auto;min-height:0;max-width:100%}
+  .canvas-stage{flex:0 0 auto;overflow:visible;padding:0;background:var(--panel)}
+  .canvas-column{width:100%!important;max-width:100%}
+  .stage-wrap{width:100%!important;height:auto!important}
+  .stage-wrap canvas{width:100%!important;height:auto!important;transform:none!important}
+  .player-bar{padding:5px 6px;gap:3px}
+  .time-row{font-size:9px;gap:6px}
+  .seek-bar{height:5px}
+  .time-row .vol{display:none}
+  .log-toolbar .log-btn{padding:2px 4px}
+  .log-toolbar .log-btn svg{width:10px;height:10px}
+  .props-header{padding:6px 10px}
+  .props-body{padding:0}
+  /* 移动端：面板在按钮行下方「向下展开」，占满浏览器宽度；仅内容区滚动，避免容器套容器 */
+  .panel-dock{flex:0 1 auto;width:100%;max-width:none;min-width:0;overflow:hidden;border-left:none;border-top:1px solid var(--line);display:flex;flex-direction:column}
+  .panel-dock:not(.open){display:none}
+  .panel-dock.open{display:flex;flex:1 1 auto;min-height:0;width:100%}
+  .panel-dock .drop-panel{flex:1 1 auto;height:auto;max-height:none;min-height:0;padding:10px 12px;overflow:hidden}
+  #logPanel{padding:0}
+}
+
+/* 双端点频率滑条 */
+.dual-range{position:relative;height:36px;display:flex;align-items:center}
+.dual-range .track{position:absolute;left:0;right:0;height:4px;background:var(--panel2);border-radius:2px}
+.dual-range .track-fill{position:absolute;height:4px;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:2px}
+.dual-range input[type=range]{position:absolute;width:100%;pointer-events:none;-webkit-appearance:none;appearance:none;background:transparent;height:4px;margin:0}
+.dual-range input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:16px;height:16px;border-radius:50%;background:#fff;border:2px solid var(--accent);cursor:pointer;pointer-events:auto;box-shadow:0 1px 4px rgba(0,0,0,.4)}
+.dual-range input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:#fff;border:2px solid var(--accent);cursor:pointer;pointer-events:auto}
+.dual-range .zindex-min{z-index:3}
+.dual-range .zindex-max{z-index:4}
+.dual-inputs{display:flex;gap:6px;margin-top:4px}
+.dual-inputs .num-input{flex:1;display:flex;align-items:center;gap:4px}
+.dual-inputs .num-input input{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--text);padding:4px 6px;border-radius:4px;font-size:11px;outline:none;text-align:right}
+.dual-inputs .num-input input:focus{border-color:var(--accent)}
+.dual-inputs .num-input span{font-size:10px;color:var(--muted);white-space:nowrap}
+
+/* 多色渐变编辑器 */
+.color-list{display:flex;flex-direction:column;gap:4px}
+.color-list-item{display:flex;align-items:center;gap:6px;padding:4px 6px;background:var(--panel2);border:1px solid var(--line);border-radius:5px}
+.color-list-item input[type=color]{width:26px;height:22px;border:1px solid var(--line);border-radius:3px;background:transparent;cursor:pointer;padding:0}
+.color-list-item .color-hex{flex:1;font-size:11px;color:var(--muted);font-family:monospace}
+.color-list-item .arrow-btn{background:transparent;border:none;color:var(--muted);cursor:pointer;padding:2px 4px;font-size:12px;border-radius:3px}
+.color-list-item .arrow-btn:hover{background:var(--hover);color:var(--text)}
+.color-list-item .del-btn{background:transparent;border:none;color:#ff6b6b;cursor:pointer;padding:2px 4px;font-size:12px;border-radius:3px}
+.color-list-item .del-btn:hover{background:rgba(255,107,107,.15)}
+.color-add-btn{width:100%;background:var(--panel2);border:1px dashed var(--line);color:var(--muted);padding:6px;border-radius:5px;cursor:pointer;font-size:12px;margin-top:4px}
+.color-add-btn:hover{border-color:var(--accent);color:var(--accent)}
+.color-preview{height:14px;border-radius:3px;margin-bottom:6px;border:1px solid var(--line)}
+
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px}
+::-webkit-scrollbar-thumb:hover{background:#484f58}
+*{scrollbar-width:thin;scrollbar-color:var(--line) transparent}
+#fileInput{display:none}
+
+/* 全屏：用 body 类兜底隐藏进度条与终端。
+   某些浏览器/WebView 不支持 :fullscreen 伪类，仅靠上面的选择器会失效，
+   这里由 JS 在 fullscreenchange 时切换 body.fs-active 保证一定隐藏。 */
+body.fs-active .player-bar,
+body.fs-active .control-row,
+body.fs-active .panel-dock,
+body.fs-active .log-toolbar,
+body.fs-active .log-bar{display:none!important}
+</style>
+</head>
+<body>
+<div id="appLoading" aria-label="加载中"></div>
+
+<div class="topbar">
+  <div class="topbar-row">
+    <div class="logo"><span>Music</span><span>Visualizer</span></div>
+    <div class="center-area">
+      <div class="upload-zone" id="uploadZone">
+        <span class="uz-icon">🎵</span>
+        <span class="uz-filename" id="uploadText">点击上传音频文件</span>
+        <span class="uz-hint" id="uploadHint" style="display:none">
+          <svg viewBox="0 0 24 24"><path d="M9 16c0 .55.45 1 1 1h4c.55 0 1-.45 1-1v-5h2l-4-4-4 4h2v5zm-4 4h14c.55 0 1-.45 1-1v-1c0-.55-.45-1-1-1H5c-.55 0-1 .45-1 1v1c0 .55.45 1 1 1z"/></svg>
+          重新上传
+        </span>
+      </div>
+    </div>
+    <input type="file" id="fileInput" accept="audio/*">
+  </div>
+</div>
+
+<div class="canvas-area">
+  <div class="canvas-side">
+  <div class="canvas-stage" id="canvasStage">
+    <div class="canvas-column" id="canvasColumn">
+    <div class="stage-wrap" id="stageWrap">
+      <canvas id="mainCanvas" width="1920" height="1080"></canvas>
+    </div>
+<div class="player-bar">
+        <div class="time-row">
+          <span id="curTime">00:00</span>
+          <span class="vol"><input type="range" id="volSlider" min="0" max="1" step="0.01" value="1"></span>
+          <span id="totalTime">00:00</span>
+        </div>
+        <div class="seek-bar" id="seekBar"><div class="fill" id="seekFill"></div></div>
+      </div>
+    <div class="control-row" id="controlRow">
+      <div class="ctl-group">
+      <button class="ctl-btn primary" id="playBtn" title="播放" aria-label="播放" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg></button>
+      <button class="ctl-btn primary active" id="loopBtn" title="单曲循环" aria-label="单曲循环"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M11 5.466V4H5a4 4 0 0 0-3.584 5.777a.5.5 0 1 1-.896.446A5 5 0 0 1 5 3h6V1.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384l-2.36 1.966a.25.25 0 0 1-.41-.192m3.81.086a.5.5 0 0 1 .67.225A5 5 0 0 1 11 13H5v1.466a.25.25 0 0 1-.41.192l-2.36-1.966a.25.25 0 0 1 0-.384l2.36-1.966a.25.25 0 0 1 .41.192V12h6a4 4 0 0 0 3.585-5.777a.5.5 0 0 1 .225-.67Z"/></svg></button>
+      <button class="ctl-btn primary drop-trigger" id="btnElements" data-tool="elements" title="元素" aria-label="元素">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      </button>
+      <button class="ctl-btn primary drop-trigger" id="btnBackground" data-tool="background" title="背景" aria-label="背景">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+      </button>
+      <button class="ctl-btn primary drop-trigger" id="btnProps" data-tool="props" title="属性" aria-label="属性">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="21" y1="4" x2="14" y2="4"/><line x1="10" y1="4" x2="3" y2="4"/><line x1="21" y1="12" x2="12" y2="12"/><line x1="8" y1="12" x2="3" y2="12"/><line x1="21" y1="20" x2="16" y2="20"/><line x1="12" y1="20" x2="3" y2="20"/><line x1="14" y1="2" x2="14" y2="6"/><line x1="8" y1="10" x2="8" y2="14"/><line x1="16" y1="18" x2="16" y2="22"/></svg>
+      </button>
+      <button class="ctl-btn primary drop-trigger" id="btnPerf" data-tool="perf" title="性能" aria-label="性能">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21a9 9 0 1 1 9-9"/><path d="m12 12 4.5-3.5"/><circle cx="12" cy="12" r="1.2"/></svg>
+      </button>
+      <button class="ctl-btn primary drop-trigger" id="btnLog" data-tool="log" title="终端日志" aria-label="终端日志">
+        <svg viewBox="0 0 32 32" fill="currentColor"><path d="m29.83 20l.34-2l-5.17-.85v-4.38l5.06-1.36l-.51-1.93l-4.83 1.29A9 9 0 0 0 20 5V2h-2v2.23a8.8 8.8 0 0 0-4 0V2h-2v3a9 9 0 0 0-4.71 5.82L2.46 9.48L2 11.41l5 1.36v4.38L1.84 18l.32 2L7 19.18a8.9 8.9 0 0 0 .82 3.57l-4.53 4.54l1.42 1.42l4.19-4.2a9 9 0 0 0 14.2 0l4.19 4.2l1.42-1.42l-4.54-4.54a8.9 8.9 0 0 0 .83-3.57ZM15 25.92A7 7 0 0 1 9 19v-6h6ZM9.29 11a7 7 0 0 1 13.42 0ZM23 19a7 7 0 0 1-6 6.92V13h6Z"/></svg>
+      </button>
+      <button class="ctl-btn primary" id="fsToggleBtn" title="全屏绘制区" aria-label="全屏绘制区">
+        <svg id="fsIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"><path d="M9 15L2 22M2 16.1429V22H7.85714"/><path d="M15 9L22 2M22 7.85714V2H16.1429"/></g></svg>
+      </button>
+    </div>
+    </div>
+    </div>
+  </div>
+  </div>
+  <div class="panel-dock" id="panelDock">
+<div class="drop-panel" id="library"><div class="lib-body" id="libBody"></div></div>
+    <div class="drop-panel" id="propsPanel">
+      <div class="props-header" id="propsHeaderBar"><button class="props-del-btn" id="propsDelBtn" style="display:none" onclick="removeSelectedElement()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg></button></div>
+      <div class="props-body" id="propsBody">
+        <div class="empty-props">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="21" y1="4" x2="14" y2="4"/><line x1="10" y1="4" x2="3" y2="4"/><line x1="21" y1="12" x2="12" y2="12"/><line x1="8" y1="12" x2="3" y2="12"/><line x1="21" y1="20" x2="16" y2="20"/><line x1="12" y1="20" x2="3" y2="20"/><line x1="14" y1="2" x2="14" y2="6"/><line x1="8" y1="10" x2="8" y2="14"/><line x1="16" y1="18" x2="16" y2="22"/></svg>
+          <div>从「元素」添加可视化风格<br>点击画布上的元素编辑属性</div>
+        </div>
+      </div>
+    </div>
+    <div class="drop-panel" id="perfPanel">
+      <div class="props-body" id="perfBody"></div>
+    </div>
+    <div class="drop-panel" id="logPanel">
+      <div class="log-toolbar" id="logToolbar">
+        <button class="log-btn" onclick="logCopy()" title="复制日志"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="13" height="13" x="9" y="9" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+        <button class="log-btn" onclick="logClear()" title="清空日志"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18m-2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m-6 5v6m4-6v6"/></svg></button>
+        <button class="log-btn" onclick="logDownload()" title="下载日志"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4m4-5 5 5 5-5m-5 5V3"/></svg></button>
+        <span class="log-spacer"></span>
+        <button class="log-btn" onclick="logScrollTop()" title="滚到顶部"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></svg></button>
+        <button class="log-btn" onclick="logScrollBottom()" title="滚到底部"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
+      </div>
+      <div class="log-bar" id="logBar"></div>
+    </div>
+  </div>
+</div>
+
+<script src="../shared/cdn-race.js"></script>
+<script id="appLoader">
+(function(){
+  /* CSS 已内联在 <head>（<style id="appCss">），本脚本只加载 app.js：
+     优先同源（cache:'no-cache' 强制校验），同源失败才回退 jsDelivr。 */
+  var CDN='https://cdn.jsdelivr.net/gh/teecatt/teecatt.github.io@master/music_visualization/';
+  function reveal(){
+    try{
+      var el=document.getElementById('appLoading');
+      if(el && el.parentNode) el.parentNode.removeChild(el);
+      document.body.style.visibility='visible';
+    }catch(e){}
+  }
+  function load(url){
+    return fetch(url, {cache:'no-cache'}).then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.text(); });
+  }
+  function loadWithFallback(f){
+    return load(f).catch(function(){ return load(CDN+f); });
+  }
+  function inject(js){
+    var sc=document.createElement('script'); sc.textContent=js+'\n//# sourceURL=app.js'; document.body.appendChild(sc);
+    reveal();
+  }
+  function fallback(){
+    try{ var s=document.createElement('script'); s.src='app.js'; document.body.appendChild(s); }catch(e){}
+    reveal();
+  }
+  try{
+    loadWithFallback('app.js').then(inject, fallback);
+    setTimeout(reveal, 8000); // 兜底：无论成功与否 8s 后显示
+  }catch(e){ fallback(); }
+})();
+</script>
+</body>
+</html>

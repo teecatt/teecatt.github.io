@@ -1,0 +1,119 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+  actions: write
+  deployments: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Generate build info
+        run: |
+          read sha ts < <(git log -1 --format='%H %ct' -- crypto)
+          printf 'window.CRYPTO_BUILD={sha:"%s",time:%s*1000};\n' "$sha" "$ts" > crypto/build-info.js
+          read psha pts < <(git log -1 --format='%H %ct')
+          printf 'window.SITE_BUILD={sha:"%s",time:%s*1000};\n' "$psha" "$pts" > build-info.js
+          sed -i -E "s#build-info\.js\?[^\"']*#build-info.js?v=$psha#" index.html
+          sed -i -E "s#build-info\.js\?[^\"']*#build-info.js?v=$sha#" crypto/index.html
+      - name: Stage site files
+        run: |
+          mkdir -p /tmp/gh_dist
+          rsync -a --exclude='.git' --exclude='functions' ./ /tmp/gh_dist/
+      - uses: actions/configure-pages@v4
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: '/tmp/gh_dist'
+      - id: deployment
+        uses: actions/deploy-pages@v4
+
+  cloudflare:
+    needs: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Generate build info
+        run: |
+          read sha ts < <(git log -1 --format='%H %ct' -- crypto)
+          printf 'window.CRYPTO_BUILD={sha:"%s",time:%s*1000};\n' "$sha" "$ts" > crypto/build-info.js
+          read psha pts < <(git log -1 --format='%H %ct')
+          printf 'window.SITE_BUILD={sha:"%s",time:%s*1000};\n' "$psha" "$pts" > build-info.js
+          sed -i -E "s#build-info\.js\?[^\"']*#build-info.js?v=$psha#" index.html
+          sed -i -E "s#build-info\.js\?[^\"']*#build-info.js?v=$sha#" crypto/index.html
+      - name: Stage site files
+        run: |
+          mkdir -p /tmp/cf_dist
+          rsync -a --exclude='.git' --exclude='functions' ./ /tmp/cf_dist/
+      - name: Publish snapshot to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy /tmp/cf_dist --project-name=d2p --branch=master --commit-dirty=true
+
+  cleanup:
+    needs: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    if: github.event_name == 'push'
+    steps:
+      - name: Delete old push-triggered runs and deployments
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // 删除旧的 push 触发的 workflow runs（保留当前）
+            const runs = await github.rest.actions.listWorkflowRunsForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              per_page: 100
+            });
+            for (const run of runs.data.workflow_runs) {
+              if (run.event === 'push' && run.id !== context.runId) {
+                try { await github.rest.actions.deleteWorkflowRun({
+                  owner: context.repo.owner, repo: context.repo.repo, run_id: run.id
+                }); } catch (e) {}
+              }
+            }
+            // 删除旧的 github-pages deployments（保留最新一个）
+            const deps = await github.rest.repos.listDeployments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              environment: 'github-pages',
+              per_page: 100
+            });
+            // 按创建时间倒序，跳过最新的
+            const sorted = deps.data.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+            for (let i = 1; i < sorted.length; i++) {
+              try {
+                await github.rest.repos.createDeploymentStatus({
+                  owner: context.repo.owner, repo: context.repo.repo,
+                  deployment_id: sorted[i].id, state: 'inactive'
+                });
+                await github.rest.repos.deleteDeployment({
+                  owner: context.repo.owner, repo: context.repo.repo,
+                  deployment_id: sorted[i].id
+                });
+              } catch (e) {}
+            }

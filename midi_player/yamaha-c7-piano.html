@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Yamaha C7 Piano · 纯算法钢琴</title>
+<style>
+  :root{--bg:#0e0f13;--panel:#171922;--line:#2a2d3a;--text:#e6edf3;--dim:#8b949e;--accent:#e8b64c}
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif;
+    min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:20px}
+  h1{font-size:18px;font-weight:600;letter-spacing:1px}
+  h1 small{display:block;font-size:11px;color:var(--dim);font-weight:400;margin-top:4px;letter-spacing:0}
+  .btns{display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
+  button{background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:10px;
+    padding:10px 16px;font-size:14px;cursor:pointer;transition:.15s}
+  button:hover{border-color:var(--accent);color:var(--accent)}
+  button:active{transform:scale(.96)}
+  button.demo{background:var(--accent);border-color:var(--accent);color:#1a1a1a;font-weight:600}
+  /* 可点击钢琴键区 */
+  .keys{display:flex;position:relative;height:170px;user-select:none;touch-action:none}
+  .key{position:relative;width:52px;border:1px solid #000;border-radius:0 0 6px 6px;cursor:pointer;
+    background:linear-gradient(#fff,#e8e8e8);transition:background .05s}
+  .key.black{width:32px;height:105px;background:linear-gradient(#333,#111);z-index:2;margin:0 -16px;border-radius:0 0 4px 4px}
+  .key:active,.key.on{background:linear-gradient(var(--accent),#c9922c)}
+  .key.black:active,.key.black.on{background:linear-gradient(#c9922c,#8a6318)}
+  .hint{font-size:12px;color:var(--dim)}
+</style>
+</head>
+<body>
+  <h1>Yamaha C7 Piano<small>纯算法合成 · 零采样 · 零依赖（Web Audio API）</small></h1>
+  <div class="btns">
+    <button data-note="C4">C4</button>
+    <button data-note="E4">E4</button>
+    <button data-note="A4">A4</button>
+    <button data-note="C5">C5</button>
+    <button class="demo" id="rushE">▶ Rush E 上行琶音</button>
+  </div>
+  <div class="keys" id="keys"></div>
+  <div class="hint">点击琴键或按钮试听；首次点击后才会出声（浏览器自动播放限制）</div>
+
+<script>
+/* ================= 雅马哈 C7 纯算法钢琴引擎（核心逻辑） ================= */
+const YamahaC7 = (function(){
+  const HARM = [1, 2, 3, 4.01, 5.02, 6.03];    // 谐波比（含轻微失谐，模拟非整数谐波）
+  const HG   = [1, .6, .3, .15, .08, .04];     // 泛音振幅递减
+  const SEMI = {C:0,D:2,E:4,F:5,G:7,A:9,B:11}, A4 = 440;
+  const freqOf = m => A4 * Math.pow(2, (m - 69) / 12);
+  const midiOf = n => {                          // 'C5' / 'F#4' -> MIDI
+    const m = /^([A-Ga-g])([#b]?)(-?\d+)$/.exec(n); if(!m) return 60;
+    let s = SEMI[m[1].toUpperCase()]; if(m[2] === '#') s++; else if(m[2] === 'b') s--;
+    return (parseInt(m[3], 10) + 1) * 12 + s;
+  };
+  const Y = {
+    ctx: null, dest: null, active: new Map(), _noise: null, _voices: [],
+    _ensure(){                                   // 懒创建 AudioContext，并在手势后 resume
+      if(!this.ctx){ const AC = window.AudioContext || window.webkitAudioContext; this.ctx = new AC(); this.dest = this.ctx.destination; }
+      if(this.ctx.state === 'suspended') this.ctx.resume();
+      return this.ctx;
+    },
+    _noiseBuf(ctx){                              // 共享 20ms 白噪声（琴槌瞬态）
+      if(this._noise && this._noise.sampleRate === ctx.sampleRate) return this._noise;
+      const n = ctx.sampleRate * .02 | 0, b = ctx.createBuffer(1, n, ctx.sampleRate), d = b.getChannelData(0);
+      for(let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+      return (this._noise = b);
+    },
+    playPianoNote(frequency, duration, velocity){
+      const ctx = this._ensure(), t = ctx.currentTime, v = Math.max(.01, Math.min(1, velocity || .8));
+      const midi = Math.round(69 + 12 * Math.log2(frequency / A4));
+      const out = ctx.createGain(); out.connect(this.dest);
+      const peak = .28 * v;
+      const base = Math.min(1.8, 3.4 * Math.pow(2, -(midi - 60) / 24)); // 高音短延音
+      const sus = Math.max(.12, Math.min(duration || base, base)), stop = t + sus + .08;
+      for(let i = 0; i < 6; i++){                // 泛音叠加
+        const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = frequency * HARM[i];
+        const g = ctx.createGain(); g.gain.value = HG[i] * (.5 + .5 * v); // 力度越大越亮
+        o.connect(g); g.connect(out); o.start(t); o.stop(stop);
+      }
+      const s = ctx.createBufferSource(); s.buffer = this._noiseBuf(ctx);
+      const ng = ctx.createGain();
+      ng.gain.setValueAtTime((.03 + .02 * v) * peak, t);
+      ng.gain.linearRampToValueAtTime(0, t + .008); // 8ms 噪声衰减窗
+      s.connect(ng); ng.connect(out); s.start(t); s.stop(t + .02);
+      const p = out.gain;                        // 钢琴式包络
+      p.setValueAtTime(0, t);
+      p.linearRampToValueAtTime(peak, t + .002);           // 2ms 极速起音
+      p.exponentialRampToValueAtTime(peak * .3, t + .08);  // 80ms 衰减到 30%
+      p.exponentialRampToValueAtTime(.0008, stop);         // 自然延音
+      p.linearRampToValueAtTime(0, stop + .02);            // 释音
+      const voice = {midi, out};
+      s.onended = () => { try{ out.disconnect(); }catch(e){}
+        const i = this._voices.indexOf(voice); if(i >= 0) this._voices.splice(i, 1);
+        if(this.active.get(midi) === voice) this.active.delete(midi); };
+      this._voices.push(voice); this.active.set(midi, voice);
+      if(this._voices.length > 64) this.stopNote(this._voices.shift().midi); // 复音上限
+      return voice;
+    },
+    playNote(midi, velocity, duration){ return this.playPianoNote(freqOf(midi), duration, velocity); },
+    playNoteByName(name, velocity, duration){ return this.playNote(midiOf(name), velocity, duration); },
+    stopNote(midi){ const v = this.active.get(midi); if(!v) return;
+      const t = this.ctx.currentTime;
+      try{ v.out.gain.cancelScheduledValues(t); v.out.gain.setValueAtTime(v.out.gain.value, t);
+        v.out.gain.linearRampToValueAtTime(0, t + .06); }catch(e){}
+      this.active.delete(midi); },
+  };
+  return Y;
+})();
+
+/* ================= 页面交互 ================= */
+const $ = s => document.querySelector(s);
+// 试听按钮
+document.querySelectorAll('[data-note]').forEach(b => b.addEventListener('click', () => {
+  YamahaC7.playNoteByName(b.dataset.note, .9, 1.2);
+}));
+// 构建可点击琴键（C4~C6，含黑键）
+(function buildKeys(){
+  const names = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+  const box = $('#keys');
+  for(let midi = 60; midi <= 84; midi++){
+    const n = names[midi % 12], oct = Math.floor(midi / 12) - 1, black = n.includes('#');
+    const k = document.createElement('div');
+    k.className = 'key' + (black ? ' black' : '');
+    k.dataset.midi = midi;
+    box.appendChild(k);
+  }
+  const press = e => { const k = e.target.closest('.key'); if(!k) return;
+    YamahaC7.playNote(+k.dataset.midi, .9, 1.4); k.classList.add('on'); };
+  const release = e => { const k = e.target.closest('.key'); if(k) k.classList.remove('on'); };
+  box.addEventListener('pointerdown', press);
+  box.addEventListener('pointerup', release);
+  box.addEventListener('pointercancel', release);
+  box.addEventListener('pointerleave', release);
+})();
+// Rush E 标志性快速上行琶音自动演示
+$('#rushE').addEventListener('click', () => {
+  const notes = []; // 多八度快速上行（Rush E 风格的密集琶音）
+  for(let m = 48; m <= 96; m += 1) notes.push(m);
+  notes.forEach((m, i) => setTimeout(() => YamahaC7.playNote(m, .85, .25), i * 55));
+});
+</script>
+</body>
+</html>
