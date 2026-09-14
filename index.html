@@ -29,9 +29,9 @@ a{text-decoration:none;color:inherit}
 .hero-globe-wrap{display:inline-block;position:relative;width:200px;height:200px;margin-bottom:16px;cursor:grab}
 .hero-globe-wrap:active{cursor:grabbing}
 #hero-globe{width:200px;height:200px}
-.globe-stickers{position:absolute;inset:0;pointer-events:none}
-.globe-stickers a{position:absolute;pointer-events:auto;transform:translate(-50%,-50%);font-size:9px;color:var(--muted);background:rgba(0,0,0,.65);padding:2px 5px;border-radius:4px;white-space:nowrap;text-decoration:none;transition:opacity .2s}
-.globe-stickers a:hover{color:var(--text);background:rgba(0,0,0,.85)}
+.globe-stickers{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;overflow:hidden;border-radius:50%}
+.globe-stickers .sticker{position:absolute;pointer-events:auto;transform:translate(-50%,-50%);font-size:9px;color:var(--muted);background:rgba(0,0,0,.6);padding:2px 5px;border-radius:4px;white-space:nowrap;text-decoration:none;transition:opacity .8s ease;left:0;top:0}
+.globe-stickers .sticker:hover{color:var(--text);background:rgba(0,0,0,.8)}
 .contact-label{font-size:12px;color:var(--muted);margin-bottom:8px;letter-spacing:1px;text-transform:uppercase}
 .social{display:flex;justify-content:center;gap:10px;margin:0}
 .social a{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border:1px solid var(--line);border-radius:50%;color:var(--muted);transition:all .2s}
@@ -185,11 +185,11 @@ footer{border-top:1px solid var(--line);padding:16px 24px;text-align:center;font
 import createGlobe from './vendor/cobe.js';
 const W_ICON={0:'☀️',1:'🌤️',2:'⛅',3:'☁️',45:'🌫️',48:'🌫️',51:'🌦️',53:'🌧️',55:'🌧️',61:'🌧️',63:'🌧️',65:'🌧️',71:'🌨️',73:'🌨️',75:'🌨️',80:'🌦️',81:'🌧️',82:'🌧️',95:'⛈️',96:'⛈️',99:'⛈️'};
 function project(lat,lon,phi,theta){
-  const R=Math.PI/180,la=lat*R,lo=lon*R;
-  let x=Math.cos(la)*Math.sin(lo+phi);
-  let y=Math.sin(la);
-  let z=Math.cos(la)*Math.cos(lo+phi);
-  const ct=Math.cos(theta),st=Math.sin(theta);
+  const R=Math.PI/180,la=lat*R,lo=lon*R,p=phi,t=theta;
+  const x=Math.cos(la)*Math.sin(lo+p);
+  const y=Math.sin(la);
+  const z=Math.cos(la)*Math.cos(lo+p);
+  const ct=Math.cos(t),st=Math.sin(t);
   const y2=y*ct-z*st, z2=y*st+z*ct;
   return{x:(x+1)*50,y:(-y2+1)*50,z:z2};
 }
@@ -199,22 +199,12 @@ async function loadGlobe(){
   if(!canvas) return;
   let markers=[],phi=0,theta=0.3,dragging=false,lastX=0,lastY=0;
   let velPhi=0,velTheta=0,autoRotate=true;
-  let targetPhi=null,targetTheta=null,stickers=[];
+  let targetPhi=null,targetTheta=null;
+  let userSticker=null,langToggle=0,lastToggle=Date.now();
   try{
     const r=await fetch('/api/stats',{cache:'no-store'});
     const st=await r.json();
     markers=(st.cities||[]).filter(c=>c.lat!=null&&c.lon!=null).map(c=>({location:[c.lat,c.lon],size:0.02+Math.log2((c.n||1)+1)*0.008}));
-    const top=(st.cities||[]).filter(c=>c.lat!=null).sort((a,b)=>b.n-a.n).slice(0,6);
-    for(const c of top){
-      let weather='';
-      try{
-        const wr=await fetch('https://api.open-meteo.com/v1/forecast?latitude='+c.lat+'&longitude='+c.lon+'&current=temperature_2m,weather_code&timezone=auto');
-        const wd=await wr.json();
-        const t=Math.round(wd.current?.temperature_2m||0);
-        weather=(W_ICON[wd.current?.weather_code]||'🌡️')+t+'°';
-      }catch(e){}
-      stickers.push({lat:c.lat,lon:c.lon,label:(c.city_zh||c.city)+' '+weather});
-    }
   }catch(e){}
   const globe=createGlobe(canvas,{
     devicePixelRatio:2,width:400,height:400,
@@ -239,14 +229,14 @@ async function loadGlobe(){
   canvas.addEventListener('touchmove',onMove,{passive:false});
   canvas.addEventListener('touchend',onUp);
   function renderStickers(){
-    if(!stickEl) return;
-    let html='';
-    for(const s of stickers){
-      const p=project(s.lat,s.lon,phi,theta);
-      const op=p.z>0?Math.min(1,p.z*2):0;
-      if(op>0.05) html+='<a href="./globe/" style="left:'+p.x+'%;top:'+p.y+'%;opacity:'+op.toFixed(2)+'">'+s.label+'</a>';
-    }
-    stickEl.innerHTML=html;
+    if(!stickEl||!userSticker) return;
+    const now=Date.now();
+    if(now-lastToggle>2000){ langToggle=1-langToggle; lastToggle=now; }
+    const s=userSticker;
+    const p=project(s.lat,s.lon,phi,theta);
+    const op=p.z>0.05?Math.min(1,(p.z-0.05)*3):0;
+    const label=langToggle===0?s.en:s.zh;
+    stickEl.innerHTML='<span class="sticker" style="left:'+p.x+'%;top:'+p.y+'%;opacity:'+op.toFixed(2)+'">'+label+'</span>';
   }
   function animate(){
     if(!dragging){
@@ -279,16 +269,24 @@ async function loadGlobe(){
     globe.update({markers});
     let city=me.city_zh||me.city||'';
     let prov=me.region_zh||me.region||'';
+    let enCity=me.city||'';
+    let enProv=me.region||'';
     let country='';
     try{ const rn=new Intl.DisplayNames(['zh-Hans'],{type:'region'}); country=rn.of(me.country)||me.country; }catch(e){ country=me.country||''; }
     let weather='';
     try{
       const wr=await fetch('https://api.open-meteo.com/v1/forecast?latitude='+me.lat+'&longitude='+me.lon+'&current=temperature_2m,weather_code&timezone=auto');
       const wd=await wr.json();
-      weather=(W_ICON[wd.current?.weather_code]||'🌡️')+Math.round(wd.current?.temperature_2m||0)+'°';
+      const t=Math.round(wd.current?.temperature_2m||0);
+      weather=(W_ICON[wd.current?.weather_code]||'🌡️')+t+'°';
     }catch(e){}
-    const parts=[city]; if(prov&&prov!==city) parts.push(prov); if(country) parts.push(country);
-    stickers.unshift({lat:me.lat,lon:me.lon,label:parts.join('·')+(weather?' '+weather:'')});
+    const zhParts=[city]; if(prov&&prov!==city) zhParts.push(prov); if(country) zhParts.push(country);
+    const enParts=[enCity]; if(enProv&&enProv!==enCity) enParts.push(enProv);
+    userSticker={
+      lat:me.lat,lon:me.lon,
+      zh:zhParts.join('·')+(weather?' '+weather:''),
+      en:enParts.join(', ')+(weather?' '+weather:'')
+    };
   },500);
 }
 loadGlobe();
