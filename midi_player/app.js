@@ -870,44 +870,8 @@ setInterval(() => {
 /* ============================================================
  * 2. 音色加载器（Soundfont + Cache API）
  * ========================================================== */
-// 静态资源缓存（MIDI谱等），版本化缓存名
-const AssetCache = {
-  cacheName: 'midi-player-assets-v1',
-  // 统一转绝对路径，避免相对路径在不同URL下解析不同导致缓存失效
-  _abs(url){ return new URL(url, window.location.href).href; },
-  async fetch(url) {
-    const absUrl = this._abs(url);
-    try {
-      const cache = await caches.open(this.cacheName);
-      // ignoreSearch忽略查询参数，提高匹配率
-      const cached = await cache.match(absUrl, {ignoreSearch: true});
-      if (cached) return cached.clone();
-      const resp = await fetch(url);
-      if (resp.ok) cache.put(absUrl, resp.clone());
-      return resp;
-    } catch(e) {
-      return fetch(url);
-    }
-  },
-  // 仅查缓存（不发起网络请求）：用于判断谱面是否已下载
-  async has(url) {
-    try{
-      const cache = await caches.open(this.cacheName);
-      const cached = await cache.match(this._abs(url), {ignoreSearch: true});
-      return !!cached;
-    }catch(e){ return false; }
-  },
-  // 列表等需要"每次最新"的资源：始终走网络，命中后更新缓存，避免旧列表残留
-  async fetchFresh(url) {
-    const absUrl = this._abs(url);
-    const resp = await fetch(url, {cache: 'no-store'});
-    try{
-      const cache = await caches.open(this.cacheName);
-      if(resp.ok) cache.put(absUrl, resp.clone());
-    }catch(e){}
-    return resp;
-  }
-};
+// 静态资源缓存（Cache API 公共实现，见 shared/asset-cache.js）
+const AssetCache = createAssetCache('midi-player-assets-v1');
 // 清理旧版本资产缓存（例如曾用过的 v2），避免残留占用空间
 try{
   if(window.caches && caches.keys){
