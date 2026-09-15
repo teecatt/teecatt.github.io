@@ -29,14 +29,24 @@ jobs:
           fetch-depth: 0
       - name: Generate build info
         run: |
+          # 分区域时间线：取“本页目录 + 其用到的共享组件文件”的最后一次提交，
+          # shared/ 变更会自动抬高所有使用方（midi/viz/library/links）的最近构建。
+          stamp() { read -r s t < <(git log -1 --format='%H %ct' -- "$@"); printf '{sha:"%s",time:%s*1000}' "$s" "$t"; }
           read psha pts < <(git log -1 --format='%H %ct')
-          printf 'window.SITE_BUILD={sha:"%s",time:%s*1000};\n' "$psha" "$pts" > build-info.js
-          read sha ts < <(git log -1 --format='%H %ct' -- crypto)
-          # 展示时间统一取整仓最近提交时间：门户页脚与加密工具箱“最近构建”一致；
-          # SHA 仍按 crypto 目录维度，链接可精确定位加密工具箱的最后一次改动。
-          printf 'window.CRYPTO_BUILD={sha:"%s",time:%s*1000};\n' "$sha" "$pts" > crypto/build-info.js
-          sed -i -E "s#build-info\.js\?[^\"']*#build-info.js?v=$psha#" index.html
-          sed -i -E "s#build-info\.js\?[^\"']*#build-info.js?v=$sha#" crypto/index.html
+          csha=$(git log -1 --format='%H' -- crypto)
+          midi=$(stamp midi_player shared/cdn-race.js shared/asset-cache.js shared/yamaha-c7.js shared/build-stamp.js)
+          viz=$(stamp music_visualization shared/cdn-race.js shared/asset-cache.js shared/build-stamp.js)
+          library=$(stamp library data/catalog.json shared/build-stamp.js)
+          links=$(stamp links data/links.json shared/build-stamp.js)
+          {
+            printf 'window.SITE_BUILD={sha:"%s",time:%s*1000};\n' "$psha" "$pts"
+            # 展示时间统一取整仓最近提交时间；SHA 仍按 crypto 目录维度，链接精确定位
+            printf 'window.CRYPTO_BUILD={sha:"%s",time:%s*1000};\n' "$csha" "$pts"
+            printf 'window.AREA_BUILD={midi:%s,viz:%s,library:%s,links:%s};\n' "$midi" "$viz" "$library" "$links"
+          } > build-info.js
+          for f in index.html crypto/index.html midi_player/index.html music_visualization/index.html library/index.html links/index.html; do
+            [ -f "$f" ] && sed -i -E "s#build-info\.js\?[^\"']*#build-info.js?v=$psha#" "$f"
+          done
       - name: Stage site files
         run: |
           mkdir -p /tmp/gh_dist
@@ -58,14 +68,24 @@ jobs:
           fetch-depth: 0
       - name: Generate build info
         run: |
+          # 分区域时间线：取“本页目录 + 其用到的共享组件文件”的最后一次提交，
+          # shared/ 变更会自动抬高所有使用方（midi/viz/library/links）的最近构建。
+          stamp() { read -r s t < <(git log -1 --format='%H %ct' -- "$@"); printf '{sha:"%s",time:%s*1000}' "$s" "$t"; }
           read psha pts < <(git log -1 --format='%H %ct')
-          printf 'window.SITE_BUILD={sha:"%s",time:%s*1000};\n' "$psha" "$pts" > build-info.js
-          read sha ts < <(git log -1 --format='%H %ct' -- crypto)
-          # 展示时间统一取整仓最近提交时间：门户页脚与加密工具箱“最近构建”一致；
-          # SHA 仍按 crypto 目录维度，链接可精确定位加密工具箱的最后一次改动。
-          printf 'window.CRYPTO_BUILD={sha:"%s",time:%s*1000};\n' "$sha" "$pts" > crypto/build-info.js
-          sed -i -E "s#build-info\.js\?[^\"']*#build-info.js?v=$psha#" index.html
-          sed -i -E "s#build-info\.js\?[^\"']*#build-info.js?v=$sha#" crypto/index.html
+          csha=$(git log -1 --format='%H' -- crypto)
+          midi=$(stamp midi_player shared/cdn-race.js shared/asset-cache.js shared/yamaha-c7.js shared/build-stamp.js)
+          viz=$(stamp music_visualization shared/cdn-race.js shared/asset-cache.js shared/build-stamp.js)
+          library=$(stamp library data/catalog.json shared/build-stamp.js)
+          links=$(stamp links data/links.json shared/build-stamp.js)
+          {
+            printf 'window.SITE_BUILD={sha:"%s",time:%s*1000};\n' "$psha" "$pts"
+            # 展示时间统一取整仓最近提交时间；SHA 仍按 crypto 目录维度，链接精确定位
+            printf 'window.CRYPTO_BUILD={sha:"%s",time:%s*1000};\n' "$csha" "$pts"
+            printf 'window.AREA_BUILD={midi:%s,viz:%s,library:%s,links:%s};\n' "$midi" "$viz" "$library" "$links"
+          } > build-info.js
+          for f in index.html crypto/index.html midi_player/index.html music_visualization/index.html library/index.html links/index.html; do
+            [ -f "$f" ] && sed -i -E "s#build-info\.js\?[^\"']*#build-info.js?v=$psha#" "$f"
+          done
       - name: Stage site files
         run: |
           mkdir -p /tmp/cf_dist
