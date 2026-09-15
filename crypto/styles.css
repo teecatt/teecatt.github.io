@@ -533,6 +533,33 @@ html.dark #toast {
     transform: translateX(-50%) translateY(0);
 }
 
+/* ── 随机值按钮（IV/盐/密钥生成） ── */
+.rand-wrap {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.rand-wrap input {
+    flex: 1;
+    min-width: 0;
+}
+
+.rand-btn {
+    flex: 0 0 auto;
+    padding: 6px 10px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--fg);
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.rand-btn:hover {
+    border-color: var(--accent);
+}
+
 /* ── scrollbar ── */
 * {
     scrollbar-width: thin;

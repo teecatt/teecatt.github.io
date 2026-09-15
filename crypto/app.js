@@ -376,7 +376,7 @@ const TOOLS = [
     input: { label: "消息" },
     fields: [
         { k: "algo", label: "算法", type: "select", options: [["SHA-1", "SHA-1"], ["SHA-256", "SHA-256"], ["SHA-384", "SHA-384"], ["SHA-512", "SHA-512"]], value: "SHA-256" },
-        { k: "key", label: "密钥", type: "text", value: "" },
+        { k: "key", label: "密钥", type: "text", value: "", random: { bytes: 32 } },
         { k: "keyFmt", label: "密钥格式", type: "select", options: FMT_OPTS, value: "utf8" },
         { k: "outFmt", label: "输出格式", type: "select", options: OUT_FMT_OPTS, value: "hex" }
     ],
@@ -401,11 +401,11 @@ const TOOLS = [
 },
 {
     id: "argon2id", group: "哈希 / 校验", name: "Argon2id 口令哈希",
-    desc: "内存硬密码哈希（Argon2id）。参数可按需调整，默认适合本地使用。",
+    desc: "内存硬密码哈希（Argon2id）。盐必须随机且每个密码唯一，参数可按需调整，默认适合本地使用。",
     auto: false,
     input: { label: "口令" },
     fields: [
-        { k: "salt", label: "盐（Salt）", type: "text", value: "" },
+        { k: "salt", label: "盐（Salt）", type: "text", value: "", random: { bytes: 16 } },
         { k: "saltFmt", label: "盐格式", type: "select", options: FMT_OPTS, value: "utf8" },
         { k: "time", label: "迭代次数 (t)", type: "number", value: 3, min: 1 },
         { k: "mem", label: "内存 MiB (m)", type: "number", value: 64, min: 8 },
@@ -414,13 +414,16 @@ const TOOLS = [
     ],
     async run(input, v) {
         const salt = parseFmt(v.salt, v.saltFmt);
+        if (salt.length < 8) throw new Error("盐至少 8 字节（当前 " + salt.length + "），请点击“随机”生成");
+        const mem = +v.mem;
+        if (!(mem >= 8 && mem <= 1024)) throw new Error("内存参数应在 8~1024 MiB 之间（当前 " + v.mem + "），过大可能导致页面卡死或 OOM");
         let res;
         try {
             res = await argon2.hash({
                 pass: input,
                 salt,
                 time: +v.time,
-                mem: +v.mem * 1024,
+                mem: mem * 1024,
                 parallelism: +v.parallelism,
                 hashLen: +v.hashLen,
                 type: 2
@@ -446,16 +449,18 @@ const TOOLS = [
     auto: false,
     input: { label: "口令" },
     fields: [
-        { k: "salt", label: "盐（Salt）", type: "text", value: "" },
+        { k: "salt", label: "盐（Salt）", type: "text", value: "", random: { bytes: 16 } },
         { k: "saltFmt", label: "盐格式", type: "select", options: FMT_OPTS, value: "utf8" },
         { k: "iter", label: "迭代次数", type: "number", value: 100000, min: 1 },
         { k: "hash", label: "哈希", type: "select", options: [["SHA-1", "SHA-1"], ["SHA-256", "SHA-256"], ["SHA-512", "SHA-512"]], value: "SHA-256" },
         { k: "len", label: "输出长度 (字节)", type: "number", value: 32, min: 1 }
     ],
     async run(input, v) {
+        const salt = parseFmt(v.salt, v.saltFmt);
+        if (!salt.length) throw new Error("盐不能为空，请点击“随机”生成（建议 16 字节）");
         const baseKey = await crypto.subtle.importKey("raw", textToBytes(input, "utf8"), "PBKDF2", false, ["deriveBits"]);
         const bits = await crypto.subtle.deriveBits(
-            { name: "PBKDF2", salt: parseFmt(v.salt, v.saltFmt), iterations: +v.iter, hash: v.hash },
+            { name: "PBKDF2", salt, iterations: +v.iter, hash: v.hash },
             baseKey, +v.len * 8
         );
         const bytes = new Uint8Array(bits);
@@ -466,15 +471,16 @@ const TOOLS = [
 /* ── 对称加密 ── */
 {
     id: "aes", group: "对称加密", name: "AES 加解密",
-    desc: "AES-128/192/256，支持 GCM（认证加密）、CTR、CBC 模式。",
+    desc: "AES-128/192/256，支持 GCM（认证加密）、CTR、CBC。密钥长度须为 16/24/32 字节；GCM/CTR 的 IV 绝不可重复使用，请用“随机”生成并随密文保存。",
     input: { label: "明文 / 密文" },
     fields: [
         { k: "mode", label: "模式", type: "select", options: [["encrypt", "加密"], ["decrypt", "解密"]], value: "encrypt" },
         { k: "algo", label: "算法模式", type: "select", options: [["AES-GCM", "AES-GCM"], ["AES-CTR", "AES-CTR"], ["AES-CBC", "AES-CBC"]], value: "AES-GCM" },
         { k: "key", label: "密钥", type: "text", value: "" },
         { k: "keyFmt", label: "密钥格式", type: "select", options: FMT_OPTS, value: "utf8" },
-        { k: "iv", label: "IV / Nonce / Counter", type: "text", value: "" },
+        { k: "iv", label: "IV / Nonce / Counter", type: "text", value: "", random: { bytes: 16 } },
         { k: "ivFmt", label: "IV 格式", type: "select", options: FMT_OPTS, value: "hex" },
+        { k: "aad", label: "AAD（仅 GCM，可留空）", type: "text", value: "" },
         { k: "inFmt", label: "输入格式", type: "select", options: FMT_OPTS, value: "utf8" },
         { k: "outFmt", label: "输出格式", type: "select", options: [["base64", "Base64"], ["hex", "十六进制"], ["utf8", "文本 (UTF-8)"]], value: "base64" }
     ],
@@ -483,9 +489,16 @@ const TOOLS = [
         const iv = parseFmt(v.iv, v.ivFmt);
         const data = parseFmt(input, v.inFmt);
         const enc = v.mode === "encrypt";
+        if (![16, 24, 32].includes(keyBytes.length)) throw new Error("AES 密钥长度必须是 16/24/32 字节（当前 " + keyBytes.length + "）");
+        if (!iv.length) throw new Error("IV/Nonce 不能为空，请点击“随机”生成（GCM 建议 12 字节，CTR/CBC 必须 16 字节）");
+        if (v.algo === "AES-GCM" && iv.length !== 12 && iv.length !== 16) throw new Error("GCM 的 IV 建议 12 字节（当前 " + iv.length + "）");
+        if (v.algo === "AES-CTR" && iv.length !== 16) throw new Error("CTR 的计数器必须是 16 字节（当前 " + iv.length + "）");
+        if (v.algo === "AES-CBC" && iv.length !== 16) throw new Error("CBC 的 IV 必须是 16 字节（当前 " + iv.length + "）");
         let params;
-        if (v.algo === "AES-GCM") params = { name: "AES-GCM", iv, tagLength: 128 };
-        else if (v.algo === "AES-CTR") params = { name: "AES-CTR", counter: iv, length: 64 };
+        if (v.algo === "AES-GCM") {
+            params = { name: "AES-GCM", iv, tagLength: 128 };
+            if (v.aad) params.additionalData = textToBytes(v.aad, "utf8");
+        } else if (v.algo === "AES-CTR") params = { name: "AES-CTR", counter: iv, length: 64 };
         else params = { name: "AES-CBC", iv };
         const key = await crypto.subtle.importKey("raw", keyBytes, v.algo, false, [enc ? "encrypt" : "decrypt"]);
         const res = enc ? await crypto.subtle.encrypt(params, key, data) : await crypto.subtle.decrypt(params, key, data);
@@ -494,7 +507,7 @@ const TOOLS = [
 },
 {
     id: "xor", group: "对称加密", name: "XOR 异或",
-    desc: "使用重复密钥对数据进行异或，加解密为同一操作。",
+    desc: "使用重复密钥对数据进行异或，加解密为同一操作。⚠ 仅用于混淆：不提供机密性强度与完整性校验，严禁用于真实密钥/机密数据。",
     input: { label: "输入" },
     fields: [
         { k: "key", label: "密钥", type: "text", value: "" },
@@ -877,6 +890,9 @@ function fieldHtml(f, val) {
         inner = `<textarea data-k="${f.k}" rows="${f.rows || 4}">${esc(v)}</textarea>`;
     } else {
         inner = `<input type="${f.type === "number" ? "number" : (f.type === "password" ? "password" : "text")}" data-k="${f.k}" value="${esc(v)}"${f.min !== undefined ? ` min="${f.min}"` : ""}${f.max !== undefined ? ` max="${f.max}"` : ""}>`;
+        if (f.random) {
+            inner = `<div class="rand-wrap">${inner}<button type="button" class="rand-btn" data-rand="${f.random.bytes}" data-target="${f.k}" title="使用浏览器 CSPRNG 生成随机字节（hex 显示）">随机</button></div>`;
+        }
     }
     return `<div class="field"><label>${esc(f.label)}</label>${inner}</div>`;
 }
@@ -939,6 +955,16 @@ function renderTool(tool) {
     $$("#tool [data-k]").forEach(el => {
         el.addEventListener("input", scheduleRun);
         el.addEventListener("change", scheduleRun);
+    });
+    $$("#tool .rand-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+            const n = Math.max(1, Math.min(256, +btn.dataset.rand || 16));
+            const bytes = crypto.getRandomValues(new Uint8Array(n));
+            const hex = Array.prototype.map.call(bytes, b => b.toString(16).padStart(2, "0")).join("");
+            const input = $(`#tool [data-k="${btn.dataset.target}"]`);
+            if (input) { input.value = hex; input.dispatchEvent(new Event("input", { bubbles: true })); }
+            toast("已生成随机值（" + n + " 字节 hex）");
+        });
     });
     const inp = $("#in");
     if (inp) inp.addEventListener("input", scheduleRun);
