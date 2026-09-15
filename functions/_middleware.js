@@ -13,6 +13,17 @@ async function record(context) {
   const url = new URL(request.url);
   const ref = (request.headers.get('Referer') || '').slice(0, 300);
 
+  // 30 分钟窗口内同一 IP + 同一路径只记一次：刷新、轮询与重复导航不再放大统计与 D1 写入。
+  // 由 idx_visits_ip_path 索引支撑；查询失败（表/索引缺失）时忽略去重，不阻断记录。
+  if (ip) {
+    try {
+      const recent = await env.DB.prepare(
+        'SELECT 1 AS x FROM visits WHERE ip = ? AND path = ? AND ts > ? LIMIT 1'
+      ).bind(ip, url.pathname, Date.now() - 30 * 60 * 1000).first();
+      if (recent) return;
+    } catch (e) { /* 去重失败时继续记录 */ }
+  }
+
   await env.DB.prepare(
     'INSERT INTO visits (ts,country,region,region_code,city,city_zh,region_zh,lat,lon,colo,ip,ua,path,ref) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)'
   ).bind(
