@@ -2968,6 +2968,7 @@ function parseAndPlayMidi(buf, filename){
     });
   });
   allNotes.sort((a, b) => a.time - b.time);
+  maxNoteDuration = allNotes.reduce((m, n) => Math.max(m, n.duration || 0), 0);
   totalDuration = maxTime;
   _songEnded = false; // 新谱面：重置「已播完」标记
   // 根据整首谱面平均密度设置自适应同音重触发下限（仅高密度 black-MIDI 生效）
@@ -3002,6 +3003,7 @@ function parseAndPlayMidi(buf, filename){
  * 3. MIDI 解析
  * ========================================================== */
 let allNotes = []; // {midi, time, duration, velocity}
+let maxNoteDuration = 0; // 全曲最长音符时长（秒）：可见区间左界需向前扩展 maxNoteDuration，否则长音会提前消失
 let totalDuration = 0;
 
 function onMidiFile(event){
@@ -3410,7 +3412,7 @@ function doSeek(event){
   updateProgress();
   // 拖拽时也更新可视化
   const fallDur = 2.0 / fallSpeedMultiplier;
-  const leftIdx = lowerBound(allNotes, currentTime - fallDur);
+  const leftIdx = lowerBound(allNotes, currentTime - fallDur - maxNoteDuration);
   const rightIdx = lowerBound(allNotes, currentTime + fallDur);
   drawScene(allNotes, leftIdx, rightIdx, currentTime);
 }
@@ -3518,7 +3520,7 @@ function playLoop(ts){
 
   // 计算可见音符范围：二分查找定位区间，不slice（避免大数组分配）
   const fallDuration = 2.0 / fallSpeedMultiplier;
-  const leftIdx = lowerBound(allNotes, currentTime - fallDuration);
+  const leftIdx = lowerBound(allNotes, currentTime - fallDuration - maxNoteDuration);
   const rightIdx = lowerBound(allNotes, currentTime + fallDuration);
 
   // 进度与统计每100ms更新一次，不每帧写DOM
@@ -3723,7 +3725,7 @@ function setPalette(name){
   applyTheme(name === 'custom' ? (paletteEditColors.theme || '#c20c0c') : PALETTE_THEME[name]);
   if(typeof allNotes !== 'undefined'){
     const fallDur = 2.0 / fallSpeedMultiplier;
-    const leftIdx = lowerBound(allNotes, currentTime - fallDur);
+    const leftIdx = lowerBound(allNotes, currentTime - fallDur - maxNoteDuration);
     const rightIdx = lowerBound(allNotes, currentTime + fallDur);
     drawScene(allNotes, leftIdx, rightIdx, currentTime);
   }
@@ -4105,7 +4107,7 @@ function resizeCanvas(){
   // 预渲染静态元素到离屏canvas
   renderStatic();
   const fallDur = 2.0 / fallSpeedMultiplier;
-  const leftIdx = lowerBound(allNotes, currentTime - fallDur);
+  const leftIdx = lowerBound(allNotes, currentTime - fallDur - maxNoteDuration);
   const rightIdx = lowerBound(allNotes, currentTime + fallDur);
   drawScene(allNotes, leftIdx, rightIdx, currentTime);
 }
@@ -4321,7 +4323,7 @@ function _applyPianoZoom(){
   cachedLayout.keys.forEach(k => { keyByMidi[k.midi] = k; });
   renderStatic();
   const fallDur = 2.0 / fallSpeedMultiplier;
-  const leftIdx = lowerBound(allNotes, currentTime - fallDur);
+  const leftIdx = lowerBound(allNotes, currentTime - fallDur - maxNoteDuration);
   const rightIdx = lowerBound(allNotes, currentTime + fallDur);
   drawScene(allNotes, leftIdx, rightIdx, currentTime);
 }
@@ -4490,7 +4492,7 @@ function requestStaticRedraw(){
     _staticRedrawPending = false;
     if(isPlaying) return;
     const fallDur = 2.0 / fallSpeedMultiplier;
-    const leftIdx = lowerBound(allNotes, currentTime - fallDur);
+    const leftIdx = lowerBound(allNotes, currentTime - fallDur - maxNoteDuration);
     const rightIdx = lowerBound(allNotes, currentTime + fallDur);
     drawScene(allNotes, leftIdx, rightIdx, currentTime);
   });
