@@ -29,10 +29,12 @@ jobs:
           fetch-depth: 0
       - name: Generate build info
         run: |
-          read sha ts < <(git log -1 --format='%H %ct' -- crypto)
-          printf 'window.CRYPTO_BUILD={sha:"%s",time:%s*1000};\n' "$sha" "$ts" > crypto/build-info.js
           read psha pts < <(git log -1 --format='%H %ct')
           printf 'window.SITE_BUILD={sha:"%s",time:%s*1000};\n' "$psha" "$pts" > build-info.js
+          read sha ts < <(git log -1 --format='%H %ct' -- crypto)
+          # 展示时间统一取整仓最近提交时间：门户页脚与加密工具箱“最近构建”一致；
+          # SHA 仍按 crypto 目录维度，链接可精确定位加密工具箱的最后一次改动。
+          printf 'window.CRYPTO_BUILD={sha:"%s",time:%s*1000};\n' "$sha" "$pts" > crypto/build-info.js
           sed -i -E "s#build-info\.js\?[^\"']*#build-info.js?v=$psha#" index.html
           sed -i -E "s#build-info\.js\?[^\"']*#build-info.js?v=$sha#" crypto/index.html
       - name: Stage site files
@@ -56,10 +58,12 @@ jobs:
           fetch-depth: 0
       - name: Generate build info
         run: |
-          read sha ts < <(git log -1 --format='%H %ct' -- crypto)
-          printf 'window.CRYPTO_BUILD={sha:"%s",time:%s*1000};\n' "$sha" "$ts" > crypto/build-info.js
           read psha pts < <(git log -1 --format='%H %ct')
           printf 'window.SITE_BUILD={sha:"%s",time:%s*1000};\n' "$psha" "$pts" > build-info.js
+          read sha ts < <(git log -1 --format='%H %ct' -- crypto)
+          # 展示时间统一取整仓最近提交时间：门户页脚与加密工具箱“最近构建”一致；
+          # SHA 仍按 crypto 目录维度，链接可精确定位加密工具箱的最后一次改动。
+          printf 'window.CRYPTO_BUILD={sha:"%s",time:%s*1000};\n' "$sha" "$pts" > crypto/build-info.js
           sed -i -E "s#build-info\.js\?[^\"']*#build-info.js?v=$psha#" index.html
           sed -i -E "s#build-info\.js\?[^\"']*#build-info.js?v=$sha#" crypto/index.html
       - name: Stage site files
