@@ -447,7 +447,7 @@ DRAW['waveform-zigzag'] = function(ctx,p,W,H,el,dt){
   ctx.beginPath(); ctx.lineWidth = p.lineWidth;
   const bw = W/p.barCount;
   for(let i=0;i<p.barCount;i++){
-    const v = bars[i]*p.gain;
+    const v = bars[i]; // 增益已在 getFreqBars 内应用，避免与绘制端重复相乘
     const x = i*bw, y = H/2 - Math.min(1,v)*H*0.45;
     i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
     ctx.lineTo(x+bw, H/2 + Math.min(1,v)*H*0.45);
@@ -460,7 +460,7 @@ DRAW['circle-radial'] = function(ctx,p,W,H,el,dt){
   const bars = getFreqBars(p,el,p.barCount,dt);
   const cx=W/2, cy=H/2, R=Math.min(W,H)*p.innerRadius/100;
   for(let i=0;i<p.barCount;i++){
-    const v = bars[i]*p.gain;
+    const v = bars[i]; // 增益已在 getFreqBars 内应用，避免与绘制端重复相乘
     const ang = (i/p.barCount)*Math.PI*2 - Math.PI/2;
     const len = Math.min(1,v)*Math.min(W,H)*0.35;
     const x1=cx+Math.cos(ang)*R, y1=cy+Math.sin(ang)*R;
@@ -512,7 +512,7 @@ DRAW['circular-bars'] = function(ctx,p,W,H,el,dt){
   const bars = getFreqBars(p,el,p.barCount,dt);
   const cx=W/2, cy=H/2;
   for(let i=0;i<p.barCount;i++){
-    const v = bars[i]*p.gain;
+    const v = bars[i]; // 增益已在 getFreqBars 内应用，避免与绘制端重复相乘
     const ang = (i/p.barCount)*Math.PI*2 - Math.PI/2;
     const len = Math.min(1,v)*Math.min(W,H)*0.42;
     ctx.strokeStyle = elemColor(p, i/p.barCount);
@@ -528,7 +528,7 @@ DRAW['spectrum-line'] = function(ctx,p,W,H,el,dt){
   const bars = getFreqBars(p,el,p.barCount,dt);
   ctx.beginPath(); ctx.lineWidth = p.lineWidth;
   for(let i=0;i<p.barCount;i++){
-    const v = bars[i]*p.gain;
+    const v = bars[i]; // 增益已在 getFreqBars 内应用，避免与绘制端重复相乘
     const x = (i/p.barCount)*W, y = H - Math.min(1,v)*H*0.9;
     i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
   }
@@ -541,7 +541,7 @@ DRAW['spectrum-area'] = function(ctx,p,W,H,el,dt){
   const bars = getFreqBars(p,el,p.barCount,dt);
   ctx.beginPath(); ctx.moveTo(0,H);
   for(let i=0;i<p.barCount;i++){
-    const v = bars[i]*p.gain;
+    const v = bars[i]; // 增益已在 getFreqBars 内应用，避免与绘制端重复相乘
     const x = (i/p.barCount)*W, y = H - Math.min(1,v)*H*0.9;
     ctx.lineTo(x,y);
   }
