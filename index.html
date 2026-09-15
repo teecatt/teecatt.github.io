@@ -295,6 +295,7 @@ async function loadGlobe(){
   }
   function drawPulses(now){
     if(!pctx) return;
+    if(reducedMotion) return; // 减少动态效果：不绘制脉冲光环
     var w=pcanvas.width,h=pcanvas.height;
     pctx.clearRect(0,0,w,h);
     if(!userSticker) return;
@@ -315,7 +316,8 @@ async function loadGlobe(){
       } else if(Math.abs(velPhi)>0.0002||Math.abs(velTheta)>0.0002){
         phi+=velPhi; theta=Math.max(-1.2,Math.min(1.2,theta+velTheta));
         velPhi*=0.95; velTheta*=0.95;
-      } else if(autoRotate && !reducedMotion){
+      } else if(autoRotate){
+        // 保持自转：系统“减少动态效果”只停用装饰性脉冲光环，不冻结地球本身
         phi+=0.0015;
       } else {
         velPhi=0; velTheta=0; autoRotate=true;
