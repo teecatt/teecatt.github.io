@@ -468,6 +468,52 @@ select:focus{border-color:var(--accent)}
 </style>
 </head>
 <body>
+<script>
+/* Safari 兼容与白屏诊断（在任何业务脚本之前执行）：
+   1) roundRect polyfill：Safari 16 之前没有该 API，缺失时整条渲染循环会抛错、画面空白；
+   2) 全局错误可见化：未捕获异常/未处理 Promise 拒绝直接以红色面板展示，避免“白屏无信息”。 */
+(function(){
+  try{
+    var p = window.CanvasRenderingContext2D && CanvasRenderingContext2D.prototype;
+    if(p && !p.roundRect){
+      p.roundRect = function(x, y, w, h, r){
+        var rr = Math.max(0, Math.min(r == null ? 0 : r, Math.abs(w) / 2, Math.abs(h) / 2));
+        this.moveTo(x + rr, y);
+        this.lineTo(x + w - rr, y);
+        this.arcTo(x + w, y, x + w, y + rr, rr);
+        this.lineTo(x + w, y + h - rr);
+        this.arcTo(x + w, y + h, x + w - rr, y + h, rr);
+        this.lineTo(x + rr, y + h);
+        this.arcTo(x, y + h, x, y + h - rr, rr);
+        this.lineTo(x, y + rr);
+        this.arcTo(x, y, x + rr, y, rr);
+        this.closePath();
+      };
+    }
+  }catch(e){}
+  function showFatal(msg){
+    try{
+      var el = document.getElementById('fatalError');
+      if(!el){
+        el = document.createElement('div');
+        el.id = 'fatalError';
+        el.style.cssText = 'position:fixed;left:12px;right:12px;bottom:12px;z-index:99999;max-height:42vh;overflow:auto;padding:12px 14px;border-radius:12px;border:1px solid #ff7b72;background:rgba(40,10,12,.92);color:#ffd7d5;font:12px/1.6 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-all';
+        document.body.appendChild(el);
+      }
+      el.textContent = '页面发生错误（截图反馈即可）：\n' + msg;
+    }catch(e){}
+  }
+  window.addEventListener('error', function(e){
+    var m = (e && (e.message || (e.error && e.error.message))) || '未知脚本错误';
+    if(e && e.filename) m += '\n' + e.filename + ':' + e.lineno;
+    showFatal(m + '\nUA: ' + navigator.userAgent);
+  });
+  window.addEventListener('unhandledrejection', function(e){
+    var r = e && e.reason;
+    showFatal('未处理的 Promise 拒绝：' + ((r && (r.message || r)) || r) + '\nUA: ' + navigator.userAgent);
+  });
+})();
+</script>
 <div id="appLoading" aria-label="加载中"></div>
 <div class="container">
   <h1>MIDI 播放器</h1>
