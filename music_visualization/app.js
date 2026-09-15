@@ -1,22 +1,6 @@
 
-// 静态资源缓存（示例音频等），版本化缓存名
-const AssetCache = {
-  cacheName: 'music-viz-assets-v1',
-  _abs(url){ return new URL(url, window.location.href).href; },
-  async fetch(url) {
-    const absUrl = this._abs(url);
-    try {
-      const cache = await caches.open(this.cacheName);
-      const cached = await cache.match(absUrl, {ignoreSearch: true});
-      if (cached) return cached.clone();
-      const resp = await fetch(url);
-      if (resp.ok) cache.put(absUrl, resp.clone());
-      return resp;
-    } catch(e) {
-      return fetch(url);
-    }
-  }
-};
+// 静态资源缓存（Cache API 公共实现，见 shared/asset-cache.js）
+const AssetCache = createAssetCache('music-viz-assets-v1');
 
 /* 日志工具 */
 const _logBar = document.getElementById('logBar');
