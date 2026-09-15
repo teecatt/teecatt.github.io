@@ -100,8 +100,9 @@ header h1{font-size:15px;font-weight:600;letter-spacing:.5px;text-shadow:0 1px 8
 <button class="gps-corner" id="gps-corner" title="Locate me" aria-label="locate me"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 12 12"><path fill="currentColor" d="M6 .5A4.5 4.5 0 0 1 10.5 5c0 1.863-1.42 3.815-4.2 5.9a.5.5 0 0 1-.6 0C2.92 8.815 1.5 6.863 1.5 5A4.5 4.5 0 0 1 6 .5m0 3a1.5 1.5 0 1 0 0 3a1.5 1.5 0 0 0 0-3"/></svg></button>
 
 <script src="../shared/cdn-race.js"></script>
+<script src="../shared/visitor.js"></script>
 <script>
-var COLORS = ['#58a6ff','#3fb950','#e8b64c','#ff7b72','#c822ff','#2dd4bf','#ff9e64','#a5d6ff','#f778ba','#7ee787'];
+var COLORS = Visitor.COLORS;
 var _regionNames;
 function trCountry(code,fallback){
   if(lang!=='zh' || !code) return fallback||code||'';
@@ -118,14 +119,14 @@ function zhRegion(o){
   }
   return r||o.region||'';
 }
-function flag(code){ if(!code||String(code).length!==2) return ''; return String.fromCodePoint.apply(null, String(code).toUpperCase().split('').map(function(ch){ return 0x1F1E6 + ch.charCodeAt(0) - 65; })); }
+var flag = Visitor.flag;
 function nameOf(v){ var c=zhCity(v), r=zhRegion(v), k=trCountry(v.country,v.country); return c||r||k||'?'; }
 function subOf(v,nm){ var seg=[]; var r=zhRegion(v)||zhCity(v)||v.city||''; var k=trCountry(v.country,v.country), f=flag(v.country); if(r) seg.push(r); if(k) seg.push(k+(f?' '+f:'')); return seg.join(' · '); }
 
-function colorFor(s){ s = String(s||'?'); var h=0; for(var i=0;i<s.length;i++) h=(h*31+s.charCodeAt(i))>>>0; return COLORS[h%COLORS.length]; }
-function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+var colorFor = Visitor.colorFor;
+var esc = Visitor.esc;
 function full(ts){ try{ return new Date(ts).toLocaleString(lang==='zh'?'zh-CN':'en-GB',{hour12:false}); }catch(e){ return new Date(ts).toISOString(); } }
-function rowKey(o){ return [o.country||'',o.region||'',o.city||''].join('|'); }
+var rowKey = Visitor.rowKey;
 function isSel(o){ return selKey!=null && o && rowKey(o)===selKey; }
 
 /* 管理员密钥不再走 URL query（会进入浏览器历史、Referer 与服务器日志）。
@@ -196,12 +197,7 @@ function pickCity(px, py){
   }
   return (best && bd <= 6) ? best : null;
 }
-function angularDist(a, b, c, d){
-  var R = Math.PI/180;
-  var dLat = (c-a)*R, dLon = (d-b)*R;
-  var s = Math.sin(dLat/2)*Math.sin(dLat/2) + Math.cos(a*R)*Math.cos(c*R)*Math.sin(dLon/2)*Math.sin(dLon/2);
-  return 2*Math.asin(Math.min(1, Math.sqrt(s)))/R;
-}
+var angularDist = Visitor.angularDist;
 function setPoints(){ if(globe) globe.pointsData(cities.filter(function(c){ return c.lat!=null && c.lon!=null; })); }
 function updateLabel(){ if(!globe) return; var d = (selCity && selCity.lat!=null) ? [Object.assign({}, selCity)] : []; globe.htmlElementsData(d); }
 function updateRings(){ if(globe) globe.ringsData(selCity && selCity.lat!=null ? [{lat:selCity.lat, lng:selCity.lon}] : []); }

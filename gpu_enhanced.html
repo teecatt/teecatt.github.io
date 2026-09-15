@@ -289,6 +289,7 @@ body.immersive .links{display:none}
 
 <script src="build-info.js?v=dev"></script>
 <script src="./shared/cdn-race.js"></script>
+<script src="./shared/visitor.js"></script>
 <script>
 // 页脚「构建于」+ 浏览器标签标题：显示最近一次部署时间，并可点击跳转到对应提交
 (function(){
@@ -329,18 +330,18 @@ body.immersive .links{display:none}
 (function(){
 var host=document.getElementById('bg-globe');
 if(!host) return;
-var COLORS=['#58a6ff','#3fb950','#e8b64c','#ff7b72','#c822ff','#2dd4bf','#ff9e64','#a5d6ff','#f778ba','#7ee787'];
-var W_ICON={0:'☀️',1:'🌤️',2:'⛅',3:'☁️',45:'🌫️',48:'🌫️',51:'🌦️',53:'🌧️',55:'🌧️',61:'🌧️',63:'🌧️',65:'🌧️',71:'🌨️',73:'🌨️',75:'🌨️',80:'🌦️',81:'🌧️',82:'🌧️',95:'⛈️',96:'⛈️',99:'⛈️'};
+var COLORS=Visitor.COLORS;
+var W_ICON=Visitor.W_ICON;
 var _regionNames, lang='en';
 function trCountry(code,fb){ if(lang!=='zh'||!code) return fb||code||''; try{ _regionNames=_regionNames||new Intl.DisplayNames(['zh-Hans'],{type:'region'}); return _regionNames.of(code)||fb||code; }catch(e){ return fb||code; } }
 function zhCity(o){ if(lang!=='zh') return o.city||''; return o.city_zh||o.city||''; }
 function zhRegion(o){ if(lang!=='zh') return o.region||''; var r=o.region_zh; if(!r&&o.region){ for(var i=0;i<cities.length;i++){ if(cities[i].country===o.country&&cities[i].region===o.region&&cities[i].region_zh){ r=cities[i].region_zh; break; } } } return r||o.region||''; }
-function flag(code){ if(!code||String(code).length!==2) return ''; return String.fromCodePoint.apply(null, String(code).toUpperCase().split('').map(function(ch){ return 0x1F1E6+ch.charCodeAt(0)-65; })); }
+var flag=Visitor.flag;
 function nameOf(v){ var c=zhCity(v), r=zhRegion(v), k=trCountry(v.country,v.country); return c||r||k||'?'; }
 function subOf(v){ var seg=[]; var r=zhRegion(v)||zhCity(v)||v.city||''; var k=trCountry(v.country,v.country), f=flag(v.country); if(r) seg.push(r); if(k) seg.push(k+(f?' '+f:'')); return seg.join(' · '); }
-function colorFor(s){ s=String(s||'?'); var h=0; for(var i=0;i<s.length;i++) h=(h*31+s.charCodeAt(i))>>>0; return COLORS[h%COLORS.length]; }
-function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
-function rowKey(o){ return [o.country||'',o.region||'',o.city||''].join('|'); }
+var colorFor=Visitor.colorFor;
+var esc=Visitor.esc;
+var rowKey=Visitor.rowKey;
 function cacheSet(k,v){ try{ sessionStorage.setItem('tc_'+k, JSON.stringify({t:Date.now(),v:v})); }catch(e){} }
 
 var END_ALT=1.5, IMM_ALT=0.5;
@@ -376,7 +377,7 @@ function stopLabelFit(){ if(labelRAF){ cancelAnimationFrame(labelRAF); labelRAF=
 function updateHtml(){ if(!globe) return; var d=[]; if(allLabels){ cities.forEach(function(c){ if(c.lat==null||c.lon==null) return; var o=shallow(c); if(meData&&meData.weather&&isMe(c)) o.weather=meData.weather; d.push(o); }); } else if(selCity&&selCity.lat!=null){ var o=shallow(selCity); if(meData&&meData.weather&&isMe(selCity)) o.weather=meData.weather; d.push(o); } else if(meData&&meData.lat!=null){ var mc=cityForMe(); var o=shallow(mc||meData); if(meData.weather) o.weather=meData.weather; d.push(o); } globe.htmlElementsData(d); }
 function updateRings(){ if(globe) globe.ringsData((selCity&&selCity.lat!=null)?[{lat:selCity.lat,lng:selCity.lon}]:[]); }
 function flyTo(lat,lon,alt,off,dur){ if(!globe||lat==null||lon==null) return; globe.controls().autoRotate=false; var tLat=Math.max(-82,Math.min(82,lat-(off==null?15:off))); globe.pointOfView({lat:tLat,lng:lon,altitude:(alt||1.5)},(dur||500)); clearTimeout(flyTo._t); flyTo._t=setTimeout(function(){ if(globe) globe.controls().autoRotate=true; },(dur||500)+500); }
-function angularDist(a,b,c,d){ var R=Math.PI/180; var dLat=(c-a)*R,dLon=(d-b)*R; var s=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(a*R)*Math.cos(c*R)*Math.sin(dLon/2)*Math.sin(dLon/2); return 2*Math.asin(Math.min(1,Math.sqrt(s)))/R; }
+var angularDist=Visitor.angularDist;
 function pickCity(px,py){ if(!globe||!globe.toGlobeCoords) return null; var p=globe.toGlobeCoords(px,py); if(!p) return null; var best=null,bd=Infinity; for(var i=0;i<cities.length;i++){ var c=cities[i]; if(c.lat==null||c.lon==null) continue; var d=angularDist(c.lat,c.lon,p.lat,p.lng); if(d<bd){bd=d;best=c;} } return (best&&bd<=6)?best:null; }
 function scrollCityToCenter(c){ var list=document.getElementById('sheet-list'); if(!list) return; var rows=list.querySelectorAll('.row[data-kind="city"]'); for(var i=0;i<rows.length;i++){ var cc=cities[+rows[i].getAttribute('data-i')]; if(cc&&rowKey(cc)===rowKey(c)){ var lr=list.getBoundingClientRect(),rr=rows[i].getBoundingClientRect(); list.scrollTop+=(rr.top-lr.top)-(lr.height-rr.height)/2; break; } } }
 function gpsOn(v){ v=!!v; var a=document.getElementById('bg-gps'), b=document.getElementById('sheet-gps'); if(a) a.classList.toggle('on',v); if(b) b.classList.toggle('on',v); }
