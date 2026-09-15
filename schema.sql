@@ -73,3 +73,6 @@ BEGIN
     lat = COALESCE(excluded.lat, place_stats.lat),
     lon = COALESCE(excluded.lon, place_stats.lon);
 END;
+
+-- 去重查询索引：middleware 写入前按 (ip, path, ts) 判断 30 分钟窗口内是否已记录
+CREATE INDEX IF NOT EXISTS idx_visits_ip_path ON visits (ip, path, ts DESC);

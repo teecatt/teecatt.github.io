@@ -319,7 +319,7 @@ async function refresh(){
   }catch(e){}
   if(adminKey){
     try{
-      var rv=await fetch('/api/visits?limit=300&key='+encodeURIComponent(adminKey),{cache:'no-store'});
+      var rv=await fetch('/api/visits?limit=300',{cache:'no-store',headers:adminKey?{'X-Admin-Key':adminKey}:{}});
       if(rv.ok){ var vv=await rv.json(); adminVisits=(vv.visits||[]).filter(function(v){return v.lat!=null && v.lon!=null;}); }
     }catch(e){}
   }
