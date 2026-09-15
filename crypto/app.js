@@ -561,7 +561,7 @@ const TOOLS = [
         { k: "key", label: "PEM 密钥", type: "textarea", value: "", full: true, rows: 5 },
         { k: "hash", label: "OAEP 哈希", type: "select", options: [["SHA-1", "SHA-1"], ["SHA-256", "SHA-256"], ["SHA-512", "SHA-512"]], value: "SHA-256" },
         { k: "inFmt", label: "输入格式", type: "select", options: FMT_OPTS, value: "utf8" },
-        { k: "outFmt", label: "输出格式", type: "select", options: [["base64", "Base64"], ["hex", "十六进制"]], value: "base64" }
+        { k: "outFmt", label: "输出格式", type: "select", options: [["base64", "Base64"], ["hex", "十六进制"], ["utf8", "文本 (UTF-8)"]], value: "base64" }
     ],
     async run(input, v) {
         const der = pemToDer(v.key);
@@ -573,7 +573,8 @@ const TOOLS = [
         }
         const key = await crypto.subtle.importKey("pkcs8", der, algo, false, ["decrypt"]);
         const res = await crypto.subtle.decrypt(algo, key, parseFmt(input, v.inFmt));
-        return formatBytes(new Uint8Array(res), "utf8");
+        // 解密结果按用户选择的输出格式返回：二进制明文不再被强制当作 UTF-8（原实现忽略 outFmt）
+        return formatBytes(new Uint8Array(res), v.outFmt);
     }
 },
 {
@@ -604,7 +605,9 @@ const TOOLS = [
         }
         const key = await crypto.subtle.importKey("spki", der, algo, false, ["verify"]);
         const params = isPss ? { name: "RSA-PSS", saltLength: +v.saltLen } : algo;
-        const ok = await crypto.subtle.verify(params, key, parseFmt(input, "base64"), textToBytes(v.message, "utf8"));
+        // 签名输入格式必须与“签名输出格式”一致：原实现硬编码 base64，选了 hex 必然验签失败
+        const sigFmt = v.outFmt === "base64url" ? "base64" : (v.outFmt || "base64");
+        const ok = await crypto.subtle.verify(params, key, parseFmt(input, sigFmt), textToBytes(v.message, "utf8"));
         return ok ? "✓ 签名有效" : "✗ 签名无效";
     }
 },
