@@ -121,7 +121,6 @@ const MEDIA_BR_SIZES = {
   "soundfonts/alto_sax": 1358889,
   "soundfonts/baritone_sax": 1090241,
   "soundfonts/bassoon": 1853279,
-  "soundfonts/brass_ensemble": 1683696,
   "soundfonts/brass_section": 1683696,
   "soundfonts/bright_acoustic_piano": 1655436,
   "soundfonts/celesta": 1011245,
