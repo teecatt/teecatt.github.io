@@ -463,7 +463,7 @@ setTimeout(function(){ var l=document.getElementById('sheet-list'); if(l) l.addE
 setTimeout(function(){ bindPanelSwipe(document.querySelector('.cards-box')); },0);
 var immersivePushed=false;
 function enterImmersive(){ if(document.body.classList.contains('immersive')) return; document.body.classList.remove('city-hidden'); document.body.classList.add('immersive'); if(globe) globe.controls().enableZoom=true; var c=cityForMe(); if(c) selectCity(c,true,IMM_ALT,5,1500); else if(globe){ var p=globe.pointOfView(); globe.pointOfView({lat:p.lat,lng:p.lng,altitude:IMM_ALT},1500); } try{ history.pushState({__imm:1},''); immersivePushed=true; }catch(e){} }
-function exitImmersive(fromPop){ if(!document.body.classList.contains('immersive')) return; document.body.classList.remove('immersive'); document.body.classList.remove('city-hidden'); var lk=document.querySelector('.links'); if(lk){ lk.classList.remove('fadein'); void lk.offsetWidth; lk.classList.add('fadein'); clearTimeout(exitImmersive._ft); exitImmersive._ft=setTimeout(function(){ lk.classList.remove('fadein'); },450); } if(globe){ globe.controls().enableZoom=false; selCity=null; selKey=null; setPoints(); updateHtml(); updateRings(); applySelection(); var p=globe.pointOfView(); globe.pointOfView({lat:p.lat,lng:p.lng,altitude:END_ALT},1000); } if(immersivePushed && !fromPop){ immersivePushed=false; try{ history.back(); }catch(e){} } else { immersivePushed=false; } }
+function exitImmersive(fromPop){ if(!document.body.classList.contains('immersive')) return; document.body.classList.remove('immersive'); document.body.classList.remove('city-hidden'); var lk=document.querySelector('.links'); if(lk){ lk.classList.remove('fadein'); void lk.offsetWidth; lk.classList.add('fadein'); clearTimeout(exitImmersive._ft); exitImmersive._ft=setTimeout(function(){ lk.classList.remove('fadein'); },450); } if(globe){ globe.controls().enableZoom=true; selCity=null; selKey=null; setPoints(); updateHtml(); updateRings(); applySelection(); var p=globe.pointOfView(); globe.pointOfView({lat:p.lat,lng:p.lng,altitude:END_ALT},1000); } if(immersivePushed && !fromPop){ immersivePushed=false; try{ history.back(); }catch(e){} } else { immersivePushed=false; } }
 window.addEventListener('popstate',function(){ if(document.body.classList.contains('immersive')) exitImmersive(true); });
 if(gpsBtn) gpsBtn.addEventListener('click',function(){ if(document.body.classList.contains('immersive')){ immersiveGps(); } else { gpsFly(); } gpsFlash(); var b=this; setTimeout(function(){b.blur();},1000); });
 (function(){ function bind(handle,panel){ if(!handle||!panel) return; var sy=null, sh=0, moved=false;  handle.addEventListener('pointerdown',function(e){ sy=e.clientY; sh=panel.getBoundingClientRect().height; moved=false; panel.style.transition='none'; if(handle.setPointerCapture){ try{ handle.setPointerCapture(e.pointerId); }catch(_){ } } });  handle.addEventListener('pointermove',function(e){ if(sy==null) return; var dy=sy-e.clientY; if(Math.abs(dy)>4) moved=true; if(!moved) return; var h=Math.max(window.innerHeight*0.27,Math.min(window.innerHeight,sh+dy)); var pct=h/window.innerHeight*100; curPanelH=pct; document.documentElement.style.setProperty('--panel-h',pct.toFixed(2)+'%'); if(e.cancelable) e.preventDefault(); });  function end(){ if(sy==null) return; sy=null; panel.style.transition=''; setTimeout(function(){ moved=false; },60); }  handle.addEventListener('pointerup',end); handle.addEventListener('pointercancel',end);  handle.addEventListener('click',function(e){ if(moved){ e.stopImmediatePropagation(); e.preventDefault(); } },true); } bind(document.getElementById('sheet-chev'), document.getElementById('sheet')); bind(document.getElementById('grid-chev'), document.querySelector('.cards-panel .cards-box')); })();
@@ -499,9 +499,12 @@ function init(){
     .htmlElement(function(d){ var el=document.createElement('div'); el.className='globe-label'; el.__d=d; el.innerHTML='<div class="gl-box">'+(d.weather?'<div class="gl-w">'+esc(d.weather)+'</div>':'')+'<div class="gl-c">'+esc(nameOf(d))+'</div>'+((d.region||d.country)?'<div class="gl-s">'+esc(subOf(d))+'</div>':'')+(d.n!=null?'<div class="gl-n">'+d.n+'</div>':'')+'</div>'; return el; });
   globe.pointOfView({lat:0,lng:0,altitude:END_ALT});
   var c=globe.controls();
-  c.autoRotate=false; c.autoRotateSpeed=0.35; c.enableDamping=true; c.enableZoom=false;
+  c.autoRotate=false; c.autoRotateSpeed=0.35; c.enableDamping=true; c.enableZoom=true;
   setTimeout(updateLabelGap,60); window.addEventListener('resize',function(){ updateLabelGap(); });
-  c.addEventListener('change',function(){ if(!globe) return; var a; try{ a=globe.pointOfView().altitude; }catch(e){ return; } c.autoRotateSpeed=spinFor(a); if(Math.abs(a-lastGapAlt)>0.02){ lastGapAlt=a; updateLabelGap(a); } var want=(a>0.02&&a<=1.0); if(want!==allLabels){ allLabels=want; updateHtml(); if(allLabels){ setTimeout(fitLabels,50); startLabelFit(); } else { stopLabelFit(); } } });
+  c.addEventListener('change',function(){ if(!globe) return; var a; try{ a=globe.pointOfView().altitude; }catch(e){ return; }
+  // 缩放钳制：保持与沉浸模式缩放按钮一致的 0.06~2.5 区间（用回差避免浮点震荡）
+  if(a<0.059||a>2.51){ try{ globe.pointOfView({altitude:Math.max(0.06,Math.min(2.5,a))},0); }catch(e){} return; }
+  c.autoRotateSpeed=spinFor(a); if(Math.abs(a-lastGapAlt)>0.02){ lastGapAlt=a; updateLabelGap(a); } var want=(a>0.02&&a<=1.0); if(want!==allLabels){ allLabels=want; updateHtml(); if(allLabels){ setTimeout(fitLabels,50); startLabelFit(); } else { stopLabelFit(); } } });
   var canvas=globe.renderer().domElement, down=null;
   canvas.addEventListener('pointerdown',function(e){ down={x:e.clientX,y:e.clientY}; });
   canvas.addEventListener('pointerup',function(e){ if(!down) return; var moved=Math.sqrt(Math.pow(e.clientX-down.x,2)+Math.pow(e.clientY-down.y,2)); down=null; if(moved>6) return; var r=canvas.getBoundingClientRect(); var cc=pickCity(e.clientX-r.left,e.clientY-r.top); if(cc) selectCity(cc,true,IMM_ALT,5); });
@@ -577,6 +580,8 @@ if(document.readyState==='complete') schedule(); else window.addEventListener('l
    if(window.innerWidth<768) return;
    if(document.body.classList.contains('immersive')) return;
    if(box&&box.contains(e.target)) return;
+   // 背景地球画布上的滚轮用于缩放地球，不滚卡片面板（卡片区本身仍可滚动）
+   if(e.target&&(e.target.tagName==='CANVAS'||(e.target.closest&&e.target.closest('#bg-globe')))) return;
    panel.scrollTop+=e.deltaY; e.preventDefault();
  },{capture:true,passive:false});
 })();
