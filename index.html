@@ -221,6 +221,7 @@ async function loadGlobe(){
   var canvas=document.getElementById('hero-globe');
   var stickEl=document.getElementById('globe-stickers');
   if(!canvas) return;
+  var reducedMotion=false; try{ reducedMotion=matchMedia('(prefers-reduced-motion: reduce)').matches; }catch(e){}
   var cityMarkers=[],meMarker=null,phi=0,theta=0.3,dragging=false,lastX=0,lastY=0;
   var velPhi=0,velTheta=0,autoRotate=true;
   var targetPhi=null,targetTheta=null;
@@ -314,7 +315,7 @@ async function loadGlobe(){
       } else if(Math.abs(velPhi)>0.0002||Math.abs(velTheta)>0.0002){
         phi+=velPhi; theta=Math.max(-1.2,Math.min(1.2,theta+velTheta));
         velPhi*=0.95; velTheta*=0.95;
-      } else if(autoRotate){
+      } else if(autoRotate && !reducedMotion){
         phi+=0.0015;
       } else {
         velPhi=0; velTheta=0; autoRotate=true;
