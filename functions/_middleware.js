@@ -13,13 +13,17 @@ async function record(context) {
   const url = new URL(request.url);
   const ref = (request.headers.get('Referer') || '').slice(0, 300);
 
-  // 30 分钟窗口内同一 IP + 同一路径只记一次：刷新、轮询与重复导航不再放大统计与 D1 写入。
-  // 由 idx_visits_ip_path 索引支撑；查询失败（表/索引缺失）时忽略去重，不阻断记录。
-  if (ip) {
+  // 同一 IP + 同一路径的去重窗口：默认 30 分钟，可用 Pages 环境变量 VISIT_DEDUPE_MINUTES 调整
+  //（0 = 关闭去重，每次 HTML 导航都计数）。索引 idx_visits_ip_path 支撑该查询；
+  // 查询失败（表/索引缺失）时忽略去重，不阻断记录。
+  const dedupeMinutes = Number.isFinite(Number(env.VISIT_DEDUPE_MINUTES))
+    ? Math.max(0, Number(env.VISIT_DEDUPE_MINUTES))
+    : 30;
+  if (ip && dedupeMinutes > 0) {
     try {
       const recent = await env.DB.prepare(
         'SELECT 1 AS x FROM visits WHERE ip = ? AND path = ? AND ts > ? LIMIT 1'
-      ).bind(ip, url.pathname, Date.now() - 30 * 60 * 1000).first();
+      ).bind(ip, url.pathname, Date.now() - dedupeMinutes * 60 * 1000).first();
       if (recent) return;
     } catch (e) { /* 去重失败时继续记录 */ }
   }
