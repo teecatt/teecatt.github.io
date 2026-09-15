@@ -1158,7 +1158,7 @@ class SynthProcessor extends AudioWorkletProcessor {
         midi: m.midi, table: this._tableFor(freq), phase: 0,
         inc: freq * this.tableSize / sampleRate,
         vel: Math.max(0.0001, m.vel || 0.4), dur: Math.max(0.01, m.dur || 0.5),
-        t: 0, releasing: false
+        t: 0, releasing: false, relT: null, relEnv0: 0
       });
     } else if(m.type === 'off'){
       for(let i = 0; i < this.voices.length; i++){ if(this.voices[i].midi === m.midi) this.voices[i].releasing = true; }
@@ -1184,7 +1184,12 @@ class SynthProcessor extends AudioWorkletProcessor {
           const p = Math.min(1, (v.t - attack) / Math.max(0.001, dur - attack));
           env = vel * Math.pow(decayRatio, p);
         }
-        if(v.releasing) env *= 0.85;
+        if(v.releasing){
+          // 释音：以“按下释音那一刻的包络值”为起点做指数衰减（τ=120ms），
+          // 原实现每采样乘 0.85 等价于瞬间静音，会产生咔嗒声。
+          if(v.relT == null){ v.relT = v.t; v.relEnv0 = env; }
+          env = v.relEnv0 * Math.exp(-(v.t - v.relT) / 0.12);
+        }
         const idx = v.phase | 0;
         const frac = v.phase - idx;
         const s0 = table[idx], s1 = table[idx + 1];
@@ -1192,7 +1197,8 @@ class SynthProcessor extends AudioWorkletProcessor {
         v.phase += v.inc;
         if(v.phase >= ts) v.phase -= ts;
       }
-      if(v.releasing || v.t > dur + 0.05) this.voices.splice(vi, 1);
+      // 释音持续约 0.4s（≈3τ）后回收 voice；未释音的 voice 到自然结束回收
+      if((v.releasing && v.relT != null && v.t - v.relT > 0.4) || (!v.releasing && v.t > dur + 0.05)) this.voices.splice(vi, 1);
     }
     this._reportAcc += N;
     if(this._reportAcc >= sr * 0.5){ this._reportAcc = 0; this.port.postMessage({ type: 'voices', n: this.voices.length }); }
