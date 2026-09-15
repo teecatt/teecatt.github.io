@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS visits (
   lon         REAL,
   colo        TEXT,               -- 落地的 Cloudflare 机房代码
   ip          TEXT,               -- 访客 IP
+  vid         TEXT,               -- 会话访客 id（Cookie tc_vid），用于 NAT 后区分不同浏览器
   ua          TEXT,
   path        TEXT,
   ref         TEXT
@@ -23,6 +24,7 @@ CREATE TABLE IF NOT EXISTS visits (
 CREATE INDEX IF NOT EXISTS idx_visits_ts     ON visits (ts DESC);
 CREATE INDEX IF NOT EXISTS idx_visits_region ON visits (region_code, city);
 CREATE INDEX IF NOT EXISTS idx_visits_city   ON visits (city);
+CREATE INDEX IF NOT EXISTS idx_visits_vid_path ON visits (vid, path, ts DESC);
 
 -- 第三方 IP 归属地缓存（避免重复调用 ipwho.is）
 CREATE TABLE IF NOT EXISTS ip_geo (
@@ -76,3 +78,7 @@ END;
 
 -- 去重查询索引：middleware 写入前按 (ip, path, ts) 判断 30 分钟窗口内是否已记录
 CREATE INDEX IF NOT EXISTS idx_visits_ip_path ON visits (ip, path, ts DESC);
+
+-- 升级已有库时执行（新装环境由上面的 CREATE 语句覆盖）：
+--   ALTER TABLE visits ADD COLUMN vid TEXT;
+--   CREATE INDEX IF NOT EXISTS idx_visits_vid_path ON visits (vid, path, ts DESC);
