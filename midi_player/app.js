@@ -955,10 +955,6 @@ const _NATIVE_BROTLI = (function(){
   try{ if(typeof DecompressionStream === 'function'){ new DecompressionStream('brotli'); return true; } }catch(e){}
   return false;
 })();
-const _NATIVE_GZIP = (function(){
-  try{ if(typeof DecompressionStream === 'function'){ new DecompressionStream('gzip'); return true; } }catch(e){}
-  return false;
-})();
 let _brotliWasmMod = null;
 let _brotliWasmLoading = null;
 // 惰性加载自定义 WASM brotli 解码器；返回模块（decompress(Uint8Array)->Uint8Array）
@@ -2462,26 +2458,6 @@ async function fetchMedia(relPath, onProgress, quiet){
   }catch(e){}
   const blob = await _fetchWithProgress(relPath, onProgress, quiet);
   return new Response(blob);
-}
-// 探测未下载谱面的体积（HEAD 优先，失败回退 GET Range），用于下载前提示
-async function _probeMediaSize(relPath){
-  // 谱面一律传 br 压缩变体，探测其体积最贴近真实传输量
-  const candidates = [];
-  if(/\.midi?$/i.test(relPath)) candidates.push(relPath + '.br');
-  else candidates.push(relPath);
-  for(const p of candidates){
-    const urls = _mediaUrls(p);
-    for(const u of urls){
-      try{
-        const r = await fetch(u, {method: 'HEAD', mode: 'cors'});
-        if(r && r.ok){
-          const len = parseInt((r.headers && r.headers.get) ? (r.headers.get('content-length') || '0') : '0', 10);
-          if(len > 0) return len;
-        }
-      }catch(e){}
-    }
-  }
-  return 0;
 }
 // 切换到指定谱面并播放（key 形如 builtin:xxx / user:xxx）
 async function _switchToSong(key){
