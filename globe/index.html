@@ -128,7 +128,15 @@ function full(ts){ try{ return new Date(ts).toLocaleString(lang==='zh'?'zh-CN':'
 function rowKey(o){ return [o.country||'',o.region||'',o.city||''].join('|'); }
 function isSel(o){ return selKey!=null && o && rowKey(o)===selKey; }
 
-var adminKey = new URLSearchParams(location.search).get('key') || '';
+/* 管理员密钥不再走 URL query（会进入浏览器历史、Referer 与服务器日志）。
+   使用方式：首次访问 /globe/#admin 输入一次，密钥只保存在 sessionStorage，随后地址栏不再携带。 */
+var adminKey = '';
+try{ adminKey = sessionStorage.getItem('tc_admin_key') || ''; }catch(e){}
+if(location.hash === '#admin' && !adminKey){
+  var _adminInput = prompt('请输入管理员密钥（仅保存在本次会话）：');
+  if(_adminInput){ adminKey = _adminInput; try{ sessionStorage.setItem('tc_admin_key', _adminInput); }catch(e){} }
+  history.replaceState(null, '', location.pathname + location.search);
+}
 var lang = 'en';
 var globe, cities=[], adminVisits=[], meData=null, selKey=null, selCity=null, collapsed=false, ASSET_TEX={};
 
