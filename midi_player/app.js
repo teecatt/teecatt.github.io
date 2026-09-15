@@ -4306,6 +4306,23 @@ function _applyPianoZoom(){
   drawScene(allNotes, leftIdx, rightIdx, currentTime);
 }
 
+// 圆角矩形路径：ctx.roundRect 在 Safari<16 缺失，缺失时手动绘制。
+// 注意：调用方已 beginPath，且一个 path 内会批量塞入多个矩形，因此此函数不得再调用 beginPath。
+function _roundRectPath(ctx, x, y, w, h, r){
+  if(typeof ctx.roundRect === 'function'){ ctx.roundRect(x, y, w, h, r); return; }
+  const rr = Math.max(0, Math.min(r, w / 2, h / 2));
+  ctx.moveTo(x + rr, y);
+  ctx.lineTo(x + w - rr, y);
+  ctx.arcTo(x + w, y, x + w, y + rr, rr);
+  ctx.lineTo(x + w, y + h - rr);
+  ctx.arcTo(x + w, y + h, x + w - rr, y + h, rr);
+  ctx.lineTo(x + rr, y + h);
+  ctx.arcTo(x, y + h, x, y + h - rr, rr);
+  ctx.lineTo(x, y + rr);
+  ctx.arcTo(x, y, x + rr, y, rr);
+  ctx.closePath();
+}
+
 function drawScene(notes, startIdx, endIdx, curTime){
   curTime = curTime || 0;
   // 直接贴预渲染的静态层
@@ -4373,7 +4390,7 @@ function drawScene(notes, startIdx, endIdx, curTime){
         if(!arr.length) continue;
         ctx.beginPath();
         for(let j = 0; j < arr.length; j += 4){
-          if(useRound) ctx.roundRect(arr[j], arr[j + 1], arr[j + 2], arr[j + 3], radius);
+          if(useRound) _roundRectPath(ctx, arr[j], arr[j + 1], arr[j + 2], arr[j + 3], radius);
           else ctx.rect(arr[j], arr[j + 1], arr[j + 2], arr[j + 3]);
         }
         ctx.fillStyle = palettes[p][c];
