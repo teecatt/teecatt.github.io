@@ -153,6 +153,7 @@ footer{border-top:1px solid var(--line);padding:16px 24px;text-align:center;font
 </div>
 <footer><a class="build-info" href="https://github.com/teecatt" target="_blank" rel="noopener" title="GitHub 主页">teecatt</a> · <a id="siteBuildInfo" class="build-info" href="#" target="_blank" rel="noopener" title="查看对应提交">构建于 —</a></footer>
 
+<script src="shared/visitor.js"></script>
 <script src="build-info.js?v=dev"></script>
 <script>
 // 页脚「构建于」+ 浏览器标签标题：显示最近一次部署时间，并可点击跳转到对应提交
@@ -195,7 +196,7 @@ function Re(e,t,r){let a=e.createShader(t);return e.shaderSource(a,r),e.compileS
 <script>
 (function(){
 if(!window.createGlobe) return;
-var W_ICON={0:'☀️',1:'🌤️',2:'⛅',3:'☁️',45:'🌫️',48:'🌫️',51:'🌦️',53:'🌧️',55:'🌧️',61:'🌧️',63:'🌧️',65:'🌧️',71:'🌨️',73:'🌨️',75:'🌨️',80:'🌦️',81:'🌧️',82:'🌧️',95:'⛈️',96:'⛈️',99:'⛈️'};
+var W_ICON=Visitor.W_ICON;
 function project(lat,lon,phi,theta){
   var R=Math.PI/180,la=lat*R,lo=lon*R+Math.PI/2;
   var x=Math.cos(la)*Math.sin(lo+phi);
