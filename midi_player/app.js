@@ -1356,18 +1356,28 @@ const SoundfontLoader = {
     return /}\s*$/.test(text); // 截断文件停在 base64 中间，结尾无 }
   },
 
-  // 解析音色文本；失败时抛出带诊断信息的错误（而非笼统的 token 错误）
+  // 解析音色文本：文件格式是 `MIDI.Soundfont.<name> = { ...JSON... }`。
+  // 历史上用 new Function 求值，但音色可能来自第三方加速镜像（ghfast.top），一旦被投毒就是同源 RCE；
+  // 这里改为截取等号右侧并 JSON.parse，只接受纯数据，彻底移除代码执行面。
   _parseSoundfont(text, name){
     let raw;
     try{
-      const MIDI = { Soundfont: {} };
-      const fn = new Function('MIDI', text + '\nreturn MIDI.Soundfont["' + name + '"];');
-      raw = fn(MIDI);
+      // 文件结构固定为两行守卫语句 + `MIDI.Soundfont.<name> = { ...JSON... }`，
+      // 因此先定位该音色的赋值标记，再取等号右侧做 JSON.parse。
+      const marker = 'MIDI.Soundfont.' + name;
+      const at = text.indexOf(marker);
+      if(at < 0) throw new Error('缺少音色赋值');
+      const eq = text.indexOf('=', at + marker.length);
+      if(eq < 0) throw new Error('缺少赋值号');
+      // 文件是 JS 对象字面量，允许尾逗号而 JSON 不允许：只删除紧跟 } 或 ] 的逗号。
+      // base64 字母表不含 `,` 与 `}`，因此该清理不会误伤字符串内的数据。
+      const jsonText = text.slice(eq + 1).trim().replace(/;?\s*$/, '').replace(/,\s*([}\]])/g, '$1');
+      raw = JSON.parse(jsonText);
     }catch(e){
-      throw new Error('音色内容不是合法JS（疑似截断或错误页）: ' +
+      throw new Error('音色内容不是合法数据（疑似截断、错误页或被篡改）: ' +
         text.slice(0, 80).replace(/\s+/g, ' '));
     }
-    if(!raw || typeof raw !== 'object') throw new Error('音色数据解析失败');
+    if(!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('音色数据解析失败');
     return raw;
   },
 
