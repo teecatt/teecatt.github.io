@@ -12,6 +12,9 @@
 (function(global){
   'use strict';
 
+  // 上游仓库经历过改名：teecatt/teecatt.github.io 现由 GitHub 重定向到
+  // 23776301/23776301.github.io。这里保留旧名以维持既有镜像 URL 的兼容性
+  //（jsDelivr 与 GitHub 均按重定向解析）；如需切换仓库，只改这一处。
   const REPO_GH = 'teecatt/teecatt.github.io';
   const REPO_REF = 'master';
   const RAW_BASE = 'https://raw.githubusercontent.com/' + REPO_GH + '/' + REPO_REF + '/';

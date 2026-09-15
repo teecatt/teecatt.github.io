@@ -1044,7 +1044,7 @@ function initBuildInfo() {
     }
     const diff = Date.now() - b.time;
     el.textContent = "最近构建：" + humanizeAgo(diff);
-    el.href = "https://github.com/teecatt/teecatt.github.io/commit/" + b.sha;
+    el.href = "https://github.com/23776301/23776301.github.io/commit/" + b.sha;
 }
 
 function humanizeAgo(ms) {
