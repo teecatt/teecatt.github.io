@@ -2790,7 +2790,7 @@ async function resetAllSettings(){
   // 重置所有设置项 + 恢复演示谱面标记 + 下载缺失的默认资源
   const keys = ['panelTransparency', 'panelBlur', 'dbgAutoOpen', 'debugEnabled',
                 'menuBtnPos', 'paletteCustom', 'paletteV2', 'raceFull',
-                'renderFpsCap', 'fpsDisplay'];
+                'renderFpsCap', 'fpsDisplay', 'kbdPianoEnabled', 'kbdBaseOctave'];
   try{ keys.forEach(k => localStorage.removeItem(k)); }catch(e){}
   // 恢复演示谱面（Rush E3）标记：从「已删除」集合中移除
   try{
