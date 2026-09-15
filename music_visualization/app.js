@@ -1257,12 +1257,18 @@ function syncField(field, value, digits){
   if(!input) return;
   input.value=value;
   const v=input.parentElement.querySelector('.val');
-  if(v) v.textContent=Number(value).toFixed(digits);
+  if(v){
+    // 保留原后缀（%/x/px/° 等）：拖动元素时标签不再退化为纯数字
+    const unit=(String(v.textContent).match(/[^\d.\-+\s]+/)||[''])[0];
+    v.textContent=Number(value).toFixed(digits)+unit;
+  }
 }
 function hitElementAt(mx,my){
-  for(let i=CFG.elements.length-1;i>=0;i--){
-    const r=screenRect(CFG.elements[i].params);
-    if(mx>=r.x&&mx<=r.x+r.w&&my>=r.y&&my<=r.y+r.h) return CFG.elements[i];
+  // 命中顺序必须与绘制顺序一致：绘制按 y 升序（后画者在最上层），因此从排序后的末尾向前找
+  const ordered=[...CFG.elements].sort((a,b)=>a.params.y-b.params.y);
+  for(let i=ordered.length-1;i>=0;i--){
+    const r=screenRect(ordered[i].params);
+    if(mx>=r.x&&mx<=r.x+r.w&&my>=r.y&&my<=r.y+r.h) return ordered[i];
   }
   return null;
 }
