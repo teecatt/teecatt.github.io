@@ -1,7 +1,8 @@
 // 全站访问记录中间件：对 HTML 页面导航记录一次访问（服务端完成，无需前端脚本）。
-// 去重策略：优先「会话访客 id（Cookie tc_vid）+ 路径」，无有效 Cookie 时回退「IP + 路径」——
-//   同一 NAT/校园网出口下的不同浏览器可分别计数（各自拿到不同 vid），
-//   同一浏览器刷新同一路径在窗口内只记一次；窗口由 VISIT_DEDUPE_MINUTES 控制（默认 30，0 = 关闭）。
+// 去重策略：仅按「会话访客 id（Cookie tc_vid）+ 路径」去重——
+//   无 Cookie 的首次访问一律计数（并下发 Cookie），此后同一浏览器在窗口内刷新同一路径只记一次；
+//   不在服务端按 IP 兜底去重，否则同一 NAT/校园网出口下后来者会被前一位访客的记录误伤。
+//   窗口由 VISIT_DEDUPE_MINUTES 控制（默认 30，0 = 关闭）。
 // Cookie 为随机 id、仅用于本地去重，不跨站、不用于识别个人；每次访问最多写入一行。
 // 依赖 D1 绑定：DB（visits.vid 列 + idx_visits_vid_path 索引）。
 import { resolveGeo } from './_lib/geo.js';
@@ -38,20 +39,12 @@ async function record(context, vid, hasCookie, minutes) {
   const url = new URL(request.url);
   const ref = (request.headers.get('Referer') || '').slice(0, 300);
 
-  if (minutes > 0) {
-    const since = Date.now() - minutes * 60 * 1000;
+  if (minutes > 0 && hasCookie && vid) {
     try {
-      if (hasCookie && vid) {
-        const recent = await env.DB.prepare(
-          'SELECT 1 AS x FROM visits WHERE vid = ? AND path = ? AND ts > ? LIMIT 1'
-        ).bind(vid, url.pathname, since).first();
-        if (recent) return;
-      } else if (ip) {
-        const recent = await env.DB.prepare(
-          'SELECT 1 AS x FROM visits WHERE ip = ? AND path = ? AND ts > ? LIMIT 1'
-        ).bind(ip, url.pathname, since).first();
-        if (recent) return;
-      }
+      const recent = await env.DB.prepare(
+        'SELECT 1 AS x FROM visits WHERE vid = ? AND path = ? AND ts > ? LIMIT 1'
+      ).bind(vid, url.pathname, Date.now() - minutes * 60 * 1000).first();
+      if (recent) return;
     } catch (e) { /* 去重失败时继续记录 */ }
   }
 
