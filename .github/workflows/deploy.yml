@@ -44,7 +44,7 @@ jobs:
             printf 'window.CRYPTO_BUILD={sha:"%s",time:%s*1000};\n' "$csha" "$pts"
             printf 'window.AREA_BUILD={midi:%s,viz:%s,library:%s,links:%s};\n' "$midi" "$viz" "$library" "$links"
           } > build-info.js
-          for f in index.html crypto/index.html midi_player/index.html music_visualization/index.html library/index.html links/index.html; do
+          for f in index.html crypto/index.html gpu_enhanced.html midi_player/index.html music_visualization/index.html library/index.html links/index.html; do
             [ -f "$f" ] && sed -i -E "s#build-info\.js\?[^\"']*#build-info.js?v=$psha#" "$f"
           done
       - name: Stage site files
@@ -83,7 +83,7 @@ jobs:
             printf 'window.CRYPTO_BUILD={sha:"%s",time:%s*1000};\n' "$csha" "$pts"
             printf 'window.AREA_BUILD={midi:%s,viz:%s,library:%s,links:%s};\n' "$midi" "$viz" "$library" "$links"
           } > build-info.js
-          for f in index.html crypto/index.html midi_player/index.html music_visualization/index.html library/index.html links/index.html; do
+          for f in index.html crypto/index.html gpu_enhanced.html midi_player/index.html music_visualization/index.html library/index.html links/index.html; do
             [ -f "$f" ] && sed -i -E "s#build-info\.js\?[^\"']*#build-info.js?v=$psha#" "$f"
           done
       - name: Stage site files
