@@ -547,6 +547,7 @@ function downloadDebugLog(){
  * ========================================================== */
 let audioCtx = null;
 let masterGain = null;
+let limiterNode = null;
 let outputAnalyser = null;
 
 function initAudio(){
@@ -554,10 +555,19 @@ function initAudio(){
   audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   masterGain = audioCtx.createGain();
   masterGain.gain.value = 1.0;
+  // 限幅器：音色增益最高 10×（acoustic_grand_piano），密集和弦叠加时必然超过 0dBFS。
+  // 用高压缩比 + 快启动的 DynamicsCompressor 兜底，避免削波与爆音；分析节点保持在限幅之后，读数即最终输出。
+  limiterNode = audioCtx.createDynamicsCompressor();
+  limiterNode.threshold.value = -3;
+  limiterNode.knee.value = 0;
+  limiterNode.ratio.value = 20;
+  limiterNode.attack.value = 0.003;
+  limiterNode.release.value = 0.25;
   // 在 master 与 destination 之间插一个 Analyser，用于探测"实际输出是否静音"
   outputAnalyser = audioCtx.createAnalyser();
   outputAnalyser.fftSize = 2048;
-  masterGain.connect(outputAnalyser);
+  masterGain.connect(limiterNode);
+  limiterNode.connect(outputAnalyser);
   outputAnalyser.connect(audioCtx.destination);
   // 监听AudioContext状态变化
   audioCtx.addEventListener('statechange', () => {
