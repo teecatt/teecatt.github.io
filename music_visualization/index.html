@@ -257,6 +257,9 @@ body.fs-active .control-row,
 body.fs-active .panel-dock,
 body.fs-active .log-toolbar,
 body.fs-active .log-bar{display:none!important}
+/* 调试（日志）面板顶部：最近构建（跟踪 music_visualization/ 与相关共享组件） */
+.log-build{padding:4px 12px 0;font-size:10px;font-family:monospace;color:var(--muted)}
+.log-build a{color:inherit}
 </style>
 </head>
 <body>
@@ -344,6 +347,7 @@ body.fs-active .log-bar{display:none!important}
         <button class="log-btn" onclick="logScrollTop()" title="滚到顶部"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></svg></button>
         <button class="log-btn" onclick="logScrollBottom()" title="滚到底部"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
       </div>
+      <div class="log-build"><span data-build="viz"></span></div>
       <div class="log-bar" id="logBar"></div>
     </div>
   </div>
@@ -351,6 +355,8 @@ body.fs-active .log-bar{display:none!important}
 
 <script src="../shared/cdn-race.js"></script>
 <script src="../shared/asset-cache.js"></script>
+<script src="../build-info.js?v=dev"></script>
+<script src="../shared/build-stamp.js"></script>
 <script id="appLoader">
 (function(){
   /* CSS 已内联在 <head>（<style id="appCss">），本脚本只加载 app.js：
