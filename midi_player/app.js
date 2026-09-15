@@ -1328,9 +1328,13 @@ const SoundfontLoader = {
     if(name === '__synth__' || name === '__yamaha_c7__'){ this.current = name; return; }
     if(this.loaded[name] && this.loaded[name].ready){ if(switchCurrent) this.current = name; return; }
     if(this.loading) await this.loading;
-    this.loading = this._doLoad(name, onProgress);
+    // 用 finally 保证无论成功或失败都释放 this.loading：
+    // 否则一次下载/解析失败会把失败的 Promise 永久留在 loading 上，后续所有加载都会复现同一错误，只能刷新页面。
+    this.loading = (async () => {
+      try{ return await this._doLoad(name, onProgress); }
+      finally{ this.loading = null; }
+    })();
     await this.loading;
-    this.loading = null;
     if(switchCurrent) this.current = name;
   },
 
