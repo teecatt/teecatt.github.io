@@ -494,6 +494,9 @@ select:focus{border-color:var(--accent)}
       };
     }
   }catch(e){}
+  /* app.js 注入完成前，内联 onclick 引用的入口先置空实现，避免加载窗口内点击抛 ReferenceError；
+     app.js 中的同名 function 声明会在注入执行时覆盖这些占位。 */
+  ['applyPanelAppearance','closeConfirm','closeManageModal','confirmClearDebug','confirmOk','confirmResetAll','copyDebugTerminal','downloadDebugLog','nextSong','onDbgAutoOpenChange','onDebugEnabledChange','onFallSpeedChange','onFpsCapChange','onFpsDisplayChange','onKbdOctaveChange','onKbdPianoChange','onKeyboardPresetChange','onMidiFile','onPianoHeightChange','onPianoOffsetChange','onPianoWidthChange','onPlayModeChange','onRaceFullChange','onSongChange','onSpeedChange','onTimbreChange','replayPlay','scrollDebugBottom','scrollDebugTop','selectPaletteTarget','setPalette','toggleDebugPanel','toggleFullscreen','toggleLoop','toggleManageModal','toggleMenu','togglePaletteRow','togglePlay'].forEach(function(n){ if(typeof window[n] !== 'function') window[n] = function(){}; });
   function showFatal(msg){
     try{
       var el = document.getElementById('fatalError');
