@@ -1421,11 +1421,12 @@ function fitCanvas(){
 document.getElementById('uploadZone').addEventListener('click',()=>document.getElementById('fileInput').click());
 document.getElementById('fileInput').addEventListener('change',e=>loadAudio(e.target.files[0]));
 document.getElementById('playBtn').addEventListener('click',togglePlay);
-document.getElementById('volSlider').addEventListener('input',e=>{CFG.volume=+e.target.value;if(CFG.audio)CFG.audio.volume=CFG.volume;});
+document.getElementById('volSlider').addEventListener('input',e=>{CFG.volume=+e.target.value;if(CFG.audio)CFG.audio.volume=CFG.volume;scheduleSave();});
 document.getElementById('loopBtn').addEventListener('click',function(){
   CFG.loop=!CFG.loop; this.classList.toggle('active',CFG.loop);
   this.innerHTML=CFG.loop?LIST_LOOP_ICON:NO_LOOP_ICON;
   if(CFG.audio) CFG.audio.loop=CFG.loop;
+  scheduleSave();
 });
 const seekBar=document.getElementById('seekBar');
 let _seekDragging=false;
