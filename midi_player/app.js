@@ -2872,9 +2872,11 @@ async function deleteBuiltinSong(file){
   try{
     const cache = await caches.open(AssetCache.cacheName);
     const keys = await cache.keys();
+    const base = file.split('/').pop();
     const targets = keys.filter(req => {
-      const u = req.url;
-      return u.indexOf(file.split('/').pop()) >= 0;
+      // 按“最后一个路径段精确匹配”而不是子串匹配：避免同名/子串命中误删其它谱面缓存
+      const seg = decodeURIComponent(String(req.url).split('?')[0]).split('/').pop();
+      return seg === base || seg === base + '.br';
     });
     for(const req of targets){
       try{
