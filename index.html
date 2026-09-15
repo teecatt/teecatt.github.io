@@ -221,7 +221,6 @@ async function loadGlobe(){
   var canvas=document.getElementById('hero-globe');
   var stickEl=document.getElementById('globe-stickers');
   if(!canvas) return;
-  var reducedMotion=false; try{ reducedMotion=matchMedia('(prefers-reduced-motion: reduce)').matches; }catch(e){}
   var cityMarkers=[],meMarker=null,phi=0,theta=0.3,dragging=false,lastX=0,lastY=0;
   var velPhi=0,velTheta=0,autoRotate=true;
   var targetPhi=null,targetTheta=null;
@@ -295,7 +294,6 @@ async function loadGlobe(){
   }
   function drawPulses(now){
     if(!pctx) return;
-    if(reducedMotion) return; // 减少动态效果：不绘制脉冲光环
     var w=pcanvas.width,h=pcanvas.height;
     pctx.clearRect(0,0,w,h);
     if(!userSticker) return;
