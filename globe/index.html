@@ -139,7 +139,7 @@ if(location.hash === '#admin' && !adminKey){
   history.replaceState(null, '', location.pathname + location.search);
 }
 var lang = 'en';
-var globe, cities=[], adminVisits=[], meData=null, selKey=null, selCity=null, collapsed=false, ASSET_TEX={};
+var globe, cities=[], adminVisits=[], meData=null, selKey=null, selCity=null, collapsed=false, ASSET_TEX={}, allLabels=false;
 
 function initGlobe(){
   globe = Globe()(document.getElementById('globe'))
@@ -170,6 +170,13 @@ function initGlobe(){
   globe.controls().autoRotate = true;
   globe.controls().autoRotateSpeed = 0.35;
   globe.controls().enableDamping = true;
+  // 相机距地心 1-3 倍地球半径时显示全部城市标签，否则只显示选中城市
+  globe.controls().addEventListener('change', function(){
+    if(!globe) return;
+    var a; try{ a=globe.pointOfView().altitude; }catch(e){ return; }
+    var distC=1+a; var want=(distC>=1&&distC<=3);
+    if(want!==allLabels){ allLabels=want; updateLabel(); }
+  });
   var canvas = globe.renderer().domElement;
   var down = null;
   canvas.addEventListener('pointerdown', function(e){ down = { x: e.clientX, y: e.clientY }; });
@@ -199,7 +206,7 @@ function pickCity(px, py){
 }
 var angularDist = Visitor.angularDist;
 function setPoints(){ if(globe) globe.pointsData(cities.filter(function(c){ return c.lat!=null && c.lon!=null; })); }
-function updateLabel(){ if(!globe) return; var d = (selCity && selCity.lat!=null) ? [Object.assign({}, selCity)] : []; globe.htmlElementsData(d); }
+function updateLabel(){ if(!globe) return; var d; if(allLabels){ d=cities.filter(function(c){ return c.lat!=null && c.lon!=null; }).map(function(c){ return Object.assign({}, c); }); } else { d = (selCity && selCity.lat!=null) ? [Object.assign({}, selCity)] : []; } globe.htmlElementsData(d); }
 function updateRings(){ if(globe) globe.ringsData(selCity && selCity.lat!=null ? [{lat:selCity.lat, lng:selCity.lon}] : []); }
 function flyTo(lat,lon){
   if(!globe||lat==null||lon==null) return;
