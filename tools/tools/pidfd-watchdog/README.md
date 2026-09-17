@@ -20,8 +20,8 @@
 
 ```bash
 # 克隆仓库
-git clone https://github.com/teecatt/tools.git
-cd tools/tools/pidfd-watchdog
+git clone https://github.com/teecatt/teecatt.github.io.git
+cd tools/OS-Linux/watchdog
 
 # 一键编译部署验证
 bash build-deploy.sh

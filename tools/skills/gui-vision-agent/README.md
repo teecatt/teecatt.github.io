@@ -82,8 +82,8 @@ python gui_agent_logged.py --task "..." --server http://127.0.0.1:8080 \
 ## 更多
 
 完整机制、坐标格式兼容（UI-TARS 1.0 `start_box` vs 1.5 `point`）、DPI 感知、
-`CAPTUREBLT`、多显示器虚拟桌面、会话隔离等细节，见 [`SKILL.md`](SKILL.md)。
+`CAPTUREBLT`、多显示器虚拟桌面、会话隔离等细节，见 [`SKILL.md`](https://down2.top/tools/skills/gui-vision-agent/SKILL.md)。
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT — see [LICENSE](https://down2.top/tools/skills/gui-vision-agent/LICENSE).
