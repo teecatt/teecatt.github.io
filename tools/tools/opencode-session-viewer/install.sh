@@ -46,7 +46,7 @@ cat >> "$BASHRC" << 'BASHEOF'
 sss() {
     python3 "$HOME/.local/bin/sss.py" "$@"
 }
-complete -W "in audit delete" sss
+complete -W "in t title v view setw setwidth a audit d del delete trash restore empty h help" sss
 # <<< opencode-session-viewer <<<
 BASHEOF
 
