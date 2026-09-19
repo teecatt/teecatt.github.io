@@ -1489,9 +1489,7 @@ const SoundfontLoader = {
     let buffer = null;
     try{
       buffer = await audioCtx.decodeAudioData(bytes.buffer);
-      __DIAG.decOk++; // TEMP-DEBUG(iOS无声定位，用后删除)
     }catch(e){
-      __DIAG.decFail++; // TEMP-DEBUG(iOS无声定位，用后删除)
       console.error('[AudioDebug] decodeAudioData失败! name=', name, 'midi=', midi,
         'noteName=', noteName, 'dataUri长度=', dataUri ? dataUri.length : 0,
         'bytes长度=', bytes.length, '错误=', e.message || e);
@@ -1646,7 +1644,6 @@ const SoundfontLoader = {
     if(!audioCtx) return;
     const t = audioCtx.currentTime;
     this.debug.playNoteCalls++;
-    __DIAG.play++; // TEMP-DEBUG(iOS无声定位，用后删除)
     // 检测AudioContext状态异常
     if(audioCtx.state !== 'running'){
       if(this.debug.lastState !== audioCtx.state){
@@ -1721,7 +1718,6 @@ const SoundfontLoader = {
         src.connect(g); g.connect(masterGain);
         src.start();
         src.stop(t + d + 0.05);
-        __DIAG.sample++; // TEMP-DEBUG(iOS无声定位，用后删除)
         const voice = {kind: 'sample', midi: keyMidi, src, gain: g};
         this.activeSources[keyMidi] = voice;
         this._registerVoice(voice);
@@ -1737,7 +1733,6 @@ const SoundfontLoader = {
         return;
       }
       // buffer未就绪（预解码未完成），返回不播放，不回退合成钢琴
-      __DIAG.nullSkip++; // TEMP-DEBUG(iOS无声定位，用后删除)
       return;
     }
     // 只有current为__synth__时才走合成钢琴
@@ -1750,7 +1745,6 @@ const SoundfontLoader = {
     const synthGain = this.timbreGain['__synth__'] || 3.0; // 合成钢琴默认 300% 音量增益
     // 渐进增强：AudioWorklet 就绪时走单节点合成器（每音符 0 节点、零 churn）
     if(_synthWorkletReady && _synthWorkletNode){
-      __DIAG.worklet++; // TEMP-DEBUG(iOS无声定位，用后删除)
       try{
         _synthWorkletNode.port.postMessage({ type: 'off', midi: midi }); // 同音先释放
         _synthWorkletNode.port.postMessage({ type: 'note', midi: midi, freq: f, vel: 0.4 * velocity * synthGain, dur: synthDur });
@@ -1772,7 +1766,6 @@ const SoundfontLoader = {
       delete this.activeSynth[midi];
     }
     const t0 = audioCtx.currentTime;
-    __DIAG.synth++; // TEMP-DEBUG(iOS无声定位，用后删除)
     const env = audioCtx.createGain();
     env.gain.setValueAtTime(0, t0);
     env.gain.linearRampToValueAtTime(0.4 * velocity * synthGain, t0 + Math.min(0.008, synthDur * 0.5));
@@ -2170,36 +2163,6 @@ let userGestureSeen = false;
   ['pointerdown', 'touchstart', 'keydown', 'click'].forEach(ev =>
     document.addEventListener(ev, mark, {capture: true, passive: true}));
 })();
-
-// TEMP-DEBUG(iOS无声定位，用后删除)：音频诊断计数器 + 一键转储。
-// 所有行统一 [AudioDebug][DIAG] 前缀，会自动进入调试面板终端，可用面板的复制/下载按钮导出。
-const __DIAG = {play:0, sample:0, synth:0, worklet:0, nullSkip:0, decOk:0, decFail:0, resumeOk:0, resumeFail:0};
-let __diagLastDump = 0;
-window.__audioDiag = function(reason){
-  try{
-    const ct = (typeof audioCtx !== 'undefined' && audioCtx) ? audioCtx : null;
-    let ogg = 'n/a';
-    try{
-      const a = document.createElement('audio');
-      ogg = a.canPlayType ? String(a.canPlayType('audio/ogg; codecs="vorbis"') || '(empty)') : '(no-canPlayType)';
-    }catch(e){ ogg = 'probe-error'; }
-    console.log('[AudioDebug][DIAG] ==== 音频诊断<' + (reason || 'manual') + '> ====');
-    console.log('[AudioDebug][DIAG] UA=' + String(navigator.userAgent || '').slice(0, 120));
-    console.log('[AudioDebug][DIAG] platform=' + navigator.platform + ' touchPoints=' + navigator.maxTouchPoints + ' OGG-canPlay=' + ogg);
-    console.log('[AudioDebug][DIAG] ctx=' + (ct ? ('exists state=' + ct.state + ' sampleRate=' + ct.sampleRate +
-      ' baseLatency=' + ct.baseLatency + ' outputLatency=' + ct.outputLatency) : 'NULL') +
-      ' masterGain=' + (typeof masterGain !== 'undefined' && masterGain ? masterGain.gain.value : 'n/a'));
-    console.log('[AudioDebug][DIAG] timbre current=' + SoundfontLoader.current +
-      ' cached=' + SoundfontLoader.cachedNames.size +
-      ' counters=' + JSON.stringify(__DIAG));
-    console.log('[AudioDebug][DIAG] clock isPlaying=' + isPlaying + ' currentTime=' + Number(currentTime).toFixed(2) +
-      ' ctxTime=' + (ct ? Number(ct.currentTime).toFixed(2) : 'n/a') +
-      ' nextNoteIndex=' + nextNoteIndex + '/' + allNotes.length);
-    console.log('[AudioDebug][DIAG] voices src=' + Object.keys(SoundfontLoader.activeSources).length +
-      ' synth=' + Object.keys(SoundfontLoader.activeSynth).length +
-      ' synthVoices=' + SoundfontLoader.synthVoices.length);
-  }catch(e){ console.warn('[AudioDebug][DIAG] dump失败: ' + (e && e.message ? e.message : e)); }
-};
 
 // ===== 冷启动优先级管线 =====
 // 进页面后按优先级「独占带宽、顺序下载」，避免并发抢占带宽：
@@ -3135,19 +3098,7 @@ const NO_LOOP_ICON = _fillIcon('<path d="M2 5.27L3.28 4L20 20.72L18.73 22l-3-3H7
 
 function togglePlay(){
   initAudio();
-  // TEMP-DEBUG(iOS无声定位，用后删除)：记录 resume 前后状态
-  console.log('[AudioDebug][DIAG] togglePlay: resume前 state=' + audioCtx.state);
-  if(audioCtx.state === 'suspended'){
-    try{
-      const pr = audioCtx.resume();
-      if(pr && pr.then){
-        pr.then(() => { __DIAG.resumeOk++; console.log('[AudioDebug][DIAG] togglePlay: resume完成 state=' + audioCtx.state); })
-          .catch((e) => { __DIAG.resumeFail++; console.warn('[AudioDebug][DIAG] togglePlay: resume失败 ' + (e && e.message ? e.message : e)); });
-      } else {
-        console.log('[AudioDebug][DIAG] togglePlay: resume已调用（无promise返回）');
-      }
-    }catch(e){ __DIAG.resumeFail++; }
-  }
+  if(audioCtx.state === 'suspended') audioCtx.resume();
   if(isPlaying){
     pausePlay();
   } else {
@@ -3469,11 +3420,6 @@ function playLoop(ts){
   _recordFpsFrame(); // 记录实际绘制帧，用于「帧率显示」实时帧率
   const _frameT0 = performance.now();
   const now = audioCtx.currentTime;
-  // TEMP-DEBUG(iOS无声定位，用后删除)：播放中每 5 秒自动转储一次（含 ctx 状态与时钟）
-  try{
-    const _wt = performance.now();
-    if(isPlaying && _wt - __diagLastDump > 5000){ __diagLastDump = _wt; window.__audioDiag('periodic'); }
-  }catch(e){}
 
   // 帧间隔跳变检测：主线程被阻塞（GC/长任务）会导致rAF延迟，
   // 随后一帧内堆积触发大量音符，瞬间灌爆音频线程
