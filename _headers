@@ -1,2 +1,5 @@
 /build-info.js
   Cache-Control: public, max-age=31536000, immutable
+
+/shared/*
+  Cache-Control: public, max-age=31536000, immutable
