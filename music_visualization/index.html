@@ -357,10 +357,10 @@ body.fs-active .log-bar{display:none!important}
 /* app.js 注入完成前，内联 onclick 入口先置空实现，避免加载窗口内点击抛 ReferenceError。 */
 ['logCopy','logClear','logDownload','logScrollTop','logScrollBottom','removeSelectedElement'].forEach(function(n){ if(typeof window[n] !== 'function') window[n] = function(){}; });
 </script>
-<script src="../shared/cdn-race.js"></script>
-<script src="../shared/asset-cache.js"></script>
+<script src="../shared/cdn-race.js?v=dev"></script>
+<script src="../shared/asset-cache.js?v=dev"></script>
 <script src="../build-info.js?v=dev"></script>
-<script src="../shared/build-stamp.js"></script>
+<script src="../shared/build-stamp.js?v=dev"></script>
 <script id="appLoader">
 (function(){
   /* CSS 已内联在 <head>（<style id="appCss">），本脚本只加载 app.js：
