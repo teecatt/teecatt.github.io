@@ -866,6 +866,27 @@ setInterval(() => {
 }, 200);
 
 
+// iOS Safari 不支持 OGG Vorbis：decodeAudioData 必定失败。
+// 用 canPlayType 探测一次；不支持时 _applyTimbre 直接回退合成钢琴并提示（见下）。
+let _oggSupportCache = null;
+function _oggSupported(){
+  if(_oggSupportCache !== null) return _oggSupportCache;
+  try{
+    const a = document.createElement('audio');
+    if(!a.canPlayType){ _oggSupportCache = true; return true; }
+    const r = a.canPlayType('audio/ogg; codecs="vorbis"');
+    // 空字符串 = 明确不支持；"maybe"/"probably" = 可解码
+    _oggSupportCache = (r === 'maybe' || r === 'probably');
+  }catch(e){ _oggSupportCache = true; }
+  return _oggSupportCache;
+}
+function _isIOS(){
+  try{
+    return /iPad|iPhone|iPod/.test(navigator.userAgent || '') ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  }catch(e){ return false; }
+}
+
 /* ============================================================
  * 2. 音色加载器（Soundfont + Cache API）
  * ========================================================== */
@@ -2063,6 +2084,18 @@ function _applyTimbre(name, opts){
     _updateSynthPathInfo();
     return;
   }
+  // iOS 等不支持 OGG 的浏览器：采样音色 decode 必定失败，直接用合成钢琴并提示
+  if(name !== '__synth__' && name !== '__yamaha_c7__' && !_oggSupported()){
+    if(sel) sel.value = '__synth__';
+    SoundfontLoader.current = '__synth__';
+    _updateSynthPathInfo();
+    const m = '当前浏览器不支持 OGG 音色解码，已自动切换为合成钢琴' +
+      (_isIOS() ? '（iOS 设备请同时确认静音开关已关闭）' : '');
+    setStatus(m);
+    console.log('[AudioDebug][INFO] ' + m);
+    _timbreAutoSwitch = null;
+    return;
+  }
   // 已缓存：直接切换（已解析则立即使用，后台预解码；未解析则解析后切换）
   if(SoundfontLoader.cachedNames.has(name)){
     if(sel) sel.value = name;
@@ -3153,6 +3186,9 @@ function stopPlay(){
 
 function replayPlay(){
   stopPlay();
+  initAudio();
+  // 手势链内同步 resume：iOS 要求 resume() 发生在用户手势回调中，setTimeout 会断掉手势链
+  if(audioCtx && audioCtx.state === 'suspended'){ try{ audioCtx.resume().catch(() => {}); }catch(e){} }
   setTimeout(() => { initAudio(); startPlay(); }, 50);
 }
 
