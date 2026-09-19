@@ -27,7 +27,8 @@
     a.target = '_blank';
     a.rel = 'noopener';
     a.textContent = '最近构建：' + ago(Date.now() - (info.time || 0)) + ' · ' + String(info.sha).substring(0, 7);
-    a.style.color = 'inherit';
+    var col = el.getAttribute('data-build-color');
+    a.style.color = col || 'inherit';
     a.style.textDecoration = 'underline';
     a.style.textUnderlineOffset = '2px';
     el.appendChild(a);
