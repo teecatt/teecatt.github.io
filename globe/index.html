@@ -63,10 +63,10 @@ header h1{font-size:15px;font-weight:600;letter-spacing:.5px;text-shadow:0 1px 8
 .empty{color:var(--muted);font-size:13px;text-align:center;padding:40px 20px;line-height:1.8}
 
 .map-label{pointer-events:none}
-.map-label .ml-box{transform:translateY(-135%);background:var(--panel);backdrop-filter:blur(8px);border:1px solid var(--line);border-radius:10px;padding:6px 10px;white-space:nowrap;text-align:center;box-shadow:0 6px 22px rgba(0,0,0,.6)}
-.map-label .ml-top{font-size:13px;font-weight:600;color:#fff}
-.map-label .ml-top .ml-n{color:var(--accent)}
-.map-label .ml-sub{font-size:11px;color:var(--muted);margin-top:2px}
+.map-label .ml-box{transform:translateY(-135%);background:none;border:none;border-radius:0;padding:2px 4px;white-space:nowrap;text-align:center;box-shadow:none}
+.map-label .ml-top{font-size:13px;font-weight:600;color:#fff;text-shadow:0 1px 8px #000,0 0 2px #000}
+.map-label .ml-top .ml-n{color:var(--accent);text-shadow:0 1px 8px #000}
+.map-label .ml-sub{font-size:11px;color:#e6edf3;margin-top:2px;text-shadow:0 1px 6px #000}
 
 @media(max-width:720px){
   #panel{top:auto;bottom:0;width:100%;height:65%}
