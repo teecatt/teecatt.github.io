@@ -1259,7 +1259,7 @@ function hitElementAt(mx,my){
 
 canvas.addEventListener('pointerdown',e=>{
   // 全屏：画布内元素不可被选中/点击
-  if(document.fullscreenElement||document.webkitFullscreenElement) return;
+  if(document.fullscreenElement||document.webkitFullscreenElement||_isFullscreen) return;
   const pt=canvasPos(e);
   _pointers.set(e.pointerId, pt);
   // 两指：等比缩放（长宽同比）
@@ -1300,7 +1300,7 @@ canvas.addEventListener('pointerdown',e=>{
 });
 
 canvas.addEventListener('pointermove',e=>{
-  if(document.fullscreenElement||document.webkitFullscreenElement){ canvas.style.cursor='default'; return; }
+  if(document.fullscreenElement||document.webkitFullscreenElement||_isFullscreen){ canvas.style.cursor='default'; return; }
   if(_pointers.has(e.pointerId)) _pointers.set(e.pointerId, canvasPos(e));
   const pt=canvasPos(e);
 
@@ -1511,6 +1511,19 @@ const _fsBtn=document.getElementById('fsToggleBtn');
 const _fsTarget=document.querySelector('.canvas-area');
 function _fsRequest(el, fn){ if(el && typeof el[fn]==='function'){ el[fn](); } }
 function _toggleFullscreen(){
+  const canNative = typeof document.documentElement.requestFullscreen === 'function' ||
+    typeof document.documentElement.webkitRequestFullscreen === 'function';
+  if(!canNative){
+    // iPhone Safari 无原生全屏 API：改用 CSS 伪全屏（复用 body.fs-active 的隐藏规则）
+    _isFullscreen = !_isFullscreen;
+    document.body.classList.toggle('fs-active', _isFullscreen);
+    document.body.classList.toggle('viz-pseudo-fs', _isFullscreen);
+    if(_fsBtn) _fsBtn.classList.toggle('active', _isFullscreen);
+    if(_isFullscreen){ CFG.selectedId=null; renderProps(); }
+    requestAnimationFrame(()=>fitCanvas());
+    setTimeout(fitCanvas,150);
+    return;
+  }
   if(!(document.fullscreenElement||document.webkitFullscreenElement)){
     _fsRequest(_fsTarget,'requestFullscreen'); _fsRequest(_fsTarget,'webkitRequestFullscreen');
   }else{
@@ -1531,7 +1544,7 @@ document.addEventListener('webkitfullscreenchange',_onFsChange);
 document.addEventListener('dblclick',()=>{
   if(document.fullscreenElement||document.webkitFullscreenElement){
     _fsRequest(document,'exitFullscreen'); _fsRequest(document,'webkitExitFullscreen');
-  }
+  }else if(_isFullscreen){ _toggleFullscreen(); }
 });
 window.addEventListener('keydown',e=>{
   if(e.code==='Space'&&!e.target.matches('input,select,textarea')){e.preventDefault();togglePlay();}
