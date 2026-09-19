@@ -3057,6 +3057,7 @@ let playStartTime = 0;
 let playSpeed = 1;
 let nextNoteIndex = 0;
 let rafId = null;
+let _suspendFrames = 0; // 输出链路守卫：连续挂起帧计数（iOS 静音/来电/后台都会触发）
 const activeKeySet = new Set();
 let loopMode = 'list'; // 'list' 列表循环 | 'one' 单曲循环
 let playMode = 'appreciate';   // 'appreciate' 欣赏模式（自动发声） | 'perform' 演奏模式（需点击琴键发声）
@@ -3127,14 +3128,50 @@ const ONE_LOOP_ICON = _fillIcon('<path d="M11 4v1.466a.25.25 0 0 0 .41.192l2.36-
 // 不循环（播完暂停）：mdi:repeat-off（带斜杠的循环箭头）
 const NO_LOOP_ICON = _fillIcon('<path d="M2 5.27L3.28 4L20 20.72L18.73 22l-3-3H7v3l-4-4l4-4v3h6.73L7 10.27V11H5V8.27zM17 13h2v4.18l-2-2zm0-8V2l4 4l-4 4V7H8.82l-2-2z"/>', 14, 24);
 
-function togglePlay(){
+async function togglePlay(){
   initAudio();
-  if(audioCtx.state === 'suspended') audioCtx.resume();
+  // iOS 要求 resume() 在用户手势回调链内完成：先等待真正 running 再起播，
+  // 否则 currentTime 冻结、谱面静默推进。若仍未运行则给出可操作的提示而不是静默无声。
+  if(audioCtx.state === 'suspended'){
+    try{ await audioCtx.resume(); }catch(e){}
+  }
+  if(audioCtx.state !== 'running'){
+    setStatus('音频上下文未能启动：iOS 请检查静音开关与音量', true);
+    console.warn('[AudioDebug] togglePlay 被阻止：AudioContext 状态=', audioCtx.state);
+    const _pb = document.getElementById('playBtn');
+    if(_pb){ _pb.innerHTML = PLAY_ICON; _pb.title = '播放'; }
+    return;
+  }
   if(isPlaying){
     pausePlay();
   } else {
     startPlay();
   }
+}
+// 诊断测试音：绕开解码/音色/调度整条链路，只验证“上下文→输出”是否通。
+// 若连测试音都听不到，问题在设备层面（静音开关/音量/系统挂起），与谱面和音色无关。
+async function testTone(){
+  initAudio();
+  if(audioCtx.state === 'suspended'){
+    try{ await audioCtx.resume(); }catch(e){}
+  }
+  if(audioCtx.state !== 'running'){
+    setStatus('测试音失败：音频上下文仍未运行（iOS 请检查静音开关与音量）', true);
+    return;
+  }
+  const t0 = audioCtx.currentTime + 0.05;
+  [660, 880, 660].forEach((f, i) => {
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.frequency.value = f;
+    const s = t0 + i * 0.22;
+    g.gain.setValueAtTime(0.0001, s);
+    g.gain.linearRampToValueAtTime(0.5, s + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, s + 0.18);
+    o.connect(g); g.connect(masterGain);
+    o.start(s); o.stop(s + 0.2);
+  });
+  setStatus('测试音已发出：若听不到请检查静音开关与音量');
 }
 
 function startPlay(){
@@ -3454,6 +3491,16 @@ function playLoop(ts){
   _recordFpsFrame(); // 记录实际绘制帧，用于「帧率显示」实时帧率
   const _frameT0 = performance.now();
   const now = audioCtx.currentTime;
+  // 输出链路守卫：上下文被系统挂起时冻结推进并提示，避免“进度在走但无声”的静默推进
+  if(audioCtx.state !== 'running'){
+    _suspendFrames = (_suspendFrames || 0) + 1;
+    if(_suspendFrames === 60) setStatus('音频被系统挂起：iOS 请检查静音开关与音量', true);
+    rafId = requestAnimationFrame(playLoop);
+    return;
+  } else if(_suspendFrames){
+    _suspendFrames = 0;
+    setStatus('');
+  }
 
   // 帧间隔跳变检测：主线程被阻塞（GC/长任务）会导致rAF延迟，
   // 随后一帧内堆积触发大量音符，瞬间灌爆音频线程
