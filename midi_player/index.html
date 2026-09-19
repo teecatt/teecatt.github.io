@@ -420,6 +420,11 @@ select:focus{border-color:var(--accent)}
 /* 全屏绘制区 */
 .visual-panel:fullscreen{padding:0;background:#000;display:flex;flex-direction:column;position:relative}
 .visual-panel:fullscreen #visualCanvas{flex:1;min-height:0;width:100%;height:auto !important;border-radius:0}
+/* iOS 无原生全屏 API 时的 CSS 伪全屏（JS 切换 body.pseudo-fs） */
+body.pseudo-fs{overflow:hidden}
+body.pseudo-fs .visual-panel{position:fixed;inset:0;z-index:9990;padding:0;background:#000;display:flex;flex-direction:column}
+body.pseudo-fs .visual-panel #visualCanvas{flex:1;min-height:0;width:100%;height:auto !important;border-radius:0}
+body.pseudo-fs .fs-overlay{display:block}
 /* 全屏悬浮按钮：设置(左上)、退出(右上)；仅全屏显示 */
 .fs-overlay{display:none}
 .visual-panel:fullscreen .fs-overlay,

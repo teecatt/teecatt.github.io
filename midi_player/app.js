@@ -545,6 +545,7 @@ function downloadDebugLog(){
  * 1. 音频上下文
  * ========================================================== */
 let audioCtx = null;
+let _pseudoFs = false; // CSS 伪全屏（iOS 无原生全屏 API 时）
 let masterGain = null;
 let limiterNode = null;
 let outputAnalyser = null;
@@ -1962,7 +1963,8 @@ function initCustomSelect(select, opts){
     if(typeof _closeDropPanelsOnly === 'function') _closeDropPanelsOnly(wrap.closest ? wrap.closest('.drop-panel') : null); // 与其它面板互斥，但保留本下拉所在的面板
     // 全屏时 body 外的节点不会被渲染：把弹层挂到全屏元素内
     const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
-    const host = fsEl || document.body;
+    // 伪全屏时弹层必须挂到 .visual-panel 内，否则会被其 fixed 层压住
+    const host = fsEl || (_pseudoFs ? (document.querySelector('.visual-panel') || document.body) : document.body);
     if(pop.parentNode !== host) host.appendChild(pop);
     if(search) search.value = '';
     buildList();
@@ -4033,6 +4035,15 @@ const FS_ICON_MIN = '<g fill="none" stroke="currentColor" stroke-linecap="round"
 function toggleFullscreen(){
   const el = document.querySelector('.visual-panel');
   if(!el) return;
+  const canNative = typeof el.requestFullscreen === 'function' || typeof el.webkitRequestFullscreen === 'function';
+  if(!canNative){
+    // iPhone Safari 无原生全屏 API：改用 CSS 伪全屏（body.pseudo-fs 配套样式）
+    _pseudoFs = !_pseudoFs;
+    document.body.classList.toggle('pseudo-fs', _pseudoFs);
+    _syncFsIcon(); _syncFsLayout();
+    requestAnimationFrame(() => { try{ resizeCanvas(); }catch(e){} });
+    return;
+  }
   const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
   if(!fsEl){
     const req = el.requestFullscreen || el.webkitRequestFullscreen;
@@ -4045,7 +4056,7 @@ function toggleFullscreen(){
 function _syncFsIcon(){
   const icon = document.getElementById('fsIcon');
   if(!icon) return;
-  const on = !!(document.fullscreenElement || document.webkitFullscreenElement);
+  const on = _isFullscreenNow();
   icon.innerHTML = on ? FS_ICON_MIN : FS_ICON_MAX;
   const btn = document.getElementById('fsBtn');
   if(btn) btn.title = on ? '退出全屏' : '全屏绘制区';
@@ -4058,7 +4069,7 @@ document.addEventListener('webkitfullscreenchange', _syncFsIcon);
  * 2s 无操作淡出；点击悬浮按钮立即暂停播放
  * ========================================================== */
 let _fsIdleTimer = null;
-function _isFullscreenNow(){ return !!(document.fullscreenElement || document.webkitFullscreenElement); }
+function _isFullscreenNow(){ return !!(_pseudoFs || document.fullscreenElement || document.webkitFullscreenElement); }
 // 仅全屏时：点击悬浮按钮立即暂停
 function _fsPauseIfPlaying(){ if(_isFullscreenNow() && isPlaying){ try{ pausePlay(); }catch(e){} } }
 // 2s 未点击悬浮按钮 → 淡到 10%

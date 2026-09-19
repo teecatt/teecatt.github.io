@@ -97,6 +97,14 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI","Microsoft Ya
 .canvas-area:fullscreen .log-toolbar,.canvas-area:fullscreen .log-bar,
 .canvas-area:-webkit-full-screen .player-bar,.canvas-area:-webkit-full-screen .control-row,.canvas-area:-webkit-full-screen .panel-dock,
 .canvas-area:-webkit-full-screen .log-toolbar,.canvas-area:-webkit-full-screen .log-bar{display:none!important}
+/* iOS 无原生全屏 API 时的 CSS 伪全屏（与 body.fs-active 的隐藏规则共用） */
+body.viz-pseudo-fs{overflow:hidden}
+body.viz-pseudo-fs .canvas-area{position:fixed;inset:0;z-index:9990;background:var(--bg);padding:0}
+body.viz-pseudo-fs .canvas-stage{flex:1 1 auto;min-height:0;overflow:hidden}
+body.viz-pseudo-fs .canvas-side{flex:1 1 100%!important;max-width:100%!important}
+body.viz-pseudo-fs .player-bar,body.viz-pseudo-fs .control-row,body.viz-pseudo-fs .panel-dock,body.viz-pseudo-fs .log-toolbar,body.viz-pseudo-fs .log-bar{display:none!important}
+body.viz-pseudo-fs .stage-wrap{width:calc(var(--canvas-w,1280px) * var(--canvas-zoom,1))!important;height:calc(var(--canvas-h,720px) * var(--canvas-zoom,1))!important}
+body.viz-pseudo-fs .stage-wrap canvas{width:var(--canvas-w,1280px)!important;height:var(--canvas-h,720px)!important;transform:scale(var(--canvas-zoom,1))!important;transform-origin:0 0!important}
 /* 全屏时覆盖移动端「强制宽度 100%」：改用 JS 计算的等比缩放完整显示（contain） */
 .canvas-area:fullscreen .stage-wrap,.canvas-area:-webkit-full-screen .stage-wrap{
   width:calc(var(--canvas-w,1280px) * var(--canvas-zoom,1))!important;
