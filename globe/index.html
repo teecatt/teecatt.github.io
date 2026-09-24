@@ -17,6 +17,11 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 header{position:fixed;top:0;left:0;padding:16px 18px;z-index:10}
 header h1{font-size:15px;font-weight:600;letter-spacing:.5px;text-shadow:0 1px 8px #000}
 
+.build-info{color:var(--muted);text-decoration:none}
+.build-info:hover{color:var(--text)}
+footer{position:fixed;left:0;right:0;bottom:0;z-index:17;background:rgba(13,17,23,.6);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);border-top:1px solid var(--line);padding:12px 24px;text-align:center;font-size:11px;color:var(--muted);opacity:0;pointer-events:none;transition:opacity .25s ease}
+body.foot-show footer{opacity:1;pointer-events:auto}
+
 #panel{position:fixed;top:0;right:0;width:340px;height:100%;z-index:9;display:flex;flex-direction:column;pointer-events:none}
 .panelbox{position:relative;flex:1;min-height:0;display:flex;flex-direction:column;background:rgba(13,17,23,.6);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);border-left:1px solid var(--line);margin-top:20px;pointer-events:auto;transition:transform .3s ease}
 #panel.collapsed .panelbox{transform:translateY(100%);pointer-events:none}
@@ -84,6 +89,7 @@ header h1{font-size:15px;font-weight:600;letter-spacing:.5px;text-shadow:0 1px 8
 <body>
 <div id="globe"></div>
 <header><h1>访客地图</h1></header>
+<footer><a class="build-info" href="https://github.com/teecatt" target="_blank" rel="noopener" title="GitHub 主页">teecatt</a> · <a id="siteBuildInfo" class="build-info" href="#" target="_blank" rel="noopener" title="查看对应提交">构建于 —</a></footer>
 <aside id="panel">
   <div class="panelbox">
   <button class="chev" id="chev" title="收起 / 展开" aria-label="toggle panel">
@@ -104,6 +110,7 @@ header h1{font-size:15px;font-weight:600;letter-spacing:.5px;text-shadow:0 1px 8
 </aside>
 <button class="gps-corner" id="gps-corner" title="Locate me" aria-label="locate me"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 12 12"><path fill="currentColor" d="M6 .5A4.5 4.5 0 0 1 10.5 5c0 1.863-1.42 3.815-4.2 5.9a.5.5 0 0 1-.6 0C2.92 8.815 1.5 6.863 1.5 5A4.5 4.5 0 0 1 6 .5m0 3a1.5 1.5 0 1 0 0 3a1.5 1.5 0 0 0 0-3"/></svg></button>
 
+<script src="../build-info.js?v=dev"></script>
 <script src="../shared/cdn-race.js?v=dev"></script>
 <script src="../shared/visitor.js?v=dev"></script>
 <script src="../shared/label-collide.js?v=dev"></script>
@@ -313,8 +320,20 @@ function renderList(){
     });
   });
   applySelection();
+  checkFoot();
 }
 
+function checkFoot(){ var l=document.getElementById('list'); var show=!!(l&&(l.scrollHeight-l.scrollTop-l.clientHeight<4)); document.body.classList.toggle('foot-show',show); }
+(function(){
+  var el=document.getElementById('siteBuildInfo');
+  if(!el) return;
+  var b=window.SITE_BUILD;
+  if(!b||!b.sha){ el.textContent='构建于 未知'; return; }
+  function ago(ms){ var s=Math.max(0,Math.floor(ms/1000)); if(s<60)return '刚刚'; var m=Math.floor(s/60); if(m<60)return m+' 分钟前'; var h=Math.floor(m/60); if(h<24)return h+' 小时前'; var d=Math.floor(h/24); if(d<30)return d+' 天前'; var mo=Math.floor(d/30); if(mo<12)return mo+' 个月前'; return Math.floor(mo/12)+' 年前'; }
+  el.href='https://github.com/teecatt/teecatt.github.io/commit/'+b.sha;
+  function render(){ el.textContent='构建于 '+ago(Date.now()-b.time)+' · '+b.sha.substring(0,7); }
+  render(); setInterval(render,30000);
+})();
 function renderSub(){
   var countries={}; cities.forEach(function(c){ if(c.country) countries[c.country]=1; });
   document.getElementById('sub').textContent=(lang==='zh'
@@ -373,6 +392,7 @@ function setCollapsed(v){ collapsed=v; document.getElementById('panel').classLis
 function expandPanel(){ if(collapsed){ setCollapsed(false); return true; } return false; }
 document.getElementById('chev').addEventListener('click',function(){ setCollapsed(!collapsed); var b=this; setTimeout(function(){ b.blur(); },1000); });
 document.getElementById('lang').addEventListener('click',function(){ lang = lang==='zh' ? 'en' : 'zh'; applyLang(); var b=this; setTimeout(function(){ b.blur(); },1000); });
+(function(){ var l=document.getElementById('list'); if(l) l.addEventListener('scroll', checkFoot, {passive:true}); })();
 document.getElementById('gps').addEventListener('click',function(){ var c=cityForMe(); if(c) selectCity(c, true); var b=this; setTimeout(function(){ b.blur(); },1000); });
 document.getElementById('gps-corner').addEventListener('click',function(){ setCollapsed(false); var c=cityForMe(); if(c) selectCity(c, true); var b=this; setTimeout(function(){ b.blur(); },1000); });
 // 面板手势：列表到顶/快速下滑/顶部非列表区下拉 → 收起；收起时上拖 chev → 展开
