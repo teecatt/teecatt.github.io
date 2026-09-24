@@ -18,9 +18,9 @@ header{position:fixed;top:0;left:0;padding:16px 18px;z-index:10}
 header h1{font-size:15px;font-weight:600;letter-spacing:.5px;text-shadow:0 1px 8px #000}
 
 #panel{position:fixed;top:0;right:0;width:340px;height:100%;z-index:9;display:flex;flex-direction:column;pointer-events:none}
-.panelbox{position:relative;flex:1;min-height:0;display:flex;flex-direction:column;background:rgba(13,17,23,.2);backdrop-filter:blur(3px);border-left:1px solid var(--line);margin-top:45px;pointer-events:auto;transition:transform .3s ease}
+.panelbox{position:relative;flex:1;min-height:0;display:flex;flex-direction:column;background:rgba(13,17,23,.6);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);border-left:1px solid var(--line);margin-top:20px;pointer-events:auto;transition:transform .3s ease}
 #panel.collapsed .panelbox{transform:translateY(100%);pointer-events:none}
-.chev{position:absolute;top:-45px;left:0;z-index:12;width:100%;height:45px;display:inline-flex;align-items:center;justify-content:center;color:var(--muted);background:none;border:none;cursor:pointer;transition:color .15s;pointer-events:auto;outline:none}
+.chev{position:absolute;top:-20px;left:0;z-index:12;width:100%;height:20px;display:inline-flex;align-items:center;justify-content:center;color:var(--text);background:none;border:none;cursor:pointer;transition:color .15s;pointer-events:auto;outline:none}
 .chev:hover{color:var(--text)}
 .chev:focus{outline:none;box-shadow:none}
 .chev svg{width:60px;height:9px;transition:transform .25s ease}
@@ -36,6 +36,7 @@ header h1{font-size:15px;font-weight:600;letter-spacing:.5px;text-shadow:0 1px 8
 .lang.on{color:var(--accent)}
 .lang svg{width:24px;height:24px;display:block}
 .sum .sub{font-size:12px;color:var(--muted);margin-top:3px;line-height:1.6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sum .note{font-size:10px;color:var(--muted);margin-top:2px;line-height:1.45}
 .gps{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;color:var(--muted);background:none;border:none;cursor:pointer;padding:0;transition:color .15s;flex:0 0 auto}
 .gps:hover{color:var(--text)}
 .gps:focus{outline:none;box-shadow:none}
@@ -51,19 +52,22 @@ header h1{font-size:15px;font-weight:600;letter-spacing:.5px;text-shadow:0 1px 8
 
 #list{flex:1;overflow-y:auto;padding:0 10px 20px}
 .sec{font-size:11px;color:var(--muted);letter-spacing:1px;padding:14px 10px 6px;text-transform:uppercase}
-.row{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:10px;cursor:pointer;transition:background .15s}
+.row{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:10px;cursor:pointer;transition:background .15s;box-sizing:border-box;height:54px}
 .row:hover{background:var(--hover)}
 .row.sel{background:rgba(88,166,255,.16)}
 .row.sel .dot{box-shadow:0 0 0 2px rgba(88,166,255,.5)}
 .row .dot{width:9px;height:9px;border-radius:50%;flex:0 0 auto}
-.row .t{flex:1;min-width:0}
-.row .t .n{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.row .t .s{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:3px}
+.row .t{flex:1;min-width:0;display:flex;flex-direction:column}
+.row .t .n{font-size:13px;line-height:18px;white-space:nowrap;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;flex:0 0 auto}
+.row .t .n::-webkit-scrollbar{display:none}
+.row .t .s{font-size:11px;line-height:15px;color:var(--muted);white-space:nowrap;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;flex:0 0 auto;margin-top:3px}
+.row .t .s::-webkit-scrollbar{display:none}
 .row .c{font-size:12px;color:var(--accent);font-weight:600;flex:0 0 auto}
 .empty{color:var(--muted);font-size:13px;text-align:center;padding:40px 20px;line-height:1.8}
 
-.map-label{pointer-events:none}
-.map-label .ml-box{transform:translateY(-135%);background:none;border:none;border-radius:0;padding:2px 4px;white-space:nowrap;text-align:center;box-shadow:none}
+.map-label{pointer-events:none;transition:opacity .12s ease}
+.map-label.gl-hide{opacity:0}
+.map-label .ml-box{transform:translateY(calc(-50% - 5px));background:none;border:none;border-radius:0;padding:2px 4px;white-space:nowrap;text-align:center;box-shadow:none}
 .map-label .ml-top{font-size:13px;font-weight:600;color:#fff;text-shadow:0 1px 8px #000,0 0 2px #000}
 .map-label .ml-top .ml-n{color:var(--accent);text-shadow:0 1px 8px #000}
 .map-label .ml-sub{font-size:11px;color:#e6edf3;margin-top:2px;text-shadow:0 1px 6px #000}
@@ -92,6 +96,7 @@ header h1{font-size:15px;font-weight:600;letter-spacing:.5px;text-shadow:0 1px 8
       <span class="mecity" id="mecity"></span>
     </div>
     <div class="sub"><span id="sub">Loading…</span></div>
+    <div class="note" id="sub-note"></div>
     <button class="lang" id="lang" title="Translate to 中文" aria-label="translate"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32" d="M48 112h288M192 64v48m80 336l96-224l96 224m-162.5-64h133M281.3 112S257 206 199 277S80 384 80 384"/><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32" d="M256 336s-35-27-72-75s-56-85-56-85"/></svg></button>
   </div>
   <div id="list"><div class="empty">Loading…</div></div>
@@ -101,6 +106,7 @@ header h1{font-size:15px;font-weight:600;letter-spacing:.5px;text-shadow:0 1px 8
 
 <script src="../shared/cdn-race.js?v=dev"></script>
 <script src="../shared/visitor.js?v=dev"></script>
+<script src="../shared/label-collide.js?v=dev"></script>
 <script>
 var COLORS = Visitor.COLORS;
 var _regionNames;
@@ -139,7 +145,7 @@ if(location.hash === '#admin' && !adminKey){
   history.replaceState(null, '', location.pathname + location.search);
 }
 var lang = 'en';
-var globe, cities=[], adminVisits=[], meData=null, selKey=null, selCity=null, collapsed=false, ASSET_TEX={}, allLabels=false;
+var globe, cities=[], adminVisits=[], meData=null, selKey=null, selCity=null, collapsed=false, ASSET_TEX={}, allLabels=true;
 
 function initGlobe(){
   globe = Globe()(document.getElementById('globe'))
@@ -164,6 +170,7 @@ function initGlobe(){
     .htmlElement(function(d){
       var el=document.createElement('div');
       el.className='map-label';
+      el.__d=d;
       el.innerHTML='<div class="ml-box"><div class="ml-top">'+esc(nameOf(d))+' · <span class="ml-n">'+d.n+'</span></div><div class="ml-sub">'+esc(subOf(d,nameOf(d)))+'</div></div>';
       return el;
     });
@@ -171,18 +178,17 @@ function initGlobe(){
   // 自转角速度随相机高度自适应：让地表在屏幕上的像素移动速度恒定
   // （与 gpu_enhanced 页同公式：屏幕速度 v = (ω/距地心高度)·(H/2)/tan(fov/2)，要 v 恒定需 ω ∝ 高度；
   // 参考默认 altitude=1.5 时速度 0.35；缩放越近转得越慢，拉远则加快）
-  var SPIN_REF_ALT=1.5, SPIN_REF_SPEED=0.35;
-  function spinFor(alt){ return Math.max(0.004, SPIN_REF_SPEED*(alt/SPIN_REF_ALT)); }
+  var SPIN_REF_ALT=1.5, SPIN_REF_SPEED=0.35, SPIN_MAX_ALT=2.0;
+  function spinFor(alt){ var a=(alt==null?SPIN_REF_ALT:alt); if(a>SPIN_MAX_ALT) a=SPIN_MAX_ALT; return Math.max(0.004, SPIN_REF_SPEED*(a/SPIN_REF_ALT)); }
   globe.controls().autoRotateSpeed = spinFor(1.5);
   globe.controls().enableDamping = true;
-  // 相机距地心 1-3 倍地球半径时显示全部城市标签，否则只显示选中城市
+  // 全部城市标签始终显示（不再按相机距离裁剪），并启动防碰撞自适应
   globe.controls().addEventListener('change', function(){
     if(!globe) return;
     var a; try{ a=globe.pointOfView().altitude; }catch(e){ return; }
     globe.controls().autoRotateSpeed = spinFor(a);
-    var distC=1+a; var want=(distC>=1&&distC<=3);
-    if(want!==allLabels){ allLabels=want; updateLabel(); }
   });
+  startLabelFit();
   var canvas = globe.renderer().domElement;
   var down = null;
   canvas.addEventListener('pointerdown', function(e){ down = { x: e.clientX, y: e.clientY }; });
@@ -213,6 +219,11 @@ function pickCity(px, py){
 var angularDist = Visitor.angularDist;
 function setPoints(){ if(globe) globe.pointsData(cities.filter(function(c){ return c.lat!=null && c.lon!=null; })); }
 function updateLabel(){ if(!globe) return; var d; if(allLabels){ d=cities.filter(function(c){ return c.lat!=null && c.lon!=null; }).map(function(c){ return Object.assign({}, c); }); } else { d = (selCity && selCity.lat!=null) ? [Object.assign({}, selCity)] : []; } globe.htmlElementsData(d); }
+var labelRAF=0,labelLast=0;
+function labelItems(){ var els=document.querySelectorAll('.map-label'), arr=[]; for(var i=0;i<els.length;i++){ var el=els[i], d=el.__d||{}; if(d.lat==null||d.lon==null) continue; var hi=(typeof isMe==='function'&&isMe(d))?1e9:0; arr.push({el:el, lat:d.lat, lon:d.lon, pri:isSel(d)?1e10:(hi||(d.n||0)), sizeKey:(nameOf(d)+'|'+subOf(d)).length}); } return arr; }
+function fitLabels(){ if(!globe||!allLabels) return; if(window.LabelCollide) LabelCollide.fit(globe, labelItems(), {altitude:0.06, hideClass:"gl-hide", overlap:0.2, cell:40, expand:14}); }
+function startLabelFit(){ if(labelRAF) return; labelRAF=requestAnimationFrame(function cb(){ labelRAF=requestAnimationFrame(cb); var now=Date.now(); if(now-labelLast<140) return; labelLast=now; fitLabels(); }); }
+function stopLabelFit(){ if(labelRAF){ cancelAnimationFrame(labelRAF); labelRAF=0; } var els=document.querySelectorAll('.map-label'); for(var i=0;i<els.length;i++) els[i].classList.remove('gl-hide'); }
 function updateRings(){ if(globe) globe.ringsData(selCity && selCity.lat!=null ? [{lat:selCity.lat, lng:selCity.lon}] : []); }
 function flyTo(lat,lon){
   if(!globe||lat==null||lon==null) return;
@@ -309,6 +320,10 @@ function renderSub(){
   document.getElementById('sub').textContent=(lang==='zh'
     ? cities.length+' 个城市 · 覆盖 '+Object.keys(countries).length+' 个国家/地区'
     : cities.length+' cities · '+Object.keys(countries).length+' countries/regions');
+  var nt=document.getElementById('sub-note');
+  if(nt) nt.textContent=(lang==='zh'
+    ? '同一用户 30 分钟内多次访问仅统计 1 次'
+    : 'Same user: visits within 30 min count once');
 }
 function cacheTake(k){ try{ var o=JSON.parse(sessionStorage.getItem('tc_'+k)||'null'); sessionStorage.removeItem('tc_'+k); if(o) return o.v; }catch(e){} return null; }
 function renderMe(){
@@ -324,7 +339,8 @@ async function refresh(){
     document.getElementById('total').textContent=st.total!=null?st.total:'—';
     renderSub();
     setPoints();
-    if(selCity){ for(var i=0;i<cities.length;i++){ if(rowKey(cities[i])===selKey){ selCity=cities[i]; break; } } updateLabel(); updateRings(); }
+    if(selCity){ for(var i=0;i<cities.length;i++){ if(rowKey(cities[i])===selKey){ selCity=cities[i]; break; } } }
+    updateLabel(); updateRings();
   }catch(e){}
   if(adminKey){
     try{

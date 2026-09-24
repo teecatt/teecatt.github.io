@@ -42,7 +42,7 @@ a{text-decoration:none;color:inherit}
 .grid,footer{position:relative;z-index:1}
 .globe-label{pointer-events:none;transition:opacity .12s ease}
 .globe-label.gl-hide{opacity:0}
-.globe-label .gl-box{transform:translateY(calc(-50% - var(--lbl-gap,22px)));display:flex;flex-direction:column;align-items:center;gap:1px;text-align:center;white-space:nowrap;text-shadow:0 1px 4px #000,0 0 6px #000}
+.globe-label .gl-box{transform:translateY(calc(-50% - var(--lbl-gap,4px)));display:flex;flex-direction:column;align-items:center;gap:1px;text-align:center;white-space:nowrap;text-shadow:0 1px 4px #000,0 0 6px #000}
 .globe-label .gl-w{font-size:12px;line-height:1;color:var(--text)}
 .globe-label .gl-c{font-size:11px;line-height:1.1;color:var(--text);font-weight:600}
 .globe-label .gl-s{font-size:9px;line-height:1.1;color:var(--muted)}
@@ -65,7 +65,7 @@ body.immersive .title-wrap,body.immersive .hero-mask{transform:translateY(-100vh
 body.hero-away .title-wrap,body.hero-away .hero-mask{transform:translateY(-100%);opacity:0}
 .cards-panel{position:fixed;left:0;right:0;bottom:0;height:var(--panel-h,55%);z-index:16;display:flex;flex-direction:column;pointer-events:none;transition:transform .3s ease,height .3s ease}
 .cards-box{position:relative;flex:1;min-height:0;display:flex;flex-direction:column;margin-top:0;pointer-events:auto;transition:transform .3s ease}
-.grid-chev{touch-action:none;position:absolute;top:-20px;left:0;width:100%;height:20px;display:flex;align-items:center;justify-content:center;background:none;border:none;color:var(--muted);cursor:pointer;z-index:12;outline:none;transition:color .15s,opacity .3s ease}
+.grid-chev{touch-action:none;position:absolute;top:-20px;left:0;width:100%;height:20px;display:flex;align-items:center;justify-content:center;background:none;border:none;color:var(--text);cursor:pointer;z-index:12;outline:none;transition:color .15s,opacity .3s ease}
 @media(hover:hover){.grid-chev:hover{color:var(--text)}}
 .grid-chev:hover{color:var(--text)}
 .grid-chev svg{width:60px;height:9px}
@@ -75,8 +75,8 @@ body.immersive{overflow:hidden;overscroll-behavior:none}
 #sheet{position:fixed;left:0;right:0;bottom:0;width:100%;height:var(--panel-h,55%);z-index:15;display:flex;flex-direction:column;pointer-events:none;opacity:0;visibility:hidden;transition:opacity .3s ease,visibility .3s ease,height .3s ease}
 body.immersive #sheet{opacity:1;visibility:visible}
 body.city-hidden #sheet{opacity:0;visibility:hidden}
-#sheet .sheetbox{position:relative;flex:1;min-height:0;display:flex;flex-direction:column;background:rgba(13,17,23,.2);backdrop-filter:blur(3px);border-top:1px solid var(--line);margin-top:0;pointer-events:auto;transition:transform .3s ease}
-#sheet .chev{touch-action:none;position:absolute;top:-20px;left:0;z-index:12;width:100%;height:20px;display:inline-flex;align-items:center;justify-content:center;color:var(--muted);background:none;border:none;cursor:pointer;transition:color .15s,transform .3s ease,opacity .3s ease;pointer-events:auto;outline:none}
+#sheet .sheetbox{position:relative;flex:1;min-height:0;display:flex;flex-direction:column;background:rgba(13,17,23,.6);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);border-top:1px solid var(--line);margin-top:0;pointer-events:auto;transition:transform .3s ease}
+#sheet .chev{touch-action:none;position:absolute;top:-20px;left:0;z-index:12;width:100%;height:20px;display:inline-flex;align-items:center;justify-content:center;color:var(--text);background:none;border:none;cursor:pointer;transition:color .15s,transform .3s ease,opacity .3s ease;pointer-events:auto;outline:none}
 #sheet .chev:hover{color:var(--text)}
 #sheet .chev svg{width:60px;height:9px;transition:transform .25s ease}
 #sheet .sum{position:relative;padding:16px 72px 10px 18px;border-bottom:1px solid var(--line)}
@@ -88,6 +88,7 @@ body.city-hidden #sheet{opacity:0;visibility:hidden}
 #sheet .lang.on{color:var(--accent)}
 #sheet .lang svg{width:24px;height:24px;display:block}
 #sheet .sub{font-size:12px;color:var(--muted);margin-top:3px;line-height:1.6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#sheet .note{font-size:10px;color:var(--muted);margin-top:2px;line-height:1.45}
 #sheet .gps{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;color:var(--muted);background:none;border:none;cursor:pointer;padding:0;transition:color .15s;flex:0 0 auto}
 #sheet .gps:hover{color:var(--text)}
 #sheet .gps.on{color:var(--accent)}
@@ -95,14 +96,16 @@ body.city-hidden #sheet{opacity:0;visibility:hidden}
 #sheet .gps svg{width:18px;height:18px;display:block}
 #sheet .mecity{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 #sheet-list{flex:1;overflow-y:auto;padding:0 10px 64px;-webkit-overflow-scrolling:touch}
-#sheet .row{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:10px;cursor:pointer;transition:background .15s}
+#sheet .row{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:10px;cursor:pointer;transition:background .15s;box-sizing:border-box;height:54px}
 #sheet .row:hover{background:var(--hover)}
 #sheet .row.sel{background:rgba(88,166,255,.16)}
 #sheet .row.sel .dot{box-shadow:0 0 0 2px rgba(88,166,255,.5)}
 #sheet .row .dot{width:9px;height:9px;border-radius:50%;flex:0 0 auto}
-#sheet .row .t{flex:1;min-width:0}
-#sheet .row .t .n{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#sheet .row .t .s{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:3px}
+#sheet .row .t{flex:1;min-width:0;display:flex;flex-direction:column}
+#sheet .row .t .n{font-size:13px;line-height:18px;white-space:nowrap;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;flex:0 0 auto}
+#sheet .row .t .n::-webkit-scrollbar{display:none}
+#sheet .row .t .s{font-size:11px;line-height:15px;color:var(--muted);white-space:nowrap;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;flex:0 0 auto;margin-top:3px}
+#sheet .row .t .s::-webkit-scrollbar{display:none}
 #sheet .row .c{font-size:12px;color:var(--accent);font-weight:600;flex:0 0 auto}
 #sheet .empty{color:var(--muted);font-size:13px;text-align:center;padding:40px 20px;line-height:1.8}
 .grid{position:relative;flex:1;min-height:0;overflow-y:auto;display:grid;gap:20px;justify-content:center;align-content:start;padding:10px 24px 72px;max-width:1080px;margin:0 auto;width:100%}
@@ -283,6 +286,7 @@ body.immersive .links{display:none}
         <span class="mecity" id="sheet-mecity"></span>
       </div>
       <div class="sub"><span id="sheet-sub">Loading&hellip;</span></div>
+      <div class="note" id="sheet-note"></div>
       <button class="lang" id="sheet-lang" title="Translate" aria-label="translate"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32" d="M48 112h288M192 64v48m80 336l96-224l96 224m-162.5-64h133M281.3 112S257 206 199 277S80 384 80 384"/><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32" d="M256 336s-35-27-72-75s-56-85-56-85"/></svg></button>
     </div>
     <div id="sheet-list"><div class="empty">Loading&hellip;</div></div>
@@ -292,6 +296,7 @@ body.immersive .links{display:none}
 <script src="build-info.js?v=dev"></script>
 <script src="./shared/cdn-race.js?v=dev"></script>
 <script src="./shared/visitor.js?v=dev"></script>
+<script src="./shared/label-collide.js?v=dev"></script>
 <script>
 // 页脚「构建于」+ 浏览器标签标题：显示最近一次部署时间，并可点击跳转到对应提交
 (function(){
@@ -349,18 +354,18 @@ function cacheSet(k,v){ try{ sessionStorage.setItem('tc_'+k, JSON.stringify({t:D
 var END_ALT=1.5, IMM_ALT=0.5;
 var globe=null, meData=null, cities=[], selCity=null, selKey=null;
 var globeReady=false, meReady=false, spinDone=false, flyDone=false, spinAt=false;
-var allLabels=false;
+var allLabels=true;
 var geoState='loading', gpsWant=false, gpsPending=false;
 var lastGapAlt=-1;
 function lblRadiusPx(alt){ var d=1+((alt==null)?1.5:alt); var h=window.innerHeight||800;
   var ndc=1/(Math.sqrt(Math.max(0.0001,d*d-1))*Math.tan(25*Math.PI/180)); return ndc*h/2; }
 function updateLabelGap(alt){ if(alt==null){ try{ alt=globe?globe.pointOfView().altitude:1.5; }catch(e){ alt=1.5; } }
-  var gap=Math.max(4,Math.min(44,0.07*lblRadiusPx(alt))); document.documentElement.style.setProperty('--lbl-gap',gap.toFixed(1)+'px'); }
+  var gap=Math.max(2,Math.min(10,0.025*lblRadiusPx(alt))); document.documentElement.style.setProperty('--lbl-gap',gap.toFixed(1)+'px'); }
 // 自转：让相机正前方的地表在屏幕上的移动速度恒定。
 // 屏幕速度 v = (ω / 距地心高度a) · (H/2) / tan(fov/2)，故要 v 恒定需 ω ∝ a(距地表高度)。
 // 参考：默认 altitude=1.5 时速度 0.35。
-var SPIN_REF_ALT=1.5, SPIN_REF_SPEED=0.35;
-function spinFor(alt){ return Math.max(0.004, SPIN_REF_SPEED*(alt/SPIN_REF_ALT)); }
+var SPIN_REF_ALT=1.5, SPIN_REF_SPEED=0.35, SPIN_MAX_ALT=2.0;
+function spinFor(alt){ var a=(alt==null?SPIN_REF_ALT:alt); if(a>SPIN_MAX_ALT) a=SPIN_MAX_ALT; return Math.max(0.004, SPIN_REF_SPEED*(a/SPIN_REF_ALT)); }
 
 
 var statsP=fetch('/api/stats',{cache:'no-store'}).then(function(r){ return r.json(); }).then(function(st){ cacheSet('stats',st); return st; }).catch(function(){ return null; });
@@ -373,8 +378,9 @@ function shallow(o){ var r={}; for(var k in o) r[k]=o[k]; return r; }
 function isMe(c){ return !!(meData&&(rowKey(meData)===rowKey(c)||((meData.country||'')===(c.country||'')&&(meData.city||'')===(c.city||'')))); }
 function isSel(c){ return !!(selKey!=null&&rowKey(c)===selKey); }
 var labelRAF=0, labelLast=0;
-function fitLabels(){ if(!globe||!allLabels) return; var els=document.querySelectorAll('.globe-label'), cand=[]; for(var i=0;i<els.length;i++){ var el=els[i];  if(el.style.display==='none'){ el.classList.add('gl-hide'); continue; }  var box=el.firstElementChild||el, r=box.getBoundingClientRect();  if(r.width<1||r.height<1) continue;  var d=el.__d||{}; cand.push({el:el,r:r,pri:isMe(d)?1e9:(isSel(d)?1e8:(d.n||0)),sel:isSel(d)}); } cand.sort(function(a,b){ return b.pri-a.pri; }); var kept=[], pad=3, EPS=0.4; for(var i=0;i<cand.length;i++){ var c=cand[i], hit=false;  for(var j=0;j<kept.length;j++){ var k=kept[j];   if(c.r.left-pad < k.right-EPS && c.r.right+pad > k.left+EPS && c.r.top-pad < k.bottom-EPS && c.r.bottom+pad > k.top+EPS){ hit=true; break; } }  if(hit){ c.el.classList.add('gl-hide'); } else { c.el.classList.remove('gl-hide'); kept.push(c.sel?{left:c.r.left-16,right:c.r.right+16,top:c.r.top-16,bottom:c.r.bottom+16}:c.r); } } }
-function startLabelFit(){ if(labelRAF) return; labelRAF=requestAnimationFrame(function cb(){ labelRAF=requestAnimationFrame(cb); var now=Date.now(); if(now-labelLast<60) return; labelLast=now; fitLabels(); }); }
+function labelItems(){ var els=document.querySelectorAll('.globe-label'), arr=[]; for(var i=0;i<els.length;i++){ var el=els[i], d=el.__d||{}; if(d.lat==null||d.lon==null) continue; arr.push({el:el, lat:d.lat, lon:d.lon, pri:isSel(d)?1e10:(isMe(d)?1e9:(d.n||0)), sizeKey:((d.weather||'')+'|'+nameOf(d)+'|'+subOf(d)).length}); } return arr; }
+function fitLabels(){ if(!globe||!allLabels) return; if(window.LabelCollide) LabelCollide.fit(globe, labelItems(), {altitude:0.06, hideClass:"gl-hide", overlap:0.2, cell:40, expand:14}); }
+function startLabelFit(){ if(labelRAF) return; labelRAF=requestAnimationFrame(function cb(){ labelRAF=requestAnimationFrame(cb); var now=Date.now(); if(now-labelLast<140) return; labelLast=now; fitLabels(); }); }
 function stopLabelFit(){ if(labelRAF){ cancelAnimationFrame(labelRAF); labelRAF=0; } var els=document.querySelectorAll('.globe-label'); for(var i=0;i<els.length;i++) els[i].classList.remove('gl-hide'); }
 function updateHtml(){ if(!globe) return; var d=[]; if(allLabels){ cities.forEach(function(c){ if(c.lat==null||c.lon==null) return; var o=shallow(c); if(meData&&meData.weather&&isMe(c)) o.weather=meData.weather; d.push(o); }); } else if(selCity&&selCity.lat!=null){ var o=shallow(selCity); if(meData&&meData.weather&&isMe(selCity)) o.weather=meData.weather; d.push(o); } else if(meData&&meData.lat!=null){ var mc=cityForMe(); var o=shallow(mc||meData); if(meData.weather) o.weather=meData.weather; d.push(o); } globe.htmlElementsData(d); }
 /* 脉冲光环：优先选中城市；其次用户所在城市；再次用户坐标本身（城市列表未加载/未收录时的回退）。 */
@@ -412,7 +418,7 @@ function immersiveGps(){ if(meData&&meData.lat!=null&&globe){ flyTo(meData.lat,m
 function doGpsFly(){ var c=cityForMe(); if(c) selectCity(c,true); else if(globe&&meData&&meData.lat!=null){ globe.pointOfView({lat:meData.lat,lng:meData.lon,altitude:END_ALT},700); } }
 function gpsRequest(){ if(meData&&meData.lat!=null){ doGpsFly(); return; } if(geoState==='loading'){ gpsWant=true; toast('正在定位：查询 IP 归属地中，请稍候…'); return; } if(gpsPending){ gpsWant=true; toast('正在重新定位，请稍候…'); return; } gpsPending=true; gpsWant=true; toast('正在获取公网 IP…',1600); var t2=setTimeout(function(){ toast('正在通过 IP 解析城市…',1600); },650); fetch('/api/me',{cache:'no-store'}).then(function(r){ return r.ok?r.json():null; }).then(function(me){  clearTimeout(t2); gpsPending=false;  if(me&&me.lat!=null){ meData=me; geoState='ok'; cacheSet('me',me); renderMe(); updateHtml();   toast('已定位：'+placeOf(me)+(me.ip?(' · IP '+me.ip):''),2400);   if(gpsWant){ gpsWant=false; doGpsFly(); } }  else { geoState='fail'; gpsWant=false; toast('定位失败：未能解析到位置，请检查网络后重试',2600); } }).catch(function(){ clearTimeout(t2); gpsPending=false; geoState='fail'; gpsWant=false; toast('定位失败：网络异常，请稍后重试',2600); }); }
 function renderList(){ var list=document.getElementById('sheet-list'); if(!list) return; if(!cities.length){ list.innerHTML='<div class="empty">'+(lang==='zh'?'还没有数据。':'No data yet.')+'</div>'; return; } var html=''; cities.forEach(function(c,i){ html+='<div class="row" data-kind="city" data-i="'+i+'"><span class="dot" style="background:'+colorFor(c.country)+'"></span><span class="t"><span class="n">'+esc(nameOf(c))+'</span> <span class="s">'+esc(subOf(c))+'</span></span><span class="c">'+c.n+'</span></div>'; }); list.innerHTML=html; Array.prototype.forEach.call(list.querySelectorAll('.row'),function(row){ row.addEventListener('click',function(){ selectCity(cities[+row.getAttribute('data-i')],false,IMM_ALT,5); if(curPanelH>=100) setPanelH(55); }); }); applySelection(); }
-function renderSub(){ var el=document.getElementById('sheet-sub'); if(!el) return; var countries={}; cities.forEach(function(c){ if(c.country) countries[c.country]=1; }); el.textContent=(lang==='zh'?cities.length+' 个城市 · 覆盖 '+Object.keys(countries).length+' 个国家/地区':cities.length+' cities · '+Object.keys(countries).length+' countries/regions'); }
+function renderSub(){ var el=document.getElementById('sheet-sub'); if(!el) return; var countries={}; cities.forEach(function(c){ if(c.country) countries[c.country]=1; }); el.textContent=(lang==='zh'?cities.length+' 个城市 · 覆盖 '+Object.keys(countries).length+' 个国家/地区':cities.length+' cities · '+Object.keys(countries).length+' countries/regions'); var nt=document.getElementById('sheet-note'); if(nt) nt.textContent=(lang==='zh'?'同一用户 30 分钟内多次访问仅统计 1 次':'Same user: visits within 30 min count once'); }
 function renderMe(){ var el=document.getElementById('sheet-mecity'); if(el) el.textContent=meData?nameOf(meData):''; }
 function applyLang(){ document.documentElement.lang=(lang==='zh'?'zh-CN':'en'); var u=document.getElementById('sheet-unit'); if(u) u.textContent=lang==='zh'?'次访问':'visits'; var lb=document.getElementById('sheet-lang'); if(lb) lb.classList.toggle('on',lang==='zh'); setPoints(); updateHtml(); updateRings(); renderList(); renderSub(); renderMe(); }
 (function(){ var ch=document.getElementById('sheet-chev'); if(ch) ch.addEventListener('click',function(){ collapseCity(); var b=this; setTimeout(function(){b.blur();},1000); }); var lb=document.getElementById('sheet-lang'); if(lb) lb.addEventListener('click',function(){ lang=(lang==='zh'?'en':'zh'); applyLang(); var b=this; setTimeout(function(){b.blur();},1000); }); var g=document.getElementById('sheet-gps'); if(g) g.addEventListener('click',function(){ if(document.body.classList.contains('immersive')){ immersiveGps(); } else { var c=cityForMe(); if(c) selectCity(c,true); else gpsRequest(); } gpsFlash(); var b=this; setTimeout(function(){b.blur();},1000); }); })();
@@ -472,7 +478,8 @@ if(gpsBtn) gpsBtn.addEventListener('click',function(){ if(document.body.classLis
 var gridChev=document.getElementById('grid-chev');
 if(gridChev) gridChev.addEventListener('click',function(){ collapseLinks(); var b=this; setTimeout(function(){b.blur();},400); });
 // 全屏缩放：三个联系方式按钮渐变为 + / 拖动 / −
-var ZMIN=0.06, ZMAX=2.5, ZSTEP=0.7744;
+var ZMIN=0.06, ZMAX=99, ZSTEP=0.7744;
+function syncZoomBounds(){ try{ var c=globe&&globe.controls(), r=(globe&&globe.getGlobeRadius)?globe.getGlobeRadius():0; if(c&&r){ if(c.minDistance>0) ZMIN=Math.max(0.06, c.minDistance/r-1); if(c.maxDistance>0) ZMAX=c.maxDistance/r-1; } }catch(e){} }
 function zCur(){ try{ return globe?globe.pointOfView().altitude:1; }catch(e){ return 1; } }
 function zSet(a,dur){ a=Math.max(ZMIN,Math.min(ZMAX,a)); if(globe) globe.pointOfView({altitude:a},dur||0); }
 var linksEl=document.querySelector('.links');
@@ -501,12 +508,12 @@ function init(){
     .htmlElement(function(d){ var el=document.createElement('div'); el.className='globe-label'; el.__d=d; el.innerHTML='<div class="gl-box">'+(d.weather?'<div class="gl-w">'+esc(d.weather)+'</div>':'')+'<div class="gl-c">'+esc(nameOf(d))+'</div>'+((d.region||d.country)?'<div class="gl-s">'+esc(subOf(d))+'</div>':'')+(d.n!=null?'<div class="gl-n">'+d.n+'</div>':'')+'</div>'; return el; });
   globe.pointOfView({lat:0,lng:0,altitude:END_ALT});
   var c=globe.controls();
-  c.autoRotate=false; c.autoRotateSpeed=0.35; c.enableDamping=true; c.enableZoom=true;
-  setTimeout(updateLabelGap,60); window.addEventListener('resize',function(){ updateLabelGap(); });
+  c.autoRotate=false; c.autoRotateSpeed=0.35; c.enableDamping=true; c.enableZoom=true; syncZoomBounds();
+  setTimeout(updateLabelGap,60); window.addEventListener('resize',function(){ updateLabelGap(); }); setTimeout(function(){ updateHtml(); startLabelFit(); },80);
   c.addEventListener('change',function(){ if(!globe) return; var a; try{ a=globe.pointOfView().altitude; }catch(e){ return; }
-  // 缩放钳制：保持与沉浸模式缩放按钮一致的 0.06~2.5 区间（用回差避免浮点震荡）
-  if(a<0.059||a>2.51){ try{ globe.pointOfView({altitude:Math.max(0.06,Math.min(2.5,a))},0); }catch(e){} return; }
-  c.autoRotateSpeed=spinFor(a); if(Math.abs(a-lastGapAlt)>0.02){ lastGapAlt=a; updateLabelGap(a); } var distC=1+a; var want=(distC>=1&&distC<=3); if(want!==allLabels){ allLabels=want; updateHtml(); if(allLabels){ setTimeout(fitLabels,50); startLabelFit(); } else { stopLabelFit(); } } });
+  // 缩放钳制：区间与 globe.gl 的相机距离限制一致（拉远可把地球缩到很小，与 globe 页相同），下限略留余量避免穿入地表
+  if(a<ZMIN-0.001||a>ZMAX+0.01){ try{ globe.pointOfView({altitude:Math.max(ZMIN,Math.min(ZMAX,a))},0); }catch(e){} return; }
+  c.autoRotateSpeed=spinFor(a); if(Math.abs(a-lastGapAlt)>0.02){ lastGapAlt=a; updateLabelGap(a); } });
   var canvas=globe.renderer().domElement, down=null;
   canvas.addEventListener('pointerdown',function(e){ down={x:e.clientX,y:e.clientY}; });
   canvas.addEventListener('pointerup',function(e){ if(!down) return; var moved=Math.sqrt(Math.pow(e.clientX-down.x,2)+Math.pow(e.clientY-down.y,2)); down=null; if(moved>6) return; var r=canvas.getBoundingClientRect(); var cc=pickCity(e.clientX-r.left,e.clientY-r.top); if(cc) selectCity(cc,true,IMM_ALT,5); });
