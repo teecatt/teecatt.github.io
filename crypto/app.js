@@ -405,8 +405,8 @@ const TOOLS = [
     auto: false,
     input: { label: "口令" },
     fields: [
-        { k: "salt", label: "盐（Salt）", type: "text", value: "", random: { bytes: 16 } },
-        { k: "saltFmt", label: "盐格式", type: "select", options: FMT_OPTS, value: "utf8" },
+        { k: "salt", label: "盐（Salt）", type: "text", value: "6fe98fc9c328360b367529c4fe215a61", random: { bytes: 16 } },
+        { k: "saltFmt", label: "盐格式", type: "select", options: FMT_OPTS, value: "hex" },
         { k: "time", label: "迭代次数 (t)", type: "number", value: 3, min: 1 },
         { k: "mem", label: "内存 MiB (m)", type: "number", value: 64, min: 8 },
         { k: "parallelism", label: "并行度 (p)", type: "number", value: 1, min: 1 },
@@ -925,7 +925,6 @@ function renderTool(tool) {
     const showInput = !(tool.input && tool.input.show === false);
     const html = `
         <div class="tool-head"><h1>${esc(tool.name)}</h1><p>${esc(tool.desc || "")}</p></div>
-        ${fieldsHtml(tool)}
         ${showInput ? `<div class="field"><label>${esc((tool.input && tool.input.label) || "输入")}</label>
             <textarea id="in" class="role-input" placeholder="在此输入…"></textarea></div>` : ""}
         <div class="actions">
@@ -937,7 +936,8 @@ function renderTool(tool) {
             <label>${esc(tool.outputLabel || "输出")}</label>
             <span class="output-actions"><a class="link-btn" id="copy-btn">复制</a></span>
         </div>
-        <div class="output" id="out"></div>`;
+        <div class="output" id="out"></div>
+        ${fieldsHtml(tool)}`;
     $("#tool").innerHTML = html;
 
     $("#run-btn").addEventListener("click", runTool);
