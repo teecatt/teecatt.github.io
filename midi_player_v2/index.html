@@ -48,6 +48,7 @@ input[type=range]{flex:1;accent-color:var(--acc);min-width:80px}
 footer{font-size:12px;color:var(--dim);line-height:2;margin:8px 0 24px}
 .switch{display:flex;align-items:center;gap:6px;font-size:13px}
 .switch input{accent-color:var(--acc);width:16px;height:16px}
+#dbgLog{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11px;line-height:1.7;color:var(--dim);background:#0a0d12;border:1px solid var(--line);border-radius:8px;padding:8px 10px;max-height:180px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;margin-top:8px}
 @media (max-width:600px){.kb-whites{height:120px}.kb-blacks{height:74px}.kb-black{height:74px;width:20px;margin-left:-10px}}
 </style>
 <script type="importmap">
@@ -66,14 +67,18 @@ footer{font-size:12px;color:var(--dim);line-height:2;margin:8px 0 24px}
 </header>
 
 <div class="card" id="initBox">
-<div style="font-size:15px;margin-bottom:8px">首次使用需初始化合成引擎并加载音色库（约 8MB，只需一次，会被浏览器缓存）</div>
+<div style="font-size:15px;margin-bottom:8px">进入页面已自动开始下载（音色库约 8MB，只需一次，会被浏览器缓存）；若长时间无进展可点按钮重试</div>
 <button class="primary" id="initBtn">初始化并开始</button>
 <div id="initBar"><div id="initProg"></div></div>
 </div>
 
+<div class="card">
+<div id="status">引擎加载中…</div>
+<div id="dbgLog"></div>
+</div>
+
 <div id="playerUI" style="display:none">
 <div class="card">
-<div id="status">准备就绪</div>
 <div class="row">
 <select id="songSel"></select>
 </div>
@@ -138,6 +143,56 @@ footer{font-size:12px;color:var(--dim);line-height:2;margin:8px 0 24px}
 音色库：GeneralUser GS by S. Christian Collins（随站托管，8MB）<br>
 谱面：复用现版 midi_player/ 谱面（brotli 压缩传输）· 与<a href="../midi_player/">现版播放器</a>相互独立，互不影响
 </footer>
+<script>
+// 兜底启动脚本（不依赖模块）：错误捕获 + 调试日志 + 初始化按钮绑定。
+// 即使引擎模块加载失败，点击按钮也一定有文字反馈，不会"没反应"。
+window.V2 = window.V2 || { init: null, logs: [] };
+(function () {
+  var MAX = 300;
+  function render(line) {
+    var box = document.getElementById("dbgLog");
+    if (!box) return;
+    var div = document.createElement("div");
+    div.textContent = line;
+    box.appendChild(div);
+    while (box.children.length > MAX) box.removeChild(box.firstChild);
+    box.scrollTop = box.scrollHeight;
+  }
+  window.V2.pushLog = function (line) {
+    var t = new Date();
+    var ts = ("0" + t.getMinutes()).slice(-2) + ":" + ("0" + t.getSeconds()).slice(-2);
+    var full = "[" + ts + "] " + line;
+    window.V2.logs.push(full);
+    if (window.V2.logs.length > MAX) window.V2.logs.shift();
+    render(full);
+  };
+  window.V2.fail = function (msg) {
+    window.V2.pushLog("[AudioDebug][ERROR] " + msg);
+    var s = document.getElementById("status");
+    if (s) { s.textContent = "出错：" + msg; s.classList.add("err"); }
+  };
+  window.addEventListener("error", function (e) {
+    window.V2.fail(e.message || (e.error && e.error.message) || "未知脚本错误");
+  });
+  window.addEventListener("unhandledrejection", function (e) {
+    var r = e.reason;
+    window.V2.fail((r && r.message) || String(r) || "未处理的异步错误");
+  });
+  window.addEventListener("DOMContentLoaded", function () {
+    for (var i = 0; i < window.V2.logs.length; i++) render(window.V2.logs[i]);
+    document.getElementById("initBtn").addEventListener("click", function () {
+      if (window.V2.init) {
+        window.V2.init();
+      } else {
+        var m = "引擎脚本仍在加载（vendor 约 1MB，弱网稍候再点）";
+        window.V2.pushLog("[AudioDebug][WARN] " + m);
+        var s = document.getElementById("status");
+        if (s) s.textContent = m;
+      }
+    });
+  });
+})();
+</script>
 <script type="module" src="./app.js"></script>
 </body>
 </html>

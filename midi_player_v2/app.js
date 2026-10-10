@@ -27,6 +27,13 @@ function setStatus(msg, isErr) {
   el.textContent = msg;
   el.classList.toggle("err", !!isErr);
 }
+function log(tag, msg) {
+  const line = "[AudioDebug][" + tag + "] " + msg;
+  try { console.log(line); } catch (e) {}
+  try {
+    if (typeof window !== "undefined" && window.V2 && window.V2.pushLog) window.V2.pushLog(line);
+  } catch (e) {}
+}
 function fmtTime(s) {
   if (!isFinite(s) || s < 0) s = 0;
   const m = Math.floor(s / 60), ss = Math.floor(s % 60);
@@ -37,29 +44,40 @@ function fmtSize(n) {
   return (n / 1024).toFixed(0) + "KB";
 }
 
-// ===== 带进度的下载 =====
-async function fetchBytes(url, onp) {
+// ===== 带进度的下载（tag 非空时记调试日志，对齐现版谱面下载逻辑）=====
+async function fetchBytes(url, onp, tag) {
+  const t0 = performance.now();
   const r = await fetch(url, { cache: "force-cache" });
   if (!r.ok) throw new Error("下载失败 " + r.status + " " + url);
   const total = parseInt(r.headers.get("content-length") || "0", 10);
+  if (tag) log("INFO", tag + " 开始下载" + (total ? "（" + fmtSize(total) + "）" : ""));
   if (!r.body || !r.body.getReader()) {
     const ab = await r.arrayBuffer();
     if (onp) onp(ab.byteLength, ab.byteLength);
+    if (tag) log("INFO", tag + " 下载完成 " + fmtSize(ab.byteLength));
     return ab;
   }
   const reader = r.body.getReader();
   const chunks = [];
-  let got = 0;
+  let got = 0, nextMark = 25;
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
     chunks.push(value);
     got += value.length;
     if (onp) onp(got, total);
+    if (tag && total > 0) {
+      const pct = got / total * 100;
+      if (pct >= nextMark) {
+        log("INFO", tag + " 下载 " + pct.toFixed(0) + "%（" + fmtSize(got) + "/" + fmtSize(total) + "）");
+        nextMark += 25;
+      }
+    }
   }
   const out = new Uint8Array(got);
   let off = 0;
   for (const c of chunks) { out.set(c, off); off += c.length; }
+  if (tag) log("INFO", tag + " 下载完成 " + fmtSize(got) + "，用时 " + ((performance.now() - t0) / 1000).toFixed(1) + "s");
   return out.buffer;
 }
 function looksLikeMidi(ab) {
@@ -118,8 +136,10 @@ async function initEngine() {
     const AC = window.AudioContext || window.webkitAudioContext;
     ctx = new AC({ latencyHint: "playback" });
     if (ctx.state === "suspended") await ctx.resume();
+    log("INFO", "AudioContext @" + ctx.sampleRate + "Hz，状态 " + ctx.state);
     setStatus("注册合成 worklet…");
     await ctx.audioWorklet.addModule("./vendor/spessasynth_processor.min.js");
+    log("INFO", "合成 worklet 注册成功");
     synth = new WorkletSynthesizer(ctx);
     master = ctx.createGain();
     master.gain.value = $("volSlider").value / 100;
@@ -138,10 +158,11 @@ async function initEngine() {
     const sfb = await fetchBytes(SF_URL, (got, total) => {
       $("initProg").style.width = total ? (got / total * 100).toFixed(1) + "%" : "50%";
       setStatus("下载音色库 " + fmtSize(got) + (total ? " / " + fmtSize(total) : "…"));
-    });
+    }, "音色库[GeneralUserGS.sf3]");
     setStatus("解析音色库（vorbis 解码，稍候）…");
     await synth.soundBankManager.addSoundBank(sfb, "main");
     await synth.isReady;
+    log("INFO", "音色库就绪，预设 " + synth.presetList.length + " 个");
     buildProgramSelect();
     seq = new Sequencer(synth, { skipToFirstNoteOn: true });
     seq.playbackRate = lastRate;
@@ -208,7 +229,7 @@ function wireEvents() {
     }
     refreshChanInfo();
   });
-  seq.eventHandler.addEvent("songChange", "v2sc", () => {
+  seq.eventHandler.addEvent("songChange", "v2sc", (data) => {
     chanProg.fill(-1);
     try {
       for (let ch = 0; ch < 16; ch++) {
@@ -219,6 +240,10 @@ function wireEvents() {
     applyProgOverride();
     refreshChanInfo();
     updateSongLabel();
+    try {
+      log("INFO", "谱面就绪 " + (data && data.fileName || "") + " · 时长 " + fmtTime(seq.duration) +
+        (data && data.tracks ? " · " + data.tracks.length + " 轨" : ""));
+    } catch (e) {}
   });
   seq.eventHandler.addEvent("songEnded", "v2se", () => {
     if (loopMode === "list") {
@@ -280,13 +305,16 @@ async function loadSongByKey(key, autoplay) {
       setStatus("下载谱面 " + entry.name + "…");
       const ab = await fetchBytes(V1_BASE + entry.file + ".br", (got, total) => {
         setStatus("下载谱面 " + fmtSize(got) + (total ? " / " + fmtSize(total) : "…"));
-      });
+      }, "谱面[" + entry.name + "]");
       if (looksLikeMidi(ab)) {
+        log("INFO", "谱面[" + entry.name + "] 服务端已解压，直接使用");
         bytes = ab;
       } else {
         setStatus("解压谱面…");
         bytes = await decompressBrotli(ab);
         if (!looksLikeMidi(bytes)) throw new Error("谱面数据不是有效 MIDI");
+        log("INFO", "谱面[" + entry.name + "] br 解压 " + fmtSize(ab.byteLength) + " -> " + fmtSize(bytes.byteLength) +
+          "（压缩比 " + (bytes.byteLength / ab.byteLength).toFixed(1) + "x）");
       }
     }
     seq.loadNewSongList([{ binary: bytes, fileName: entry.name }]);
@@ -476,11 +504,19 @@ function tick() {
   requestAnimationFrame(tick);
 }
 
-// ===== 事件绑定 =====
+// ===== 事件绑定 + 自动启动（对齐现版：进页面立即开始下载）=====
+// 无手势时 AudioContext 为 suspended：下载/解析照常进行，首次交互时解锁声音
+function ensureCtx() {
+  if (ctx && ctx.state === "suspended") ctx.resume().catch(() => {});
+}
+if (typeof window !== "undefined") {
+  ["pointerdown", "keydown", "touchend"].forEach((ev) =>
+    window.addEventListener(ev, ensureCtx, { passive: true }));
+  if (window.V2) window.V2.init = initEngine;
+}
 window.addEventListener("DOMContentLoaded", () => {
   buildKeyboard();
   window.addEventListener("resize", layoutBlacks);
-  $("initBtn").addEventListener("click", initEngine);
   $("playBtn").addEventListener("click", togglePlay);
   $("stopBtn").addEventListener("click", stopPlay);
   $("prevBtn").addEventListener("click", () => stepSong(-1, playing));
@@ -535,6 +571,13 @@ window.addEventListener("DOMContentLoaded", () => {
     const f = e.dataTransfer.files && e.dataTransfer.files[0];
     if (f) await addUpload(f);
   });
+  // brotli 支持性（对齐现版日志口径）
+  let nativeBr = false;
+  try { if (typeof DecompressionStream === "function") { new DecompressionStream("brotli"); nativeBr = true; } } catch (e) {}
+  log("INFO", "brotli 支持性：" + (nativeBr ? "浏览器原生支持" : "需 WASM（复用现版解码器）"));
+  // 进页面立即自动初始化 + 下载（现版同样逻辑）
+  log("INFO", "页面载入，自动开始初始化");
+  initEngine();
 });
 async function addUpload(file) {
   try {
