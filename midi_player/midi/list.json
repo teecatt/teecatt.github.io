@@ -8,6 +8,22 @@
     "file": "midi/The Sound of Silence.mid"
   },
   {
+    "name": "unchanged mind.mid",
+    "file": "midi/unchanged mind.mid"
+  },
+  {
+    "name": "AfterSchool-DJ Okawari.mid",
+    "file": "midi/AfterSchool-DJ Okawari.mid"
+  },
+  {
+    "name": "幻昼.mid",
+    "file": "midi/幻昼.mid"
+  },
+  {
+    "name": "消失在记忆里的海.mid",
+    "file": "midi/消失在记忆里的海.mid"
+  },
+  {
     "name": "44并发500ms测试.mid",
     "file": "midi/concurrent_44_500ms.mid",
     "test": true

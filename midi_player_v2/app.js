@@ -2254,7 +2254,7 @@ let _timbreAutoSwitch = null; // { name, gen, songKey }：后台下载完成后�
 let _timbreGen = 0;           // 代际：切歌/手动切音色/播完时递增，使旧的下载回调失效
 let currentSongKey = null;    // 当前选中谱面（含前缀，如 builtin:midi/x.mid）
 let _songEnded = false;       // 当前谱面是否已播完
-let _desiredTimbre = 'gm:0'; // 期望音色：默认钢琴，只随用户下拉选择改变（重制版不随切歌改变）
+let _desiredTimbre = 'gm:1'; // 期望音色：默认亮音钢琴，只随用户下拉选择改变（重制版不随切歌改变）
 let _perfDegradeTimbre = null;    // 性能降级前实际使用的音色（恢复时切回）
 let _perfDegraded = false;        // 是否因性能问题处于降级状态（暂用合成钢琴）
 function _invalidateTimbreAutoSwitch(){ _timbreGen++; _timbreAutoSwitch = null; _perfDegradeTimbre = null; }
@@ -2367,9 +2367,9 @@ let userGestureSeen = false;
 //   P2  预配置的内置必下音色与谱面 —— 音色库就绪后才开始
 // 迁移 Cloudflare 后同源即可获得低延迟与压缩，不再需要多镜像竞速。
 const COLD_START = {
-  sheet: 'midi/Rush E 3.mid',                         // P0：优先独占下载的默认谱面
-  timbre: 'gm:0',                                      // P1：默认音色为钢琴（bank 未就绪时先用合成钢琴起播，就绪立马切过去）
-  mandatorySheets: ['midi/The Sound of Silence.mid'],  // P2：预配置必下谱面
+  sheet: 'midi/unchanged mind.mid',                       // P0：优先独占下载的默认谱面
+  timbre: 'gm:1',                                          // P1：默认音色为亮音钢琴（bank 未就绪时先用合成钢琴起播，就绪立马切过去）
+  mandatorySheets: ['midi/The Sound of Silence.mid', 'midi/AfterSchool-DJ Okawari.mid', 'midi/幻昼.mid', 'midi/消失在记忆里的海.mid'],  // P2：预配置必下谱面
   mandatoryTimbres: [],                                // P2：重制版无谱面专属音色，bank 在 P1 已就绪
 };
 
@@ -2954,7 +2954,7 @@ async function resetAllSettings(){
   }catch(e){}
   // 下载缺失的默认音色与谱面（静默，不阻塞重载）
   try{
-    const NEED_TIMBRES = ['gm:0'];
+    const NEED_TIMBRES = ['gm:1'];
     for(const t of NEED_TIMBRES){
       if(!SoundfontLoader.cachedNames.has(t))
         SoundfontLoader.load(t, null, {switchCurrent:false}).catch(()=>{});
@@ -4588,6 +4588,10 @@ function drawScene(notes, startIdx, endIdx, curTime){
     if(SoundfontLoader.activeSources[m]) activeKeySet.add(m);
   }
   for(const k in SoundfontLoader.activeSynth){
+    activeKeySet.add(parseInt(k, 10));
+  }
+  // 重制版 SF2 发声：voice 在 SpessaSynth 内，主线程用 _spessaActive 记录按键（含踏板挂起的延续音）
+  for(const k in _spessaActive){
     activeKeySet.add(parseInt(k, 10));
   }
   // AudioWorklet 合成钢琴：voice 在 worklet 内，主线程用 _synthWorkletActive 记录按键
