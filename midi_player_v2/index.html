@@ -686,10 +686,9 @@ select:focus{border-color:var(--accent)}
             </div>
             <div class="row">
               <label>音色选择</label>
-              <select id="timbreSel" onchange="onTimbreChange()">
-                <option value="__synth__" selected>合成钢琴</option>
+               <select id="timbreSel" onchange="onTimbreChange()">
                 <optgroup label="键盘">
-                  <option value="gm:0">钢琴</option>
+                  <option value="gm:0" selected>钢琴</option>
                   <option value="gm:1">亮音钢琴</option>
                   <option value="gm:2">电三角钢琴</option>
                   <option value="gm:3">酒吧钢琴</option>
@@ -847,6 +846,9 @@ select:focus{border-color:var(--accent)}
                   <option value="gm:125">直升机</option>
                   <option value="gm:126">掌声</option>
                   <option value="gm:127">枪声</option>
+                </optgroup>
+                <optgroup label="其它">
+                  <option value="__synth__">合成钢琴（零下载即时声）</option>
                 </optgroup>
               </select>
             </div>

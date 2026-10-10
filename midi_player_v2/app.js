@@ -2254,7 +2254,7 @@ let _timbreAutoSwitch = null; // { name, gen, songKey }：后台下载完成后�
 let _timbreGen = 0;           // 代际：切歌/手动切音色/播完时递增，使旧的下载回调失效
 let currentSongKey = null;    // 当前选中谱面（含前缀，如 builtin:midi/x.mid）
 let _songEnded = false;       // 当前谱面是否已播完
-let _desiredTimbre = '__synth__'; // 期望音色（谱面配置或用户选中），与实际 current 解耦
+let _desiredTimbre = 'gm:0'; // 期望音色：默认钢琴，只随用户下拉选择改变（重制版不随切歌改变）
 let _perfDegradeTimbre = null;    // 性能降级前实际使用的音色（恢复时切回）
 let _perfDegraded = false;        // 是否因性能问题处于降级状态（暂用合成钢琴）
 function _invalidateTimbreAutoSwitch(){ _timbreGen++; _timbreAutoSwitch = null; _perfDegradeTimbre = null; }
@@ -2346,26 +2346,8 @@ async function onTimbreChange(opts){
   _applyTimbre(name, { auto: auto, songKey: opts && opts.songKey, songDisp: opts && opts.songDisp });
 }
 
-// 应用谱面配置的默认音色（内置谱用 songDefaultTimbre，其余用当前下拉选中的音色）
-function _applySongDefaultTimbre(key, file, fname, timbre){
-  const sel = document.getElementById('timbreSel');
-  const disp = timbreDisplayName(timbre);
-  if(timbre === '__synth__' || timbre === '__yamaha_c7__'){
-    if(sel) sel.value = timbre;
-    SoundfontLoader.current = timbre;
-    _desiredTimbre = timbre;
-    _updateSynthPathInfo();
-    console.log('[AudioDebug][INFO] 谱面' + _songId(file) + ' 默认使用' + disp + '音色');
-    return;
-  }
-  _applyTimbre(timbre, { auto: true, songKey: key, songDisp: _songDisplayName(file) });
-}
-
-// 内置谱默认音色配置：谱子文件名 -> 音色id
-const songDefaultTimbre = {
-  'Rush E 3.mid': 'gm:7', // 古钢琴 Clavinet（SF2 版，沿用现版选择）
-  'The Sound of Silence.mid': '__synth__', // 合成钢琴（零下载即时声）
-};
+// 重制版：已删除「谱面默认音色自动切换」（songDefaultTimbre / _applySongDefaultTimbre）。
+// 音色只跟随用户下拉选择与默认钢琴，不再随切歌改变。
 
 // 记录用户是否已与页面交互（绕过自动播放限制；避免"加载完成前点击过"导致后续不再起播）
 let userGestureSeen = false;
@@ -2386,9 +2368,9 @@ let userGestureSeen = false;
 // 迁移 Cloudflare 后同源即可获得低延迟与压缩，不再需要多镜像竞速。
 const COLD_START = {
   sheet: 'midi/Rush E 3.mid',                         // P0：优先独占下载的默认谱面
-  timbre: 'gm:7',                                      // P1：默认音色为古钢琴 SF2 版（缓存未命中时先用合成钢琴起播，下完自动切换）
+  timbre: 'gm:0',                                      // P1：默认音色为钢琴（bank 未就绪时先用合成钢琴起播，就绪立马切过去）
   mandatorySheets: ['midi/The Sound of Silence.mid'],  // P2：预配置必下谱面
-  mandatoryTimbres: ['gm:7'],                          // P2：预配置必下音色（SF2 bank 就绪即全可用，供其它谱面/手动选择）
+  mandatoryTimbres: [],                                // P2：重制版无谱面专属音色，bank 在 P1 已就绪
 };
 
 (function(){
@@ -2972,7 +2954,7 @@ async function resetAllSettings(){
   }catch(e){}
   // 下载缺失的默认音色与谱面（静默，不阻塞重载）
   try{
-    const NEED_TIMBRES = ['gm:7'];
+    const NEED_TIMBRES = ['gm:0'];
     for(const t of NEED_TIMBRES){
       if(!SoundfontLoader.cachedNames.has(t))
         SoundfontLoader.load(t, null, {switchCurrent:false}).catch(()=>{});
@@ -3058,21 +3040,7 @@ async function deleteBuiltinSong(file){
       }catch(e){}
     }
   }catch(e){}
-  // 删除该内置谱配置的默认音色（若不再被其它未删除的内置谱使用、且不是当前音色）
-  try{
-    const fname = file.split('/').pop();
-    const t = songDefaultTimbre[fname];
-    if(t && t !== '__synth__' && t !== SoundfontLoader.current){
-      const stillNeeded = Object.keys(songDefaultTimbre).some(f => {
-        if(f === fname) return false;
-        if(set.has('midi/' + f) || set.has(f)) return false;
-        return songDefaultTimbre[f] === t;
-      });
-      if(!stillNeeded){
-        try{ await SoundfontLoader.deleteCached(t); }catch(e){}
-      }
-    }
-  }catch(e){}
+  // 重制版：谱面不再关联默认音色，删除谱面时不清理音色
   if(freed > 0) console.log('[AudioDebug][INFO] ' + _songLabel(file) + ' 已删除，释放本地缓存 ' + (freed/1024/1024).toFixed(2) + 'MB');
   else console.log('[AudioDebug][INFO] ' + _songLabel(file) + ' 已删除（无本地缓存）');
   await loadSongList();
@@ -3088,11 +3056,10 @@ async function onSongChange(val){
   stopPlay();
   currentSongKey = val;
   _invalidateTimbreAutoSwitch(); // 切歌：作废上一首的默认音色自动切换
-  // 谱面 + 音色合并为同一条日志：切换: xxx.mid - xxx 音色
+  // 重制版：切歌不改变音色（仅记录日志，音色只跟随用户选择）
   {
     const fname = String(val).replace(/^(builtin:|user:)/, '').split('/').pop();
-    const tName = songDefaultTimbre[fname] || SoundfontLoader.current || '__synth__';
-    console.log('[AudioDebug][INFO] 切换: ' + fname + ' - ' + timbreDisplayName(tName) + ' 音色');
+    console.log('[AudioDebug][INFO] 切换: ' + fname + '（音色不变：' + timbreDisplayName(SoundfontLoader.current) + '）');
   }
   try{
     let buf, name;
@@ -3110,17 +3077,7 @@ async function onSongChange(val){
       console.log('[AudioDebug][INFO] ' + _songLabel(name) + '（本地缓存）已读取 (' + (buf.byteLength/1024).toFixed(0) + 'KB)');
     }
     parseAndPlayMidi(buf, name);
-    // 所有谱起播前检查配置音色：本地不存在则先用合成钢琴，下载完成后自动切过去
-    const tSel = document.getElementById('timbreSel');
-    if(val.startsWith('builtin:')){
-      const file = val.substring(8);
-      const fname = file.split('/').pop();
-      const defaultTimbre = songDefaultTimbre[fname] || (tSel && tSel.value) || '__synth__';
-      _applySongDefaultTimbre(val, file, fname, defaultTimbre);
-    } else {
-      const cur = (tSel && tSel.value) || SoundfontLoader.current || '__synth__';
-      _applyTimbre(cur, { auto: true, songKey: val, songDisp: _songDisplayName(name) });
-    }
+    // 重制版：切歌/上传不改变音色，保持用户当前选择（bank 缺失时当前只可能是合成钢琴）
     // 切换后自动播放
     initAudio();
     if(audioCtx.state === 'suspended') audioCtx.resume();
@@ -3213,12 +3170,9 @@ function onMidiFile(event){
         throw new Error('谱面为空或格式错误（未解析到任何音符）');
       }
       console.log('[AudioDebug][INFO] ' + _songLabel(fname) + ' 上传解析成功，共 ' + allNotes.length + ' 个音符');
-      // 起播前检查配置音色（=当前下拉选中的音色）：本地不存在则先用合成钢琴
+      // 重制版：上传不改变音色，保持用户当前选择
       _invalidateTimbreAutoSwitch();
       currentSongKey = 'user:' + file.name;
-      const upSel = document.getElementById('timbreSel');
-      const upTimbre = (upSel && upSel.value) || SoundfontLoader.current || '__synth__';
-      _applyTimbre(upTimbre, { auto: true, songKey: currentSongKey, songDisp: file.name });
       // 上传后自动播放
       initAudio();
       if(audioCtx.state === 'suspended') audioCtx.resume();
