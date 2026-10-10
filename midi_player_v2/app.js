@@ -2678,6 +2678,9 @@ async function _switchToSong(key){
 
 async function loadSongList(){
   const sel = document.getElementById('songSel');
+  // 记住刷新前的选择（首次为空）：重建后优先恢复，避免刷新把用户当前选项顶回第 0 项
+  let prevVal = '';
+  try{ prevVal = sel.value || ''; }catch(e){}
   sel.innerHTML = '';
   const deleted = getDeletedBuiltin();
   // 内置谱（排除已删除）
@@ -2707,6 +2710,21 @@ async function loadSongList(){
       opt.textContent = song.name;
       sel.appendChild(opt);
     });
+  }catch(e){}
+  // 恢复刷新前选择；不存在（首次加载/被删）则选中冷启动默认谱面，与 P0 实际播放一致
+  try{
+    let ok = false;
+    if(prevVal){
+      for(let i = 0; i < sel.options.length; i++){
+        if(sel.options[i].value === prevVal){ sel.selectedIndex = i; ok = true; break; }
+      }
+    }
+    if(!ok){
+      const def = 'builtin:' + COLD_START.sheet;
+      for(let i = 0; i < sel.options.length; i++){
+        if(sel.options[i].value === def){ sel.selectedIndex = i; break; }
+      }
+    }
   }catch(e){}
 }
 loadSongList();
