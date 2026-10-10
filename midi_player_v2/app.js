@@ -1310,6 +1310,7 @@ async function _ensureSpessaBank(onProgress){
     if(cache){
       try{
         const hit = await cache.match(absUrl, {ignoreSearch: true});
+        console.log('[AudioDebug][INFO] SF2 bank 缓存' + (hit ? '命中' : '未命中') + '，key=' + absUrl.split('/').pop());
         if(hit){
           const buf = await hit.arrayBuffer();
           if(buf.byteLength > 1000000){
@@ -1325,6 +1326,7 @@ async function _ensureSpessaBank(onProgress){
       }catch(e){}
     }
     if(onProgress) onProgress(0, '正在下载SF2音色库…');
+    console.log('[AudioDebug][INFO] SF2 bank 缓存未命中，开始网络下载 ' + './' + SF3_REL);
     const resp = await fetch('./' + SF3_REL, {cache: 'force-cache'});
     if(!resp.ok) throw new Error('音色库下载失败 HTTP ' + resp.status);
     const total = parseInt(resp.headers.get('content-length') || '0', 10) || 8423728;
@@ -1424,6 +1426,7 @@ const SoundfontLoader = {
     // 重制版：gm:N 共享同一 SF2 bank（缓存优先），就绪即切 current；program 在发声时惰性应用
     if(typeof name === 'string' && name.indexOf('gm:') === 0){
       if(this.loaded[name] && this.loaded[name].ready){ if(switchCurrent) this.current = name; return; }
+      console.log('[AudioDebug][INFO] 请求 GM 音色[' + name + ']，确保 SF2 bank…');
       await _ensureSpessaBank(onProgress);
       this.loaded[name] = { ready: true };
       this.cachedNames.add(name);
@@ -1803,6 +1806,22 @@ const SoundfontLoader = {
   // 重制版发声：SF2 真实合成。时值/力度/调度语义与原来完全一致（调用方已除以变速）。
   _playSpessa(midi, velocity, duration){
     if(!_spessaSynth) return;
+    if(!_spessaBankReady){
+      // bank 未就绪却走到发声：记一次告警（正常流程下 current 应仍为合成钢琴，不会进到这里）
+      if(!this.debug._spessaNoBankWarned){
+        this.debug._spessaNoBankWarned = true;
+        console.warn('[AudioDebug][WARN] SF2 bank 未就绪但收到发声音符，已丢弃（current=' + this.current + '）');
+      }
+      return;
+    }
+    if(!this.debug._spessaFirstLogged || this.debug._spessaFirstLogged < 3){
+      this.debug._spessaFirstLogged = (this.debug._spessaFirstLogged || 0) + 1;
+      try{
+        console.log('[AudioDebug][INFO] SF2 发声#' + this.debug._spessaFirstLogged + ' prog=' +
+          (parseInt(String(this.current).slice(3), 10) || 0) + ' midi=' + midi +
+          ' 预设=' + _spessaSynth.presetList.length + ' voices=' + _spessaSynth.voiceCount);
+      }catch(e){}
+    }
     const keyMidi = midi >= 21 && midi <= 108 ? midi : (midi < 21 ? 21 : 108);
     const prog = parseInt(String(this.current).slice(3), 10) || 0;
     try{
@@ -3567,8 +3586,11 @@ function doSeek(event){
   const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
   currentTime = pct * totalDuration;
   if(isPlaying){
-    playStartTime = audioCtx.currentTime - currentTime / playSpeed;
-    nextNoteIndex = lowerBound(allNotes, currentTime);
+  playStartTime = audioCtx.currentTime - currentTime / playSpeed;
+  nextNoteIndex = lowerBound(allNotes, currentTime);
+  nextCCIndex = lowerBound(allCCs, currentTime); // 重制版：重播/切歌续播时踏板事件指针同步
+  console.log('[AudioDebug][INFO] 起播：音色[' + SoundfontLoader.current + '] SF2bank=' +
+    (_spessaBankReady ? '就绪' : '未就绪') + ' 音符=' + allNotes.length + ' 踏板/弯音事件=' + allCCs.length);
   }
   updateProgress();
   // 拖拽时也更新可视化
