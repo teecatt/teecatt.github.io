@@ -1,0 +1,8 @@
+# ONNX 导出依赖（台式机 NVIDIA GPU 上运行，与网站部署无关）
+torch>=2.2
+onnx>=1.15
+onnxruntime-gpu>=1.18
+transkun>=0.1.2
+soxr>=0.3
+pretty_midi>=0.2.10
+numpy>=1.24
