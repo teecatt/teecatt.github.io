@@ -43,6 +43,7 @@ fileInput.onchange = () => { if (fileInput.files[0]) pickFile(fileInput.files[0]
 async function pickFile(f) {
   audioFile = f; pcmMono = null; midiBlob = null;
   $('dl').disabled = true;
+  if ($('playv2')) $('playv2').disabled = true;
   $('fileInfo').textContent = `${f.name}（${(f.size / 1048576).toFixed(1)} MB）· 解码中…`;
   dlog(`选择文件：${f.name}，${f.size} 字节`);
   try {
@@ -65,6 +66,108 @@ async function pickFile(f) {
   } catch (err) {
     dlog('解码失败：' + (err && err.message || err) + '（请用 MP3/WAV）', 'err');
     $('fileInfo').textContent = '解码失败，换个文件试试';
+  }
+}
+
+// ---------- 麦克风录音（与上传并列；复用 decode→pcmMono→转写链路） ----------
+let mediaStream = null, mediaRec = null, recChunks = [], recTimer = null, recT0 = 0;
+
+function pickRecMime() {
+  const cands = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4'];
+  try {
+    for (const m of cands) if (window.MediaRecorder && MediaRecorder.isTypeSupported(m)) return m;
+  } catch (_) {}
+  return '';
+}
+
+$('rec').onclick = async () => {
+  if (mediaRec && mediaRec.state === 'recording') { stopRec(); return; }
+  await startRec();
+};
+
+async function startRec() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    dlog('当前浏览器不支持录音（无 getUserMedia）', 'err');
+    return;
+  }
+  if (!window.MediaRecorder) {
+    dlog('当前浏览器不支持 MediaRecorder，无法录音', 'err');
+    return;
+  }
+  try {
+    mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (err) {
+    const n = (err && err.name) || '';
+    const hint = n === 'NotAllowedError' ? '麦克风权限被拒绝，请在地址栏允许后重试'
+      : n === 'NotFoundError' ? '未找到麦克风设备'
+      : n === 'NotReadableError' ? '麦克风被占用或不可用'
+      : ('无法访问麦克风：' + (err && err.message || err));
+    dlog(hint, 'err');
+    $('fileInfo').textContent = hint;
+    return;
+  }
+  recChunks = [];
+  try {
+    const mime = pickRecMime();
+    mediaRec = new MediaRecorder(mediaStream, mime ? { mimeType: mime } : undefined);
+  } catch (err) {
+    dlog('录音启动失败：' + (err && err.message || err), 'err');
+    try { mediaStream.getTracks().forEach(t => t.stop()); } catch (_) {}
+    return;
+  }
+  mediaRec.ondataavailable = e => { if (e.data && e.data.size) recChunks.push(e.data); };
+  mediaRec.onstop = onRecStop;
+  mediaRec.start();
+  recT0 = Date.now();
+  $('rec').textContent = '⏹ 停止';
+  $('recTime').textContent = '录音中 0s';
+  $('fileInfo').textContent = '录音中…';
+  recTimer = setInterval(() => {
+    $('recTime').textContent = '录音中 ' + ((Date.now() - recT0) / 1000).toFixed(0) + 's';
+  }, 500);
+  dlog('开始录音（再次点击停止）…');
+}
+
+function stopRec() {
+  try { if (mediaRec && mediaRec.state === 'recording') mediaRec.stop(); } catch (_) {}
+  try { if (mediaStream) mediaStream.getTracks().forEach(t => t.stop()); } catch (_) {}
+  if (recTimer) { clearInterval(recTimer); recTimer = null; }
+  $('rec').textContent = '🎤 录音';
+}
+
+async function onRecStop() {
+  if (recTimer) { clearInterval(recTimer); recTimer = null; }
+  $('rec').textContent = '🎤 录音';
+  const blob = new Blob(recChunks, { type: (mediaRec && mediaRec.mimeType) || 'audio/webm' });
+  mediaRec = null; mediaStream = null;
+  $('recTime').textContent = '';
+  if (!blob.size) { dlog('录音为空，请重试', 'err'); return; }
+  audioFile = { name: 'mic-' + new Date(recT0).toISOString().replace(/[:.]/g, '-').slice(0, 19) + '.webm', size: blob.size };
+  pcmMono = null; midiBlob = null;
+  $('dl').disabled = true;
+  if ($('playv2')) $('playv2').disabled = true;
+  $('fileInfo').textContent = '麦克风录音 · 解码中…';
+  dlog(`录音结束：${blob.size} 字节，解码中…`);
+  try {
+    const t0 = performance.now();
+    const ab = await blob.arrayBuffer();
+    const AC = window.AudioContext || window.webkitAudioContext;
+    const ctx = new AC();
+    const buf = await ctx.decodeAudioData(ab);
+    await ctx.close();
+    sampleRate = buf.sampleRate;
+    const n = buf.length, ch = buf.numberOfChannels;
+    pcmMono = new Float32Array(n);
+    for (let c = 0; c < ch; c++) {
+      const d = buf.getChannelData(c);
+      for (let i = 0; i < n; i++) pcmMono[i] += d[i] / ch;
+    }
+    dlog(`录音解码完成：${n} 采样 / ${sampleRate}Hz / ${ch}声道→单声道，${(performance.now() - t0).toFixed(0)}ms`, 'ok');
+    $('fileInfo').textContent = `麦克风录音 · ${(n / sampleRate).toFixed(1)}s`;
+    $('go').disabled = false;
+  } catch (err) {
+    dlog('录音解码失败：' + (err && err.message || err), 'err');
+    $('fileInfo').textContent = '录音解码失败，请重试';
   }
 }
 
@@ -146,6 +249,7 @@ function finish(m) {
   const d = m.diag;
   midiBlob = new Blob([m.midi], { type: 'audio/midi' });
   $('dl').disabled = false;
+  if ($('playv2')) $('playv2').disabled = false;
   $('go').disabled = false;
   $('phase').textContent = `完成：${m.notes.length} 个事件（${m.mode === 'selftest' ? '合成自检音阶，非模型输出' : '模型输出'}）`;
   if (m.mode === 'selftest') dlog('注意：当前 MIDI 为合成测试音阶，仅证明链路通畅', 'warn');
@@ -165,6 +269,34 @@ $('dl').onclick = () => {
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
   dlog('已触发下载：' + a.download, 'ok');
+};
+
+// ---------- 在重制版中播放：OPFS 握手 → 跳转 v2（finish 后启用） ----------
+$('playv2').onclick = async () => {
+  if (!midiBlob) return;
+  $('playv2').disabled = true;
+  try {
+    $('phase').textContent = '正在交接给重制版…';
+    const root = await navigator.storage.getDirectory();
+    const dir = await root.getDirectoryHandle('audio_to_midi', { create: true });
+    const bytes = await midiBlob.arrayBuffer();
+    const fh = await dir.getFileHandle('handoff.mid', { create: true });
+    const w = await fh.createWritable();
+    await w.write(bytes);
+    await w.close();
+    const base = (audioFile && audioFile.name ? audioFile.name.replace(/\.[^.]+$/, '') : 'transkun');
+    const name = '转写_' + base + '.mid';
+    const jh = await dir.getFileHandle('handoff.json', { create: true });
+    const jw = await jh.createWritable();
+    await jw.write(JSON.stringify({ name, time: Date.now() }));
+    await jw.close();
+    dlog('已写入 OPFS 交接：' + name + '（' + bytes.byteLength + ' 字节），正在跳转…', 'ok');
+    location.href = '../midi_player_v2/?from=transcribe';
+  } catch (err) {
+    dlog('交接失败：' + (err && err.message || err), 'err');
+    $('phase').textContent = '';
+    $('playv2').disabled = false;
+  }
 };
 
 // ---------- 钢琴卷帘（pitch 21–108） ----------

@@ -157,6 +157,8 @@ const CFG = {
   elements: [], selectedId: null,
   audio: null, audioCtx: null, analyser: null, freq: null, wave: null,
   playing: false, loop: true, volume: 1, smoothing: 0.8,
+  // 输入源：'file'（上传/demo）| 'mic'（麦克风实时输入）
+  input: 'file', micStream: null, micSource: null,
   // fps=0 表示无限制（不节流，跟随显示器刷新率）；默认无限制
   fps: 0, showFps: true, showRes: true,
 };
@@ -323,8 +325,8 @@ function gradientLUT(colors){
 function elemColor(p, t){
   if(p.colorMode==='solid') return p.colors[0] || '#ff3f58';
   if(p.colorMode==='rainbow'){
-    // 基于播放进度而非墙钟时间：暂停时颜色随之冻结
-    const clock = CFG.audio ? CFG.audio.currentTime : 0;
+    // 文件模式基于播放进度（暂停时冻结）；麦克风模式无播放进度，改用墙钟时间
+    const clock = CFG.input==='mic' ? performance.now()/1000 : (CFG.audio ? CFG.audio.currentTime : 0);
     return `hsl(${(t*300 + clock*30)%360},100%,60%)`;
   }
   const lut = gradientLUT(p.colors);
@@ -674,6 +676,8 @@ function render(){
    ============================================================ */
 function loadAudio(file){
   if(!file) { _log('loadAudio: file为空', 'err'); return; }
+  if(CFG.input==='mic') stopMicInput(true); // 切回文件前先释放麦克风
+  CFG.input='file'; _syncMicBtn();
   _log('loadAudio: 加载 ' + file.name + ' (' + (file.size/1024).toFixed(0) + 'KB)');
   if(CFG.audio){ CFG.audio.pause(); CFG.audio.src=''; }
   const url = URL.createObjectURL(file);
@@ -712,6 +716,7 @@ function loadAudio(file){
   });
 }
 async function togglePlay(){
+  if(CFG.input==='mic') return; // 麦克风实时输入无播放/暂停语义
   if(!CFG.audio) return;
   const ac = ensureCtx();
   if(ac.state==='suspended'){ try{ await ac.resume(); }catch(e){ console.error('resume failed',e); } }
@@ -724,9 +729,101 @@ async function togglePlay(){
   }
 }
 function fmtTime(s){ if(!isFinite(s))return'00:00'; const m=Math.floor(s/60),ss=Math.floor(s%60); return `${String(m).padStart(2,'0')}:${String(ss).padStart(2,'0')}`; }
+
+/* ============================================================
+   麦克风实时输入：getUserMedia → MediaStreamAudioSourceNode → 同一套 Analyser
+   注意：麦克风链不接 destination，避免回放啸叫；可视化复用 render() 内同一份取样。
+   ============================================================ */
+function _syncMicBtn(){
+  const b=document.getElementById('micBtn');
+  if(!b) return;
+  const live=CFG.input==='mic';
+  b.classList.toggle('live',live);
+  b.textContent=live?'⏹ 停止':'🎤 麦克风';
+  b.title=live?'停止麦克风输入':'使用麦克风实时输入';
+}
+function _micErrorHint(e){
+  const n=(e&&(e.name||''))||'';
+  if(n==='NotAllowedError'||n==='SecurityError') return '麦克风权限被拒绝：请在浏览器地址栏允许麦克风权限后重试';
+  if(n==='NotFoundError'||n==='OverconstrainedError'||n==='DevicesNotFoundError') return '未找到可用麦克风：请检查设备连接';
+  if(n==='NotReadableError'||n==='AbortError') return '麦克风被占用或读取失败：请关闭占用它的应用后重试';
+  if(n==='TypeError'&&!window.isSecureContext) return '当前为非安全上下文：麦克风需要 HTTPS 或 localhost';
+  return '麦克风启动失败 ('+(n||(e&&e.message))||'未知错误'+')';
+}
+async function startMicInput(){
+  if(CFG.input==='mic') return;
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){
+    _log('麦克风不可用：浏览器不支持 getUserMedia（多为非 HTTPS / 旧浏览器）','err');
+    return;
+  }
+  if(!window.isSecureContext){
+    _log('麦克风需要安全上下文（HTTPS 或 localhost），当前页面不满足，尝试继续但很可能失败','warn');
+  }
+  let stream=null;
+  try{
+    stream=await navigator.mediaDevices.getUserMedia({audio:true});
+  }catch(e){
+    _log(_micErrorHint(e),'err');
+    return;
+  }
+  try{
+    const ac=ensureCtx();
+    if(ac.state==='suspended'){ try{ await ac.resume(); }catch(_){} }
+    // 停掉文件播放，避免两路混音；保留 CFG.audio 对象以便切回，但暂停它
+    if(CFG.audio&&!CFG.audio.paused){ try{ CFG.audio.pause(); }catch(_){} CFG.playing=false;
+      document.getElementById('playBtn').innerHTML=PLAY_ICON; }
+    // 断开旧麦克风源
+    if(CFG.micSource){ try{ CFG.micSource.disconnect(); }catch(_){} CFG.micSource=null; }
+    // 复用同一套 Analyser：断开到 destination 的旧路由（文件链），只连源→Analyser
+    if(CFG.analyser){ try{ CFG.analyser.disconnect(); }catch(_){} }
+    else{
+      CFG.analyser=ac.createAnalyser();
+      CFG.analyser.fftSize=2048;
+      CFG.analyser.smoothingTimeConstant=CFG.smoothing;
+    }
+    CFG.analyser.smoothingTimeConstant=CFG.smoothing;
+    CFG.audioCtx=ac;
+    const src=ac.createMediaStreamSource(stream);
+    src.connect(CFG.analyser); // 不接 destination，防止啸叫
+    CFG.micSource=src; CFG.micStream=stream; CFG.input='mic';
+    CFG.freq=new Uint8Array(CFG.analyser.frequencyBinCount);
+    CFG.wave=new Uint8Array(CFG.analyser.fftSize);
+    CFG.freq.fill(0); CFG.wave.fill(128);
+    document.getElementById('uploadText').textContent='🎤 麦克风实时输入中';
+    document.getElementById('uploadZone').classList.add('has-audio');
+    document.getElementById('playBtn').disabled=true;
+    _syncMicBtn();
+    _log('麦克风已接入：实时可视化中（点击“停止”结束）','ok');
+  }catch(e){
+    try{ stream.getTracks().forEach(t=>t.stop()); }catch(_){}
+    _log('麦克风接入 Analyser 失败: '+(e&&e.message||e),'err');
+  }
+}
+function stopMicInput(silent){
+  if(CFG.micStream){ try{ CFG.micStream.getTracks().forEach(t=>t.stop()); }catch(_){} CFG.micStream=null; }
+  if(CFG.micSource){ try{ CFG.micSource.disconnect(); }catch(_){} CFG.micSource=null; }
+  if(CFG.freq) CFG.freq.fill(0); // 切回待机态：可视化归零，不中断 render 循环
+  if(CFG.wave) CFG.wave.fill(128);
+  if(CFG.input==='mic'){
+    CFG.input='file';
+    document.getElementById('uploadText').textContent='点击上传音频文件';
+    document.getElementById('uploadZone').classList.remove('has-audio');
+    document.getElementById('uploadHint').style.display='none';
+    document.getElementById('playBtn').disabled=!CFG.audio;
+    if(CFG.audio) document.getElementById('playBtn').innerHTML=CFG.audio.paused?PLAY_ICON:PAUSE_ICON;
+    _syncMicBtn();
+    if(!silent) _log('麦克风已停止', 'warn');
+  }
+}
+async function toggleMicInput(){
+  if(CFG.input==='mic') stopMicInput(false);
+  else await startMicInput();
+}
 function updateTimeDisplay(){
   const a=CFG.audio;
   if(_seekDragging) return; // 拖动预览期间由 seekPreview 接管时间显示
+  if(CFG.input==='mic'){ const c0=document.getElementById('curTime'); const t0=document.getElementById('totalTime');
+    if(c0) c0.textContent='--:--'; if(t0) t0.textContent='实时输入'; return; }
   const c=document.getElementById('curTime');
   const t=document.getElementById('totalTime');
   if(c) c.textContent=fmtTime(a?a.currentTime:0);
@@ -734,6 +831,7 @@ function updateTimeDisplay(){
 }
 let _lastSeekUI = 0;
 function updateSeekUI(){
+  if(CFG.input==='mic') return; // 麦克风模式无进度条
   const a=CFG.audio;
   if(!a||!a.duration) return;
   if(_seekDragging) return; // 拖动预览期间不覆盖已拖到位置
@@ -1405,6 +1503,7 @@ function fitCanvas(){
 document.getElementById('uploadZone').addEventListener('click',()=>document.getElementById('fileInput').click());
 document.getElementById('fileInput').addEventListener('change',e=>loadAudio(e.target.files[0]));
 document.getElementById('playBtn').addEventListener('click',togglePlay);
+document.getElementById('micBtn').addEventListener('click',toggleMicInput);
 document.getElementById('volSlider').addEventListener('input',e=>{CFG.volume=+e.target.value;if(CFG.audio)CFG.audio.volume=CFG.volume;scheduleSave();});
 document.getElementById('loopBtn').addEventListener('click',function(){
   CFG.loop=!CFG.loop; this.classList.toggle('active',CFG.loop);
@@ -1416,6 +1515,7 @@ const seekBar=document.getElementById('seekBar');
 let _seekDragging=false;
 let _seekPreviewPct=0;
 function seekPreview(clientX){
+  if(CFG.input==='mic') return;
   if(!CFG.audio||!CFG.audio.duration) return;
   const rect=seekBar.getBoundingClientRect();
   _seekPreviewPct=Math.max(0,Math.min(1,(clientX-rect.left)/rect.width));
@@ -1425,6 +1525,7 @@ function seekPreview(clientX){
   if(c) c.textContent=fmtTime(CFG.audio.duration*_seekPreviewPct);
 }
 function seekApply(){
+  if(CFG.input==='mic') return;
   if(!CFG.audio||!CFG.audio.duration) return;
   CFG.audio.currentTime=_seekPreviewPct*CFG.audio.duration;
   const c=document.getElementById('curTime');

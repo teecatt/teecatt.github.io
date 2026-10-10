@@ -2462,6 +2462,26 @@ const COLD_START = {
 
   // 启动管线：P0 谱面 -> （起播合成钢琴 + P1 默认音色）-> P2 预配置必下资源
   // 冷启动 = 默认谱面本地无缓存（首次访问或清过缓存）；刷新命中缓存属热启动，不应再打「冷启动」。
+  // 转写页握手：?from=transcribe 时从同源 OPFS 读转写结果（audio_to_midi/handoff.mid+json），
+  // 存入用户谱库并选中播放；失败则静默走正常冷启动。
+  async function _readTranscribeHandoff(){
+    try{
+      if(new URLSearchParams(location.search).get('from') !== 'transcribe') return null;
+    }catch(e){ return null; }
+    try{
+      const root = await navigator.storage.getDirectory();
+      const dir = await root.getDirectoryHandle('audio_to_midi');
+      const meta = JSON.parse(await (await (await dir.getFileHandle('handoff.json')).getFile()).text());
+      const buf = await (await (await dir.getFileHandle('handoff.mid')).getFile()).arrayBuffer();
+      if(!buf || !buf.byteLength) return null;
+      let name = String((meta && meta.name) || '转写结果.mid');
+      if(!/\.midi?$/i.test(name)) name += '.mid';
+      return { buf, name };
+    }catch(e){
+      console.warn('[AudioDebug][WARN] 转写导入失败（OPFS 无握手文件）:', e && e.message || e);
+      return null;
+    }
+  }
   (async function coldStart(){
     // 以默认谱面是否已在本地缓存判定：谱面是阻塞起播的主资源，刷新后必然命中缓存
     let isCold = true, sheetCached = false;
@@ -2480,15 +2500,45 @@ const COLD_START = {
     // ---- P0：默认谱面 ----
     console.log('[AudioDebug][INFO] ' + tag + ' P0：' + from + '默认谱面 ' + _songLabel(COLD_START.sheet));
     try{
-      const resp = await fetchMedia(COLD_START.sheet, (p) => {
-        if(p < 100) setStatus('谱面[' + _songDisplayName(DEFAULT_SONG) + ']下载 ' + Math.round(p) + '%');
-      });
-      const buf = await resp.arrayBuffer();
-      midiBuf = buf;
-      parseAndPlayMidi(buf, DEFAULT_SONG);
-      refreshManageRowState(COLD_START.sheet); // 下载完成，更新管理面板该行状态
-      // P0 完成：立即用合成钢琴起播（不等音色）
-      startWithFallback();
+      // 转写握手优先：拿到则播转写结果（存用户库+选中），失败静默走原 P0 流程
+      let handed = false;
+      try{
+        const h = await _readTranscribeHandoff();
+        if(h && h.buf && h.buf.byteLength){
+          midiBuf = h.buf.slice(0);
+          parseAndPlayMidi(h.buf, h.name);
+          await saveUserSong(h.name, h.buf);
+          await loadSongList();
+          const sel = document.getElementById('songSel');
+          const key = 'user:' + h.name;
+          if(sel){
+            let ok = false;
+            for(let i = 0; i < sel.options.length; i++){ if(sel.options[i].value === key){ sel.selectedIndex = i; ok = true; break; } }
+            if(!ok){
+              const opt = document.createElement('option');
+              opt.value = key;
+              opt.textContent = h.name;
+              sel.appendChild(opt);
+              sel.value = key;
+            }
+          }
+          currentSongKey = key;
+          try{ history.replaceState(null, '', location.pathname); }catch(e){}
+          startWithFallback();
+          handed = true;
+        }
+      }catch(e){ handed = false; }
+      if(!handed){
+        const resp = await fetchMedia(COLD_START.sheet, (p) => {
+          if(p < 100) setStatus('谱面[' + _songDisplayName(DEFAULT_SONG) + ']下载 ' + Math.round(p) + '%');
+        });
+        const buf = await resp.arrayBuffer();
+        midiBuf = buf;
+        parseAndPlayMidi(buf, DEFAULT_SONG);
+        refreshManageRowState(COLD_START.sheet); // 下载完成，更新管理面板该行状态
+        // P0 完成：立即用合成钢琴起播（不等音色）
+        startWithFallback();
+      }
     }catch(e){
       if(hint) hint.textContent = 'MIDI加载失败：' + e.message;
       return; // 谱面失败则不继续下载音色

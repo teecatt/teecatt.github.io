@@ -64,6 +64,10 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI","Microsoft Ya
 .topbar .upload-zone .uz-text{font-size:13px;color:var(--muted)}
 .topbar select{background:var(--panel2);border:1px solid var(--line);color:var(--text);padding:5px 10px;border-radius:6px;font-size:12px;cursor:pointer;outline:none;flex-shrink:0}
 .topbar select:hover{border-color:var(--accent)}
+/* 输入切换：上传 / 麦克风（沿用深色 UI） */
+#micBtn{background:var(--panel2);border:1px solid var(--line);color:var(--text);padding:8px 14px;border-radius:8px;font-size:12px;cursor:pointer;flex-shrink:0;white-space:nowrap;transition:all .2s}
+#micBtn:hover{border-color:var(--accent);background:var(--hover)}
+#micBtn.live{background:linear-gradient(120deg,rgba(255,63,88,.25),rgba(200,34,255,.25));border-color:var(--accent);color:#fff}
 
 .lib-search{padding:10px;border-bottom:1px solid var(--line)}
 .lib-search input{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--text);padding:7px 10px;border-radius:6px;font-size:12px;outline:none}
@@ -278,6 +282,7 @@ body.fs-active .log-bar{display:none!important}
         </span>
       </div>
     </div>
+    <button id="micBtn" title="使用麦克风实时输入" aria-label="使用麦克风实时输入">🎤 麦克风</button>
     <input type="file" id="fileInput" accept="audio/*">
   </div>
 </div>
