@@ -1332,13 +1332,19 @@ async function _ensureSpessaBank(onProgress){
     const total = parseInt(resp.headers.get('content-length') || '0', 10) || 8423728;
     const reader = resp.body.getReader(); // 注意：只取一次 reader，重复 getReader 会锁死抛错
     const chunks = [];
-    let got = 0;
+    let got = 0, nextPct = 25;
     for(;;){
       const r = await reader.read();
       if(r.done) break;
       chunks.push(r.value);
       got += r.value.length;
       if(onProgress) onProgress(got / total * 0.95, '正在下载SF2音色库…');
+      // 进度同时进调试终端（现版下载日志也在终端；状态区只保留瞬时提示）
+      const pct = got / total * 100;
+      if(pct >= nextPct){
+        console.log('[AudioDebug][INFO] SF2音色库下载 ' + Math.floor(pct) + '%（' + _fmtSize(got) + '/' + _fmtSize(total) + '）');
+        nextPct += 25;
+      }
     }
     const out = new Uint8Array(got);
     let off = 0;
