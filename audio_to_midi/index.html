@@ -3,37 +3,72 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>音频转 MIDI · 规划中</title>
+<title>音频转 MIDI · 钢琴转写（浏览器本地运行）</title>
 <style>
-:root{color-scheme:dark}
+:root{color-scheme:dark;--bg:#0d1117;--panel:#161b22;--line:#30363d;--txt:#e6edf3;--dim:#8b949e;--teal:#2dd4bf;--gold:#e8b64c;--red:#ff3f58}
 *{box-sizing:border-box}
-body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0d1117;color:#e6edf3;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif;padding:24px}
-main{max-width:640px;border:1px solid rgba(45,212,191,.35);border-radius:16px;padding:40px 32px;background:rgba(45,212,191,.05)}
-.ico{font-size:52px}
-h1{font-size:22px;margin:14px 0 6px}
-.sub{color:#8b949e;font-size:13px;line-height:2;margin:0 0 16px}
-ol{margin:0 0 8px;padding-left:20px;font-size:13px;line-height:2.1;color:#c9d1d9}
-li b{color:#2dd4bf}
-nav{margin-top:20px;font-size:14px}
-a{color:#2dd4bf;text-decoration:none}
-a:hover{text-decoration:underline}
-.ref{font-size:12px;color:#6e7681;margin-top:14px;line-height:2}
+body{margin:0;background:var(--bg);color:var(--txt);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif;padding:20px}
+.wrap{max-width:860px;margin:0 auto}
+.top{font-size:13px;color:var(--dim);margin-bottom:12px}
+.top a{color:var(--teal);text-decoration:none}
+h1{font-size:22px;margin:0 0 4px}
+.status{font-size:12px;color:var(--gold);margin:0 0 16px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;margin-bottom:14px}
+#drop{border:2px dashed rgba(45,212,191,.4);border-radius:12px;padding:34px 16px;text-align:center;cursor:pointer;color:var(--dim);font-size:14px}
+#drop.over{border-color:var(--teal);background:rgba(45,212,191,.06);color:var(--txt)}
+#drop b{color:var(--teal)}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:12px}
+button{background:var(--teal);border:0;color:#06251f;font-weight:700;font-size:14px;padding:10px 22px;border-radius:8px;cursor:pointer}
+button:disabled{opacity:.4;cursor:default}
+button.ghost{background:transparent;border:1px solid var(--line);color:var(--txt)}
+#prog{height:8px;background:#0a0d12;border:1px solid var(--line);border-radius:6px;margin-top:12px;overflow:hidden;display:none}
+#progBar{height:100%;width:0%;background:linear-gradient(90deg,var(--teal),var(--gold))}
+#phase{font-size:12px;color:var(--dim);margin-top:6px;min-height:18px}
+#roll{width:100%;height:220px;background:#0a0d12;border:1px solid var(--line);border-radius:8px;display:none}
+#diag{background:#0a0d12;border:1px solid var(--line);border-radius:8px;padding:12px;font-size:12px;line-height:1.9;color:#c9d1d9;white-space:pre-wrap;max-height:260px;overflow:auto}
+#diag .ok{color:var(--teal)} #diag .warn{color:var(--gold)} #diag .err{color:var(--red)}
+.stats{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--dim);margin-top:8px}
+.stats b{color:var(--txt)}
+label.chk{font-size:13px;color:var(--dim);display:flex;gap:6px;align-items:center;cursor:pointer}
+.ref{font-size:12px;color:#6e7681;line-height:2}
+.ref a{color:var(--teal);text-decoration:none}
 </style>
 </head>
 <body>
-<main>
-<div class="ico">🎼</div>
-<h1>音频转 MIDI</h1>
-<p class="sub">钢琴录音（MP3/WAV）→ MIDI 谱面，全程浏览器本地运行。<br>当前状态：规划中，模型尚未导出。路线确认后按阶段推进。</p>
-<ol>
-<li><b>阶段 1</b>：Transkun V2 导出 ONNX，Python 端验证输出一致</li>
-<li><b>阶段 2</b>：浏览器最小推理管道（onnxruntime-web，控制台验证）</li>
-<li><b>阶段 3</b>：Web Worker + OPFS 模型缓存 + 进度反馈</li>
-<li><b>阶段 4</b>：完整 UI（上传/预览/下载）+ 部署 + Python/浏览器对比测试</li>
-</ol>
-<p class="ref">上游项目：<a href="https://github.com/Yujia-Yan/Transkun">Yujia-Yan/Transkun</a>（MIT）·
-论文：ISMIR 2024 Transformer + Neural Semi-CRF · 输入 44.1kHz 音频</p>
-<nav><a href="../">← 返回门户</a> &nbsp;·&nbsp; <a href="../midi_player_v2/">重制版 MIDI 播放器 →</a></nav>
-</main>
+<div class="wrap">
+  <div class="top"><a href="../">← 门户</a> · <a href="../midi_player_v2/">重制版 MIDI 播放器</a></div>
+  <h1>🎼 音频转 MIDI</h1>
+  <p class="status" id="buildStatus">框架阶段 · 等待 ONNX 权重（链路自检模式）</p>
+
+  <div class="card">
+    <div id="drop">拖拽音频到这里，或 <b>点击选择</b>（.mp3 / .wav / .flac）<br><span id="fileInfo">未选择文件</span></div>
+    <input type="file" id="file" accept=".mp3,.wav,.flac,.ogg,.m4a,audio/*" hidden>
+    <div class="row">
+      <button id="go" disabled>开始转写</button>
+      <button id="dl" class="ghost" disabled>下载 MIDI</button>
+      <label class="chk"><input type="checkbox" id="selftest" checked> 链路自检（合成测试音阶，不经模型）</label>
+    </div>
+    <div id="prog"><div id="progBar"></div></div>
+    <div id="phase"></div>
+    <div class="stats" id="stats"></div>
+  </div>
+
+  <div class="card">
+    <canvas id="roll" width="820" height="220"></canvas>
+    <div class="ref" id="rollHint">转写完成后此处显示钢琴卷帘预览（ pitch 21–108 ）。</div>
+  </div>
+
+  <div class="card">
+    <div style="font-size:13px;margin-bottom:8px">诊断日志</div>
+    <div id="diag">等待操作…</div>
+  </div>
+
+  <div class="card ref">
+    上游：<a href="https://github.com/Yujia-Yan/Transkun">Yujia-Yan/Transkun</a>（MIT，V2 = Transformer + Neural Semi-CRF，ISMIR 2024）·
+    特征契约：44.1kHz 单声道 / n_fft 4096 / hop 1024 / 229 mel（30–8000Hz，torchaudio slaney/htk）/ log 归一化 / 16s 分段 8s 步进 ·
+    权重到位后填入 <span style="color:var(--gold)">MODEL_HF_URL</span> 即插即用（OPFS 缓存）。
+  </div>
+</div>
+<script src="./app.js?v=dev"></script>
 </body>
 </html>
