@@ -6,6 +6,8 @@
     "/midi_player/soundfonts/*",
     "/midi_player/vendor/*",
     "/midi_player/midi/*",
+    "/midi_player_v2/vendor/*",
+    "/midi_player_v2/soundfonts/*",
     "/notes/vendor/*",
     "/tools/skills/*",
     "/tools/tools/*",
