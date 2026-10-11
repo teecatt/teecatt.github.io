@@ -343,8 +343,10 @@ async function ensureModels() {
 }
 
 // ---------- 断点续跑（ckpt 落 OPFS；写失败只 warn 不中断转写） ----------
-const CKPT_META = 'ckpt-meta.json', CKPT_PCM = 'ckpt-pcm.raw';
+const CKPT_META = 'ckpt-meta.json', CKPT_PCM = 'ckpt-pcm.raw', CKPT_MEL = 'ckpt-mel.raw';
+const MEL_SEG_LEN = 691 * 229 * 6; // 每段 mel 长度（Float32 原样，禁量化；约 3.8MB/段）
 let ckptInfo = null, resumeArmed = false, lastPcm44 = null, lastSr = 44100, goOrigText = '开始转写';
+let melWriteQ = Promise.resolve(), melRunId = 0, melGot = new Set(); // mel 增量写串行队列；run epoch（新音频/done 递增，过期队列写直接丢弃防串任务）；已落盘段号集（仅数字）
 async function ckptDir() {
   const root = await navigator.storage.getDirectory();
   return root.getDirectoryHandle('audio_to_midi', { create: true });
@@ -354,12 +356,42 @@ async function clearCkpt() {
     const dir = await ckptDir();
     await dir.removeEntry(CKPT_META).catch(() => {});
     await dir.removeEntry(CKPT_PCM).catch(() => {});
+    await dir.removeEntry(CKPT_MEL).catch(() => {}); // mel 缓存与 ckpt 同进退
   } catch (_) {}
 }
 function armFreshAudio() { // 新音频（上传/录音）：废弃旧断点，按钮文案恢复
-  resumeArmed = false; ckptInfo = null;
+  resumeArmed = false; ckptInfo = null; melRunId++; melGot = new Set(); // 递增 epoch，旧任务排队中的 mel 写直接丢弃
   try { $('go').textContent = goOrigText; } catch (_) {}
   clearCkpt();
+}
+// worker 每段 mel 回传：按“段序号×段字节数”偏移增量写同一文件（原样 Float32，无量化）。
+// 主线程常驻约 1 段（无 mel 数据缓存、无 116MB 拼盘；仅一个段号集合做完成判定，常驻可忽略）。
+// 串行队列保序（worker 单循环严格递增 post，乱序生产上不可能）；半截/残留文件由尺寸守卫拒收（逻辑不动）。
+function onMelSeg(m) {
+  try {
+    if (!m.mel || !(m.seg >= 1) || !(m.nSegTotal >= 1)) return;
+    const seg = m.seg, total = m.nSegTotal, data = new Float32Array(m.mel), id = melRunId;
+    melWriteQ = melWriteQ.then(() => writeMelSeg(seg, total, data, id)).catch(() => {});
+  } catch (_) {}
+}
+async function writeMelSeg(seg, total, data, id) {
+  if (id !== melRunId) return; // 过期任务排队写直接丢弃
+  try {
+    if (seg === 1) melGot = new Set(); // 本轮 Phase A 必从段 1 起，按到达序重置
+    const dir = await ckptDir();
+    if (seg === 1) { try { await dir.removeEntry(CKPT_MEL); } catch (_) {} } // 本轮从头写，丢弃旧任务残留尾巴
+    const w = await (await dir.getFileHandle(CKPT_MEL, { create: true })).createWritable({ keepExistingData: true });
+    await w.write({ type: 'write', position: (seg - 1) * MEL_SEG_LEN * 4, data });
+    await w.close();
+    melGot.add(seg);
+    if (melGot.size === total) { // 集齐才验尺寸（防稀疏前缀早报）
+      const f = await (await dir.getFileHandle(CKPT_MEL)).getFile();
+      if (f.size === total * MEL_SEG_LEN * 4) dlog(`mel 缓存已落盘：${total}段 / ${(f.size / 1048576).toFixed(0)}MB（续跑跳过特征计算）`, 'ok');
+      else { try { await dir.removeEntry(CKPT_MEL); } catch (_) {} } // 尺寸不对（外来残留）：删了下次重算（宁缺毋滥）
+    }
+  } catch (err) {
+    dlog('mel 缓存写失败（不中断转写）：' + (err && err.message || err), 'warn');
+  }
 }
 // 主线程收到 worker 每波 ckpt：meta 必写；pcm 只在缺失/大小不对时写一次（同一任务内容不变）
 async function saveCkpt(m) {
@@ -393,7 +425,12 @@ async function checkCkpt() {
     const pf = await (await dir.getFileHandle(CKPT_PCM)).getFile();
     if (meta && meta.doneSeg > 0 && pf.size > 0) {
       ckptInfo = meta;
-      dlog(`检测到未完成任务（${meta.doneSeg}段/${meta.nSegTotal}段），点“开始转写”继续`, 'warn');
+      let melNote = '无 mel 缓存（续跑重算特征）';
+      try {
+        const mf = await (await dir.getFileHandle(CKPT_MEL)).getFile();
+        if (mf.size === meta.nSegTotal * MEL_SEG_LEN * 4) melNote = `mel 缓存 ${(mf.size / 1048576).toFixed(0)}MB，续跑跳过特征计算`;
+      } catch (_) {}
+      dlog(`检测到未完成任务（${meta.doneSeg}段/${meta.nSegTotal}段，${melNote}），点“开始转写”继续`, 'warn');
       const gb = $('go');
       if (gb && !pcmMono) { gb.textContent = '继续转写'; gb.disabled = false; resumeArmed = true; }
     }
@@ -415,18 +452,29 @@ $('go').onclick = async () => {
       const raw = await (await (await dir.getFileHandle(CKPT_PCM)).getFile()).arrayBuffer();
       const rp = new Float32Array(raw);
       lastPcm44 = rp.slice(); lastSr = meta.sampleRate || 44100; // rp.buffer 随 transfer 剥离，留拷贝供后续 ckpt
+      // mel 缓存（老版本断点无此文件=回退重算；长度对不上同样回退，不炸）
+      let melSegs = null, melNote = '无 mel 缓存，重算特征', melBuf = null;
+      try {
+        melBuf = await (await (await dir.getFileHandle(CKPT_MEL)).getFile()).arrayBuffer();
+        if (melBuf.byteLength === meta.nSegTotal * MEL_SEG_LEN * 4) {
+          melSegs = [];
+          for (let i = 0; i < meta.nSegTotal; i++) melSegs.push(new Float32Array(melBuf, i * MEL_SEG_LEN * 4, MEL_SEG_LEN));
+          melNote = `mel 缓存 ${meta.nSegTotal}段，跳过特征计算`;
+        } else melBuf = null;
+      } catch (_) { melSegs = null; melBuf = null; }
       let models = preloadedModels;
       preloadedModels = null;
       if (!models) models = await ensureModels();
       const w = getWorker();
       const outMode = meta.outMode || 'piano';
       if ($('outMode')) $('outMode').value = outMode;
-      const msg = { type: 'transcribe', sampleRate: lastSr, outMode, resume: { pcm: rp, startPos: meta.startPos, events: meta.events, fromSeg: meta.doneSeg, outMode } };
+      const msg = { type: 'transcribe', sampleRate: lastSr, outMode, resume: { pcm: rp, startPos: meta.startPos, events: meta.events, fromSeg: meta.doneSeg, outMode, melSegs } };
       const transfer = [rp.buffer];
+      if (melBuf) transfer.push(melBuf); // mel 视图同源，传一次整块（零拷贝；主线程不再需要）
       transfer.push(models.scorer, models.attr);
       if (models.scorerFp16) transfer.push(models.scorerFp16);
       if (forceBackendOnce) { msg.forceBackend = forceBackendOnce; forceBackendOnce = null; }
-      dlog(`断点续跑：从第${meta.doneSeg + 1}段起，共${meta.nSegTotal}段`);
+      dlog(`断点续跑：从第${meta.doneSeg + 1}段起，共${meta.nSegTotal}段（${melNote}）`);
       w.postMessage(msg, transfer);
     } catch (err) {
       dlog('续跑启动失败：' + (err && err.message || err), 'err');
@@ -484,6 +532,8 @@ function onWorkerMsg(e) {
     finish(m);
   } else if (m.type === 'ckpt') {
     saveCkpt(m); // 断点存档（失败只 warn，函数内部处理，不中断转写）
+  } else if (m.type === 'mel') {
+    onMelSeg(m); // mel 存档（失败只 warn，函数内部处理，不中断转写）
   } else if (m.type === 'error') {
     dlog('转写失败：' + m.text, 'err');
     $('go').disabled = false;
@@ -503,8 +553,8 @@ function finish(m) {
   const d = m.diag;
   transcribing = false;
   unlockScreen();
-  clearCkpt(); // 完成删断点（resume 跑完同样）
-  resumeArmed = false; ckptInfo = null;
+  clearCkpt(); // 完成删断点（含 mel 缓存；resume 跑完同样）
+  resumeArmed = false; ckptInfo = null; melRunId++; melGot = new Set(); // 废弃排队中的 mel 写
   try { $('go').textContent = goOrigText; } catch (_) {}
   midiBlob = new Blob([m.midi], { type: 'audio/midi' });
   $('dl').disabled = false;

@@ -420,22 +420,25 @@ async function inferAll(ortNS, scorers, attr, backend, pcm, opts, freshScorer, s
   const eventsByType = new Map(); // pitch -> Note[](hasOnset/hasOffset 保留到终筛)
   let segIdx = 0, nSegTotal = 0;
   for (let s0 = 0; s0 < nSample; s0 += STEP) nSegTotal++;
-  // 断点续跑：恢复 forcedStart 链与已组装事件（只恢复状态，不碰算法；mel 照算）。
+  // 断点续跑：恢复 forcedStart 链与已组装事件（只恢复状态，不碰算法）。
   // 注意 events 经 JSON 后 Map 数字键变字符串，恢复时 Number() 转回，否则跨断点合并失效。
   const fromSeg = (resume && resume.fromSeg) | 0;
+  const resumeMel = (resume && resume.melSegs) || null; // OPFS 第三文件载入的各段 mel（原样 Float32），缺省=老断点回退重算
   if (resume) {
     if (Array.isArray(resume.startPos) && resume.startPos.length === 90) startPos = resume.startPos.slice();
     if (Array.isArray(resume.events)) for (const [pitch, arr] of resume.events) eventsByType.set(Number(pitch), arr);
-    if (fromSeg > 0) log(`断点续跑：从第${fromSeg + 1}段起（已完成${fromSeg}/${nSegTotal}段，mel 照算）`);
+    if (fromSeg > 0) log(`断点续跑：从第${fromSeg + 1}段起（已完成${fromSeg}/${nSegTotal}段${resumeMel ? '，mel 缓存' + resumeMel.length + '段免重算' : '，mel 重算'}）`);
   }
-  // Phase A：全部 mel 预计算（CPU 快活；内存约 nSeg×3.8MB），Phase B 波次打分时不再碰音频
+  // Phase A：mel 预计算。有缓存的段直接跳过（整段跳过）；无缓存（老断点）照算。
   // 日志降频：每 8 段一行汇总（均值/最慢段），单段超 1s 才单独打一行（每段 2 行预算不超）。
   const segMel = [];
-  let melN = 0, melMsSum = 0, melMsMax = 0, melMaxSeg = 0;
+  let melN = 0, melHit = 0, melMsSum = 0, melMsMax = 0, melMaxSeg = 0;
   {
     let fi = 0;
     for (let s0 = 0; s0 < nSample; s0 += STEP) {
       fi++;
+      const cached = resumeMel && resumeMel[fi - 1];
+      if (cached) { melHit++; segMel.push({ s0, mel: cached }); continue; }
       phase(`特征 ${fi}/${nSegTotal} 段…`, 0.28 + 0.06 * fi / nSegTotal, true); // 日志治理：只动进度条
       const slice = padded.subarray(s0, Math.min(s0 + SEG, nSample));
       const seg = slice.length < SEG ? (() => { const z = new Float32Array(SEG); z.set(slice); return z; })() : slice;
@@ -447,7 +450,8 @@ async function inferAll(ortNS, scorers, attr, backend, pcm, opts, freshScorer, s
       melN++; melMsSum += ms;
       if (ms > melMsMax) { melMsMax = ms; melMaxSeg = fi; }
       if (ms > 1000) log(`第${fi}/${nSegTotal}段mel偏慢，691帧×6通道，mel_ms=${ms.toFixed(0)}ms`);
-      if (fi % 8 === 0 || fi === nSegTotal) log(`mel进度 ${fi}/${nSegTotal}段：均值${(melMsSum / Math.max(melN, 1)).toFixed(0)}ms/段，最慢第${melMaxSeg}段${melMsMax.toFixed(0)}ms`);
+      if (fi % 8 === 0 || fi === nSegTotal) log(`mel进度 ${fi}/${nSegTotal}段：新算均值${(melMsSum / Math.max(melN, 1)).toFixed(0)}ms/段（新算${melN}＋命中${melHit}），最慢第${melMaxSeg}段${melMsMax.toFixed(0)}ms`);
+      try { postMessage({ type: 'mel', seg: fi, nSegTotal, mel: mel6 }); } catch (_) {} // 回主线程存档（clone 拷贝不 transfer，segMel 照用）
       segMel.push({ s0, mel: mel6 }); // [691,229,6]
     }
   }
