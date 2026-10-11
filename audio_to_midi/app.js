@@ -103,6 +103,7 @@ async function pickFile(f) {
     dlog(`解码完成：${n} 采样 / ${sampleRate}Hz / ${ch}声道→单声道，${(performance.now() - t0).toFixed(0)}ms`, 'ok');
     $('fileInfo').textContent = `${f.name} · ${(n / sampleRate).toFixed(1)}s · ${sampleRate}Hz`;
     if (!prefetching) $('go').disabled = false; // 预下载中则等 finally 统一恢复，避免并行双下载
+    if (!prefetching && !$('go').disabled) $('go').click(); else if (prefetching) autoGo = true; // 解码完成即自动转写
   } catch (err) {
     dlog('解码失败：' + (err && err.message || err) + '（请用 MP3/WAV）', 'err');
     $('fileInfo').textContent = '解码失败，换个文件试试';
@@ -205,6 +206,7 @@ async function onRecStop() {
     dlog(`录音解码完成：${n} 采样 / ${sampleRate}Hz / ${ch}声道→单声道，${(performance.now() - t0).toFixed(0)}ms`, 'ok');
     $('fileInfo').textContent = `麦克风录音 · ${(n / sampleRate).toFixed(1)}s`;
     if (!prefetching) $('go').disabled = false; // 同上，预下载中不提前启用
+    if (!prefetching && !$('go').disabled) $('go').click(); else if (prefetching) autoGo = true; // 录音解码完成即自动转写
   } catch (err) {
     dlog('录音解码失败：' + (err && err.message || err), 'err');
     $('fileInfo').textContent = '录音解码失败，请重试';
@@ -258,6 +260,7 @@ async function ensureModels() {
 
 // ---------- 转写 ----------
 $('go').onclick = async () => {
+  autoGo = false; // 本次已触发，清除挂起的自动转写
   if (!pcmMono) return;
   $('go').disabled = true;
   $('prog').style.display = 'block';
@@ -383,6 +386,7 @@ function drawRoll(notes) {
 
 // ---------- 进页预下载：load 后台调用 ensureModels（复用 fetchOne 进度条 + phase + 竞速逻辑） ----------
 let preloadedModels = null; // 预下载好的模型（ArrayBuffer），转写时优先复用
+let autoGo = false; // 上传/录音解码完成后自动开始转写（预下载中则等其结束再触发）
 let prefetching = false; // 预下载进行中时 pickFile/onRecStop 不提前启用转写按钮，避免并行双下载
 window.addEventListener('load', () => {
   prefetching = true;
@@ -401,5 +405,6 @@ window.addEventListener('load', () => {
     prefetching = false;
     goBtn.textContent = origText;
     goBtn.disabled = !pcmMono; // 无解码音频仍保持禁用，有则恢复可用
+    if (autoGo && pcmMono && !goBtn.disabled) { autoGo = false; goBtn.click(); } // 预下载期间上传的文件，补触发自动转写
   });
 });
