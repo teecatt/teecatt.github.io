@@ -177,6 +177,7 @@ onmessage = async (e) => {
     }, [midiBytes.buffer]);
   } catch (err) {
     self._fbArmed = false; // 失败已转 error 通道，解除武装（gpuLost 另行上报）
+    try { clearInterval(self._tickTimer); self._tickTimer = null; } catch (_) {} // 心跳止（失败路径，防泄漏）
     postMessage({ type: 'error', text: String((err && err.stack) || err) });
   }
 };
@@ -355,10 +356,10 @@ async function runModel(pcm, models, forceBackend, runOpts) {
     for (let i = 0; i < nPool; i++) scorers.push(await mkSession(scorerBuf, prov));
     phase('scorer 会话就绪，加载 attr 会话…', 0.36);
     const attr = await mkSession(models.attr, prov);
-    log(`ONNX 就绪：后端=${be}，scorer=${scorerTag}×${nPool}，S=${scorers[0].outputNames}，attr=${attr.outputNames}，worker.js?v=15`);
+    log(`ONNX 就绪：后端=${be}，scorer=${scorerTag}×${nPool}，S=${scorers[0].outputNames}，attr=${attr.outputNames}，worker.js?v=16`);
     const freshScorer = () => mkSession(scorerBuf, prov); // 会话损坏时重建用（见 inferAll 限流处理）
     try {
-      return await inferAll(ortNS, scorers, attr, be, pcm, runOpts, freshScorer);
+      return await inferAll(ortNS, scorers, attr, be, pcm, runOpts, freshScorer, scorerTag);
     } finally {
       for (const s of scorers) { try { s && s.release && (await s.release()); } catch (_) {} }
       try { attr && attr.release && (await attr.release()); } catch (_) {}
@@ -381,8 +382,12 @@ function runWithTimeout(p, ms, label) {
 }
 
 // 全量分段推理（与 transcribe() 逐行对齐；无状态，可整体重跑）
-async function inferAll(ortNS, scorers, attr, backend, pcm, opts, freshScorer) {
+async function inferAll(ortNS, scorers, attr, backend, pcm, opts, freshScorer, scorerTag) {
   let scorerPool = Array.isArray(scorers) ? scorers : [scorers]; // 兼容旧单会话调用
+  // 分相探针注记：ort-web run()为单调用，upload/run/readback无法拆分，score_ms只记run总时长
+  log('探针注记：score_ms=run总时长（ort单调用，upload/run/readback不可拆）');
+  // worker 1s心跳（转写期间每秒一条极简tick，防长静默误判卡死；主线程无tick分支，忽略即兼容；harness无定时器则静默跳过）
+  try { try { clearInterval(self._tickTimer); } catch (_) {} if (typeof setInterval === 'function') self._tickTimer = setInterval(() => { try { postMessage({ type: 'tick', t: Date.now() }); } catch (_) {} }, 1000); } catch (_) {}
 
   // 分段常量（与 transcribe() 逐行对齐）
 
@@ -409,7 +414,10 @@ async function inferAll(ortNS, scorers, attr, backend, pcm, opts, freshScorer) {
       const seg = slice.length < SEG ? (() => { const z = new Float32Array(SEG); z.set(slice); return z; })() : slice;
       const frames = makeFrames(seg); // 691 帧
       gainNorm(frames);
-      segMel.push({ s0, mel: framesToMel6(frames, T) }); // [691,229,6]
+      const tMel0 = performance.now();
+      const mel6 = framesToMel6(frames, T);
+      log(`第${fi}/${nSegTotal}段mel完成，mel_ms=${(performance.now() - tMel0).toFixed(0)}ms`);
+      segMel.push({ s0, mel: mel6 }); // [691,229,6]
     }
   }
   // Phase B：波次打分。WebGPU 用 2 会话并发（单次 691 帧已基本吃满手机 GPU，
@@ -465,12 +473,15 @@ async function inferAll(ortNS, scorers, attr, backend, pcm, opts, freshScorer) {
     }
     log(`第${w + 1}~${segIdx}段打分完成，用时${Date.now() - tScore0}ms`);
     for (const t of tensors) { try { t.dispose && t.dispose(); } catch (_) {} }
+    for (let k = 0; k < wave.length; k++) segMel[w + k].mel = null; // 边算边丢：Tensor已建、run已resolve（零拷贝安全），组装/Viterbi只读S/CTX，消费顺序不动
+    { let _alive = 0; for (const _s of segMel) if (_s.mel) _alive++; const _sMB = (scorerTag === 'fp16') ? 86 : 171.9; log(`堆记账：segMel残留${_alive}段×3.8MB≈${(_alive * 3.8).toFixed(1)}MB＋本波outs${wave.length}段×(${_sMB.toFixed(0)}＋63.7)MB≈${(wave.length * (_sMB + 63.7)).toFixed(1)}MB（公式：存活=segMel＋outs）`); }
     for (let k = 0; k < wave.length; k++) {
       const dispIdx = w + k + 1; // 段内显示序号（心跳/属性头用）
       const out = outs[k];
       const S = out.S.data, Sskip = out.Sskip.data, CTX = out.CTX.data;
       try { for (const t of Object.values(out)) t.dispose && t.dispose(); } catch (_) {} // S单张171MB(fp16 86MB)，及时还显存
     // 90 symbol 各自 Viterbi（与 torch nBatch=nSym 等价；每30个报一次心跳，避免长静默）
+    const tVit0 = performance.now();
     const intervals = [];
     for (let sym = 0; sym < 90; sym++) {
       if (sym % 30 === 0) phase(`第${dispIdx}/${nSegTotal}段：Viterbi 解码 ${sym}/90…`, segRatio);
@@ -481,10 +492,12 @@ async function inferAll(ortNS, scorers, attr, backend, pcm, opts, freshScorer) {
         forcedStart: startPos[sym]
       }));
     }
+    const vitMs = performance.now() - tVit0;
     // 属性头（无检出则跳过）
     let total = 0;
     for (let sym = 0; sym < 90; sym++) total += intervals[sym].length;
     let vel = [], ofVal = [], ofPres = [];
+    const tAttr0 = performance.now();
     if (total > 0) {
       phase(`第${dispIdx}/${nSegTotal}段：力度/离位属性头（${total}检出）…`, segRatio);
       const ca = new Float32Array(total * 256), cb = new Float32Array(total * 256);
@@ -503,6 +516,8 @@ async function inferAll(ortNS, scorers, attr, backend, pcm, opts, freshScorer) {
       vel = ao.vel.data; ofVal = ao.ofVal.data; ofPres = ao.ofPres.data;
       try { for (const t of Object.values(ao)) t.dispose && t.dispose(); } catch (_) {}
     }
+    const attrMs = performance.now() - tAttr0;
+    log(`第${dispIdx}/${nSegTotal}段解码：vit_ms=${vitMs.toFixed(0)}ms attr_ms=${attrMs.toFixed(0)}ms（${total}检出）`);
     // 组装（与 transcribeFrames/test_e2e_v3.assemble 逐行对齐）
     const beginTime = wave[k].s0 / FS - (SEG_SEC - STEP_SEC);
     const lastP = new Array(90).fill(0);
@@ -558,6 +573,7 @@ async function inferAll(ortNS, scorers, attr, backend, pcm, opts, freshScorer) {
   eventsAll = resolveOverlapping(eventsAll);
   const notes = eventsAll.map(v => ({ start: v.start, end: v.end, pitch: v.pitch, velocity: v.velocity }));
   log(`转写完成：${notes.length} 音符（ pedals=${notes.filter(v => v.pitch < 0).length}），后端=${backend}`);
+  try { clearInterval(self._tickTimer); self._tickTimer = null; } catch (_) {} // 心跳止（正常完成）
   return { notes, diag: { segments: nSegTotal, backend } };
 }
 
