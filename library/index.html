@@ -59,9 +59,9 @@ footer{border-top:1px solid var(--line);padding:16px;text-align:center;font-size
 <script>
 (function(){
   var container = document.getElementById('container');
-  var TYPE_ORDER = ['rules','tools','skills','plugins','guides'];
-  var TYPE_LABEL = {rules:'📋 规范文档',tools:'🛠️ 实用工具',skills:'🎯 技能包',plugins:'🧩 插件',guides:'📖 方案指南'};
-  var TYPE_ICO = {rules:'📋',tools:'🛠️',skills:'🎯',plugins:'🧩',guides:'📖'};
+  var TYPE_ORDER = ['rules','tools','skills','plugins','guides','context'];
+  var TYPE_LABEL = {rules:'📋 规范文档',tools:'🛠️ 实用工具',skills:'🎯 技能包',plugins:'🧩 插件',guides:'📖 方案指南',context:'🧠 上下文压缩与自愈'};
+  var TYPE_ICO = {rules:'📋',tools:'🛠️',skills:'🎯',plugins:'🧩',guides:'📖',context:'🧠'};
   function esc(s){ var d=document.createElement('div'); d.textContent=s==null?'':String(s); return d.innerHTML; }
   function abs(p){ if(!p) return p; return p.indexOf('/')===0 ? p : '/'+p; }
   function copyText(text, btn){
