@@ -5,8 +5,11 @@
  *   log归一 ((mel+eps).log()-log(eps))/(-log(eps)),
  *   帧先做整体 gain归一 (x-mean)/(std+1e-8), 再进mel。
  * 注意：nExtraWins=5 的可学习高斯窗是权重的一部分，无权重时只用 hann 主窗。
- * 真实推理钩子：ORT_MODEL_URL（阶段2接 onnxruntime-web + 手写 Viterbi，见文件尾）。
+ * 解码：TranskunViterbi.decode（viterbi.js，与 torch 版交叉验证通过），
+ *   ONNX 到位后只需把 S/S_skip 换成真实推理输出（见 decodeScoresToNotes 注释）。
  */
+'use strict';
+importScripts('viterbi.js'); // Semi-CRF 后向 Viterbi（node --check 只做语法检查，不执行）
 'use strict';
 
 const FS = 44100, WIN = 4096, HOP = 1024, N_MELS = 229;
@@ -85,6 +88,7 @@ const MEL_BANK = buildMelBank();
 onmessage = async (e) => {
   const msg = e.data;
   if (msg.type === 'probeBackend') return probeBackend();
+  if (msg.type === 'viterbiSelftest') return viterbiPlantedTest();
   if (msg.type !== 'transcribe') return;
   const t0 = performance.now();
   try {
@@ -226,12 +230,65 @@ function writeMidi(notes) {
 
 /* ---------- 阶段2钩子：ONNX 推理 + 手写 Viterbi ----------
  * 导出策略（已定）：只导出 Transformer 评分网络 + velocity/refine 头；
- * Semi-CRF 的 Viterbi 动态规划在 JS 手写（C++ 扩展无法进 ONNX）。
- * runModel 输入：mel [nFrame×229]；输出：Note[{start,end,pitch,velocity}]（秒）。
- * 段合并语义照抄 transcribe()：forcedStartPos + mergeIncompleteEvent +
- * resolveOverlapping + 末段 hasOffset=true。权重到位后实现本函数即可，
- * 上游调用链（分段/进度/SMF）不用动。
+ * Semi-CRF 的 Viterbi 已在 viterbi.js 落地（与 torch 版 5 组向量逐项一致）。
+ * ONNX 输出布局（export_transkun_onnx.py 契约）：
+ *   S      [T,T,90]：score[end,begin,symbol]，symbol 0→-64 踏板、1→-67、
+ *           2..89→pitch 21..108（即 targetMIDIPitch=[-64,-67]+21..108）；
+ *   S_skip [T-1,90] 或 [T,90]：skip 分数（若导出来是 T 行，取前 T-1 行，
+ *           桌面端 validate_onnx.py 会锁定到底是哪种）；
+ *   velocity/of 头：力度 argmax + offset 细化（transcribe.py），待权重到位后接。
+ * 段合并（forcedStartPos/onsetBound/mergeIncompleteEvent/resolveOverlapping）
+ * 在 transcribe() 层，属阶段 2b（需真实权重调参），不属本函数。
+ * 单点事件 (b,b)：原版靠 mergeIncompleteEvent 并入邻居；此处暂只计数丢弃，
+ *   待 2b 移植 merge 逻辑（诊断里报 singletonDrop 数量）。
  */
+const FRAME_DUR = HOP / FS; // 1024/44100 ≈ 23.22ms（与 torch 的 frameDur 一致）
+function symToPitch(s){ return s === 0 ? -64 : s === 1 ? -67 : 21 + (s - 2); }
+
+// S: Float32Array(T*T*90)，skip: Float32Array(T*90 或 (T-1)*90)；返回 Note[]（秒）。
+function decodeScoresToNotes(S, skip, T, skipRows){
+  const NSYM = 90;
+  const notes = [];
+  let singletons = 0;
+  for(let s = 0; s < NSYM; s++){
+    const list = TranskunViterbi.decode({
+      T,
+      getScore: (e, b) => S[(e * T + b) * NSYM + s],
+      getSkip: (t) => skip[t * NSYM + s],
+      forcedStart: 0
+    });
+    const pitch = symToPitch(s);
+    for(const [bi, ei] of list){
+      if(ei <= bi){ singletons++; continue; } // 单点事件：2b 之前只计数
+      notes.push({ start: bi * FRAME_DUR, end: ei * FRAME_DUR, pitch, velocity: 80 });
+    }
+  }
+  notes.sort((a, b) => a.start - b.start || a.pitch - b.pitch);
+  return { notes, singletons };
+}
+
+// 植入区间自检：合成 S（pitch60 在 [100,200] 放 25 分强区间），验 decode→notes 全链。
+// 经 export/test_worker_viterbi.mjs 在 node 里跑（浏览器端暂不设按钮）。
+function viterbiPlantedTest(){
+  const T = 300, NSYM = 90, s60 = 2 + (60 - 21);
+  const S = new Float32Array(T * T * NSYM);
+  const skip = new Float32Array((T - 1) * NSYM);
+  S[(200 * T + 100) * NSYM + s60] = 25;
+  // 对角只在区间端点放 5 分：skip 链累积 10 分 < 25，span 获胜且带 2 个单点（验共存）
+  S[(100 * T + 100) * NSYM + s60] = 5;
+  S[(200 * T + 200) * NSYM + s60] = 5;
+  const { notes, singletons } = decodeScoresToNotes(S, skip, T, T - 1);
+  const hit = notes.filter(n => n.pitch === 60 && Math.abs(n.start - 100 * FRAME_DUR) < 1e-9 &&
+    Math.abs(n.end - 200 * FRAME_DUR) < 1e-9);
+  const others = notes.filter(n => n.pitch !== 60);
+  const ok = hit.length === 1 && others.length === 0;
+  const text = `Viterbi植入自检 ${ok ? 'PASS' : 'FAIL'}：pitch60 [100,200]帧→` +
+    `[${(100 * FRAME_DUR).toFixed(3)}s, ${(200 * FRAME_DUR).toFixed(3)}s] ` +
+    `命中${hit.length}/1，非目标音符${others.length}，单点事件${singletons}个（已计数丢弃）`;
+  log(text);
+  postMessage({ type: 'viterbiSelftest', ok, notes: notes.length, singletons });
+  return ok;
+}
 async function runModel(mel, nFrame, segLen, stepLen) {
   importScripts(ORT_CDN); // onnxruntime-web（动态加载，不阻塞页面）
   throw new Error('ONNX 权重未就绪：ORT_MODEL_URL 为空（阶段2任务）');
