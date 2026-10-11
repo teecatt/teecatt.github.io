@@ -24,6 +24,10 @@
     "file": "midi/消失在记忆里的海.mid"
   },
   {
+    "name": "飘韵.mid",
+    "file": "midi/piaoyun.mid"
+  },
+  {
     "name": "44并发500ms测试.mid",
     "file": "midi/concurrent_44_500ms.mid",
     "test": true

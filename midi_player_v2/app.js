@@ -2369,7 +2369,7 @@ let userGestureSeen = false;
 const COLD_START = {
   sheet: 'midi/unchanged mind.mid',                       // P0：优先独占下载的默认谱面
   timbre: 'gm:1',                                          // P1：默认音色为亮音钢琴（bank 未就绪时先用合成钢琴起播，就绪立马切过去）
-  mandatorySheets: ['midi/The Sound of Silence.mid', 'midi/AfterSchool-DJ Okawari.mid', 'midi/幻昼.mid', 'midi/消失在记忆里的海.mid'],  // P2：预配置必下谱面
+  mandatorySheets: ['midi/The Sound of Silence.mid', 'midi/AfterSchool-DJ Okawari.mid', 'midi/幻昼.mid', 'midi/消失在记忆里的海.mid', 'midi/piaoyun.mid'],  // P2：预配置必下谱面
   mandatoryTimbres: [],                                // P2：重制版无谱面专属音色，bank 在 P1 已就绪
 };
 
