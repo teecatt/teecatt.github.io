@@ -16,6 +16,12 @@
 'use strict';
 importScripts('viterbi.js'); // Semi-CRF 后向 Viterbi（node --check 只做语法检查，不执行）
 'use strict';
+// 未捕获的异步错误也上报主线程（否则只剩一句 Worker 错误：undefined，没法定位）
+self.addEventListener('unhandledrejection', (e) => {
+  let msg = 'worker 未捕获异步错误';
+  try { msg += '：' + String((e && e.reason && (e.reason.stack || e.reason.message)) || e.reason); } catch (_) {}
+  try { postMessage({ type: 'error', text: msg }); } catch (_) {}
+});
 
 const FS = 44100, WIN = 4096, HOP = 1024, N_MELS = 229;
 const F_MIN = 30, F_MAX = 8000, MEL_EPS = 1e-5;
