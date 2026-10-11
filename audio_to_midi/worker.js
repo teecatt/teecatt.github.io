@@ -347,7 +347,7 @@ async function runModel(pcm, models, forceBackend, runOpts) {
     for (let i = 0; i < nPool; i++) scorers.push(await mkSession(scorerBuf, prov));
     phase('scorer 会话就绪，加载 attr 会话…', 0.36);
     const attr = await mkSession(models.attr, prov);
-    log(`ONNX 就绪：后端=${be}，scorer=${scorerTag}×${nPool}，S=${scorers[0].outputNames}，attr=${attr.outputNames}`);
+    log(`ONNX 就绪：后端=${be}，scorer=${scorerTag}×${nPool}，S=${scorers[0].outputNames}，attr=${attr.outputNames}，worker.js?v=12`);
     try {
       return await inferAll(ortNS, scorers, attr, be, pcm, runOpts);
     } finally {
@@ -629,6 +629,9 @@ async function probeBackend() {
   const isolated = (typeof crossOriginIsolated !== 'undefined' && crossOriginIsolated);
   let ua = '';
   try { ua = String((self.navigator && self.navigator.userAgent) || '').replace(/ \([^)]*\)/, ''); } catch (_) {}
-  log('后端探测：adapter=' + (webgpu ? '有' : '无') + ' / crossOriginIsolated=' + (isolated ? '是' : '否（多线程 wasm 跑不了；换 Chrome/Edge 107+ 并硬刷新，微信/QQ等内置浏览器不支持）') + ' / UA=' + ua.slice(0, 80));
+  let host = '', sab = '未知';
+  try { host = String((self.location && self.location.host) || ''); } catch (_) {}
+  try { sab = (typeof SharedArrayBuffer !== 'undefined' && new SharedArrayBuffer(8).byteLength === 8) ? '可用' : '不可用'; } catch (_) { sab = '不可用'; }
+  log('后端探测：adapter=' + (webgpu ? '有' : '无') + ' / host=' + (host || '?') + ' / crossOriginIsolated=' + (isolated ? '是' : '否') + ' / SAB=' + sab + '（SAB 不可用=多线程 wasm 跑不了；host 非 down2.top 说明域名/缓存不对） / UA=' + ua.slice(0, 80));
   postMessage({ type: 'backend', webgpu, info, fallback: webgpu ? 'webgpu' : 'wasm' });
 }

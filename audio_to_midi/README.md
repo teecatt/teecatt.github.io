@@ -45,7 +45,7 @@ Viterbi 取分方向、力度 argmax、offset 公式，全部和 torch 源码对
   加载期暴毙也留字条。
 - Viterbi 取数长度 bug，Python 自测 30 轮没发现，JS 对拍抓到；CB 均值差 0.058，
   根因是 torch 内部偷偷 clamp 了 probs；高斯窗 4 位小数引入 2.5e-4 误差，换全精度。
-- 两次 `?v=` 漏 bump 让用户跑到旧代码：改 app/worker 必手工 bump（当前 `app.js?v=9`/`worker.js?v=11`）。
+- 两次 `?v=` 漏 bump 让用户跑到旧代码：改 app/worker 必手工 bump（当前 `app.js?v=10`/`worker.js?v=12`）。
 
 ## 精度（实测数，不吹）
 

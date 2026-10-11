@@ -36,12 +36,38 @@ function ts() {
   const d = new Date(), p = (n, l) => String(n).padStart(l, '0');
   return `${p(d.getHours(), 2)}:${p(d.getMinutes(), 2)}:${p(d.getSeconds(), 2)}.${p(d.getMilliseconds(), 3)}`;
 }
-function dlog(text, cls) {
+function dlog(text, cls, buffered) {
   if (diagBox.dataset.init !== '1') { diagBox.textContent = ''; diagBox.dataset.init = '1'; }
+  // 高频进度行（worker phase / 下载 onLive）走 500ms 批量刷屏：时间戳在调用时取，
+  // 时序不丢，但每行 appendChild + scrollTop 同步回流只在 flush 时发生一次。
+  // err 行永远直写（崩溃前必须留字条）。
+  if (buffered && cls !== 'err') {
+    lineBuf.push({ t: ts(), text, cls });
+    if (!flushTimer) flushTimer = setTimeout(flushLines, 500);
+    return;
+  }
+  appendLine(ts(), text, cls);
+}
+function appendLine(stamp, text, cls) {
   const line = document.createElement('div');
   if (cls) line.className = cls;
-  line.textContent = `[${ts()}] ` + (cls === 'err' ? '✗ ' : cls === 'warn' ? '⚠ ' : '· ') + text;
+  line.textContent = `[${stamp}] ` + (cls === 'err' ? '✗ ' : cls === 'warn' ? '⚠ ' : '· ') + text;
   diagBox.appendChild(line);
+  diagBox.scrollTop = diagBox.scrollHeight;
+}
+let lineBuf = [], flushTimer = null;
+function flushLines() {
+  flushTimer = null;
+  if (!lineBuf.length) return;
+  const frag = document.createDocumentFragment();
+  for (const { t, text, cls } of lineBuf) {
+    const line = document.createElement('div');
+    if (cls) line.className = cls;
+    line.textContent = `[${t}] ` + (cls === 'err' ? '✗ ' : cls === 'warn' ? '⚠ ' : '· ') + text;
+    frag.appendChild(line);
+  }
+  lineBuf = [];
+  diagBox.appendChild(frag);
   diagBox.scrollTop = diagBox.scrollHeight;
 }
 
@@ -49,6 +75,8 @@ function dlog(text, cls) {
 $('diagClear').onclick = () => {
   diagBox.textContent = ''; // 清空日志
   delete diagBox.dataset.init; // 重置初始化标记，下次 dlog 重新走初始化分支
+  lineBuf = []; // 丢弃未刷屏的缓冲行
+  if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
 };
 function diagCopyFeedback(ok) {
   const btn = $('diagCopy');
@@ -85,7 +113,7 @@ let audioFile = null, pcmMono = null, sampleRate = 0, midiBlob = null, worker = 
 
 function getWorker() {
   if (!worker) {
-    worker = new Worker('./worker.js?v=11');
+    worker = new Worker('./worker.js?v=12');
     worker.onmessage = onWorkerMsg;
     worker.onerror = e => dlog('Worker 错误：' + JSON.stringify({ message: e && e.message, filename: e && e.filename, lineno: e && e.lineno }) + '（多为 worker 崩溃/OOM/脚本加载失败；看上一行日志定位阶段）', 'err');
     worker.postMessage({ type: 'probeBackend' });
@@ -258,7 +286,7 @@ async function fetchOne(dir, spec) {
       $('progBar').style.width = pct.toFixed(1) + '%';
       $('phase').textContent = `下载 ${spec.name}… ${pct.toFixed(0)}%（${(pct / 100 * spec.size / 1048576).toFixed(1)}/${(spec.size / 1048576).toFixed(1)} MB）`;
     },
-    onLive: text => { $('phase').textContent = text; dlog(text); },
+    onLive: text => { $('phase').textContent = text; dlog(text, undefined, true); },
     onFinal: text => dlog(text, 'ok'),
   });
   if (blob.size !== spec.size) throw new Error(`${spec.name} 字节数不对：${blob.size}/${spec.size}（来源 ${url}）`);
@@ -313,7 +341,7 @@ function onWorkerMsg(e) {
   if (m.type === 'phase') {
     $('phase').textContent = m.text;
     $('progBar').style.width = Math.round(m.ratio * 100) + '%';
-    dlog(m.text); // 进度过程同步进调试面板（此前只写进度条，面板里看不到过程）
+    dlog(m.text, undefined, true); // 进度过程同步进调试面板（批量 500ms 刷屏，时序不丢）
   } else if (m.type === 'log') {
     dlog('[worker] ' + m.text);
   } else if (m.type === 'warmupOk') {
@@ -429,6 +457,7 @@ window.addEventListener('load', () => {
   goBtn.disabled = true;
   goBtn.textContent = '准备模型…';
   dlog('页面加载完成，后台预下载模型…');
+  dlog('版本自报：app.js?v=10（看不到这行=跑的旧代码，清缓存硬刷新）');
   ensureModels().then(models => {
     preloadedModels = models;
     dlog('模型预下载完成，转写可秒开', 'ok');
