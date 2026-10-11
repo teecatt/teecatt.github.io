@@ -423,7 +423,7 @@ async function inferAll(ortNS, scorers, attr, backend, pcm, opts) {
           const settled = await Promise.allSettled(runs);
           for (const s of settled) {
             if (s.status === 'fulfilled' && s.value) {
-              try { for (const t of s.value.values()) t.dispose && t.dispose(); } catch (_) {}
+              try { for (const t of Object.values(s.value)) t.dispose && t.dispose(); } catch (_) {}
             }
           }
         } catch (_) {}
@@ -438,7 +438,7 @@ async function inferAll(ortNS, scorers, attr, backend, pcm, opts) {
       const dispIdx = w + k + 1; // 段内显示序号（心跳/属性头用）
       const out = outs[k];
       const S = out.S.data, Sskip = out.Sskip.data, CTX = out.CTX.data;
-      try { for (const t of out.values()) t.dispose && t.dispose(); } catch (_) {} // S单张171MB(fp16 86MB)，及时还显存
+      try { for (const t of Object.values(out)) t.dispose && t.dispose(); } catch (_) {} // S单张171MB(fp16 86MB)，及时还显存
     // 90 symbol 各自 Viterbi（与 torch nBatch=nSym 等价；每30个报一次心跳，避免长静默）
     const intervals = [];
     for (let sym = 0; sym < 90; sym++) {
@@ -470,7 +470,7 @@ async function inferAll(ortNS, scorers, attr, backend, pcm, opts) {
         ctx_b: new ortNS.Tensor('float32', cb, [total, 256])
       });
       vel = ao.vel.data; ofVal = ao.ofVal.data; ofPres = ao.ofPres.data;
-      try { for (const t of ao.values()) t.dispose && t.dispose(); } catch (_) {}
+      try { for (const t of Object.values(ao)) t.dispose && t.dispose(); } catch (_) {}
     }
     // 组装（与 transcribeFrames/test_e2e_v3.assemble 逐行对齐）
     const beginTime = wave[k].s0 / FS - (SEG_SEC - STEP_SEC);
