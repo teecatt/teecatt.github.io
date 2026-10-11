@@ -363,8 +363,8 @@ async function runModel(pcm, models, forceBackend, runOpts, resume) {
     // WebGPU 用 fp16 权重（29MB，显存减半；位置精确、力度±2，老设备无 fp16 分片时回退 fp32）
     let scorerBuf = models.scorer, scorerTag = 'fp32';
     if (be === 'webgpu' && models.scorerFp16) { scorerBuf = models.scorerFp16; scorerTag = 'fp16'; }
-    // 会话池：WebGPU 建 2 个 scorer 会话做波次并发（wasm 建 1 个串行，见 inferAll poolN）
-    const nPool = (be === 'webgpu') ? 2 : 1;
+    // 会话池×1：双后端统一建 1 个 scorer 会话（perf-pipe 实测×2 反慢 93%，手机端×2 从未跑起来；显存峰值减半）
+    const nPool = 1;
     phase(`下载运行时（首次一次性；后端${be}，scorer×${nPool}）…`, 0.28);
     const scorers = [];
     for (let i = 0; i < nPool; i++) scorers.push(await mkSession(scorerBuf, prov));
@@ -429,28 +429,32 @@ async function inferAll(ortNS, scorers, attr, backend, pcm, opts, freshScorer, s
     if (fromSeg > 0) log(`断点续跑：从第${fromSeg + 1}段起（已完成${fromSeg}/${nSegTotal}段，mel 照算）`);
   }
   // Phase A：全部 mel 预计算（CPU 快活；内存约 nSeg×3.8MB），Phase B 波次打分时不再碰音频
+  // 日志降频：每 8 段一行汇总（均值/最慢段），单段超 1s 才单独打一行（每段 2 行预算不超）。
   const segMel = [];
+  let melN = 0, melMsSum = 0, melMsMax = 0, melMaxSeg = 0;
   {
     let fi = 0;
     for (let s0 = 0; s0 < nSample; s0 += STEP) {
       fi++;
-      phase(`特征 ${fi}/${nSegTotal} 段…`, 0.28 + 0.06 * fi / nSegTotal, true); // 日志治理：只动进度条，面板以mel完成行（下一行）为准
+      phase(`特征 ${fi}/${nSegTotal} 段…`, 0.28 + 0.06 * fi / nSegTotal, true); // 日志治理：只动进度条
       const slice = padded.subarray(s0, Math.min(s0 + SEG, nSample));
       const seg = slice.length < SEG ? (() => { const z = new Float32Array(SEG); z.set(slice); return z; })() : slice;
       const frames = makeFrames(seg); // 691 帧
       gainNorm(frames);
       const tMel0 = performance.now();
       const mel6 = framesToMel6(frames, T);
-      log(`第${fi}/${nSegTotal}段mel完成，691帧×6通道，mel_ms=${(performance.now() - tMel0).toFixed(0)}ms`);
+      const ms = performance.now() - tMel0;
+      melN++; melMsSum += ms;
+      if (ms > melMsMax) { melMsMax = ms; melMaxSeg = fi; }
+      if (ms > 1000) log(`第${fi}/${nSegTotal}段mel偏慢，691帧×6通道，mel_ms=${ms.toFixed(0)}ms`);
+      if (fi % 8 === 0 || fi === nSegTotal) log(`mel进度 ${fi}/${nSegTotal}段：均值${(melMsSum / Math.max(melN, 1)).toFixed(0)}ms/段，最慢第${melMaxSeg}段${melMsMax.toFixed(0)}ms`);
       segMel.push({ s0, mel: mel6 }); // [691,229,6]
     }
   }
-  // Phase B：波次打分。WebGPU 用 2 会话并发（单次 691 帧已基本吃满手机 GPU，
-  // 并发只在有余量时提速。真机实证（2026-10-11）：并发被限流（Session already started）
-  // 后原会话状态损坏、复用会永久 hang（无 resolve 无 reject），故一旦限流就重建会话
-  // 并粘滞串行（stickySerial），之后所有波次只走单会话；波次失败由外层回 wasm 重跑。
+  // Phase B：波次打分（全后端单会话串行：perf-pipe 实测×2 反慢 93%，手机端×2 从未跑起来，
+  // 故建池即×1，stickySerial 恒真；并发/限流/重建分支保留作兜底，正常走不到）。
   // 每波次 120s 超时兜底：任何 hang 都转为可落地的失败，绝不无限卡死。
-  // WASM 强制串行（CPU 内存带宽共享 + 手机内存，并发无收益）。
+  // 喘息 150ms 不动（见拐点实验报告：300ms 成本线性，收益饱和）。
   let stickySerial = !(backend === 'webgpu' && scorerPool.length > 1);
   const WAVE_TIMEOUT_MS = 120000;
   const runSerial = (tensors) => (async () => {
