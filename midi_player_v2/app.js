@@ -2731,8 +2731,11 @@ async function _switchToSong(key){
   await onSongChange(key);
 }
 
+var _songListGen = 0; // loadSongList 代际计数（防并发重复渲染；var 避免 TDZ，早于定义的调用也能用）
 async function loadSongList(){
   const sel = document.getElementById('songSel');
+  // 代际守卫：并发调用时只有最新一次能写 DOM，避免两次执行交错导致选项重复
+  const my = ++_songListGen;
   // 记住刷新前的选择（首次为空）：重建后优先恢复，避免刷新把用户当前选项顶回第 0 项
   let prevVal = '';
   try{ prevVal = sel.value || ''; }catch(e){}
@@ -2741,6 +2744,7 @@ async function loadSongList(){
   // 内置谱（排除已删除）
   try{
     const list = await _getBuiltinList();
+    if(my !== _songListGen) return; // 过期执行直接丢弃
     for(const song of list){
       if(deleted.has(song.file)) continue;
       // 测试谱（list.json 中 test:true）仅在本地下过时才出现在选谱列表，
@@ -2748,6 +2752,7 @@ async function loadSongList(){
       if(song.test){
         let has = false;
         try{ has = await AssetCache.has(_sharedAbs(song.file)); }catch(e){}
+        if(my !== _songListGen) return; // 循环内也有 await，同样守卫
         if(!has) continue;
       }
       const opt = document.createElement('option');
@@ -2759,6 +2764,7 @@ async function loadSongList(){
   // 用户上传谱
   try{
     const userSongs = await getUserSongs();
+    if(my !== _songListGen) return; // 过期执行直接丢弃
     userSongs.forEach(song => {
       const opt = document.createElement('option');
       opt.value = 'user:' + song.name;
@@ -2766,6 +2772,7 @@ async function loadSongList(){
       sel.appendChild(opt);
     });
   }catch(e){}
+  if(my !== _songListGen) return;
   // 恢复刷新前选择；不存在（首次加载/被删）则选中冷启动默认谱面，与 P0 实际播放一致
   try{
     let ok = false;
