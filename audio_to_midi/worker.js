@@ -136,6 +136,14 @@ function buildMelBank() {
   return bank;
 }
 const MEL_BANK = buildMelBank();
+// 稀疏化：三角滤波器每行非零区连续（node harness 已断言 229/229 行），记 [k0,k1)。
+// 实测每行平均仅 6.43 个非零 bin（/2049），跳过精确 0.0 在 IEEE 下是精确无操作，
+// 区间循环与原循环同为 k 升序累加，故与稠密版逐位一致（bit-exact，见 harness）。
+const MEL_RANGE = MEL_BANK.map((row) => {
+  let k0 = -1, k1 = 0;
+  for (let k = 0; k < row.length; k++) if (row[k] !== 0) { if (k0 < 0) k0 = k; k1 = k + 1; }
+  return [k0, k1];
+});
 
 // ---------- 主流程 ----------
 onmessage = async (e) => {
@@ -347,7 +355,7 @@ async function runModel(pcm, models, forceBackend, runOpts) {
     for (let i = 0; i < nPool; i++) scorers.push(await mkSession(scorerBuf, prov));
     phase('scorer 会话就绪，加载 attr 会话…', 0.36);
     const attr = await mkSession(models.attr, prov);
-    log(`ONNX 就绪：后端=${be}，scorer=${scorerTag}×${nPool}，S=${scorers[0].outputNames}，attr=${attr.outputNames}，worker.js?v=12`);
+    log(`ONNX 就绪：后端=${be}，scorer=${scorerTag}×${nPool}，S=${scorers[0].outputNames}，attr=${attr.outputNames}，worker.js?v=13`);
     try {
       return await inferAll(ortNS, scorers, attr, be, pcm, runOpts);
     } finally {
@@ -592,8 +600,8 @@ function framesToMel6(frames, nFrame) {
       const base = (f * N_MELS) * 6 + c;
       for (let m = 0; m < N_MELS; m++) {
         let s = 0;
-        const row = MEL_BANK[m];
-        for (let k = 0; k <= WIN / 2; k++) {
+        const row = MEL_BANK[m], rg = MEL_RANGE[m];
+        for (let k = rg[0]; k < rg[1]; k++) {
           let p = _re[k] * _re[k] + _im[k] * _im[k];
           p *= ortho * ortho;
           s += p * row[k];

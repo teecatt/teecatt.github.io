@@ -48,11 +48,14 @@ function dlog(text, cls, buffered) {
   }
   appendLine(ts(), text, cls);
 }
-function appendLine(stamp, text, cls) {
+function makeLine(stamp, text, cls) {
   const line = document.createElement('div');
   if (cls) line.className = cls;
   line.textContent = `[${stamp}] ` + (cls === 'err' ? '✗ ' : cls === 'warn' ? '⚠ ' : '· ') + text;
-  diagBox.appendChild(line);
+  return line;
+}
+function appendLine(stamp, text, cls) {
+  diagBox.appendChild(makeLine(stamp, text, cls));
   diagBox.scrollTop = diagBox.scrollHeight;
 }
 let lineBuf = [], flushTimer = null;
@@ -60,12 +63,7 @@ function flushLines() {
   flushTimer = null;
   if (!lineBuf.length) return;
   const frag = document.createDocumentFragment();
-  for (const { t, text, cls } of lineBuf) {
-    const line = document.createElement('div');
-    if (cls) line.className = cls;
-    line.textContent = `[${t}] ` + (cls === 'err' ? '✗ ' : cls === 'warn' ? '⚠ ' : '· ') + text;
-    frag.appendChild(line);
-  }
+  for (const { t, text, cls } of lineBuf) frag.appendChild(makeLine(t, text, cls));
   lineBuf = [];
   diagBox.appendChild(frag);
   diagBox.scrollTop = diagBox.scrollHeight;
@@ -113,7 +111,7 @@ let audioFile = null, pcmMono = null, sampleRate = 0, midiBlob = null, worker = 
 
 function getWorker() {
   if (!worker) {
-    worker = new Worker('./worker.js?v=12');
+    worker = new Worker('./worker.js?v=13');
     worker.onmessage = onWorkerMsg;
     worker.onerror = e => dlog('Worker 错误：' + JSON.stringify({ message: e && e.message, filename: e && e.filename, lineno: e && e.lineno }) + '（多为 worker 崩溃/OOM/脚本加载失败；看上一行日志定位阶段）', 'err');
     worker.postMessage({ type: 'probeBackend' });
@@ -129,6 +127,19 @@ drop.onclick = () => fileInput.click();
 ['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
 drop.addEventListener('drop', e => { if (e.dataTransfer.files[0]) pickFile(e.dataTransfer.files[0]); });
 fileInput.onchange = () => { if (fileInput.files[0]) pickFile(fileInput.files[0]); };
+
+// 测试样例（同源，无 CORS 问题）：audio_to_midi/test/AfterSchool.mp3（3.5MB，约233秒）
+const SAMPLE_DEFAULT = 'test/AfterSchool.mp3';
+async function fetchSample(url) {
+  dlog('测试入口：加载 sample=' + url);
+  const r = await fetch(url);
+  if (!r.ok) throw new Error('sample 下载失败：HTTP ' + r.status);
+  const blob = await r.blob();
+  const name = decodeURIComponent(url.split('?')[0].split('/').pop() || 'sample.mp3');
+  pickFile(new File([blob], name, { type: blob.type || 'audio/mpeg' }));
+}
+const sampleBtn = $('sampleBtn');
+if (sampleBtn) sampleBtn.onclick = () => { location.href = '?sample=' + encodeURIComponent(SAMPLE_DEFAULT); };
 
 async function pickFile(f) {
   audioFile = f; pcmMono = null; midiBlob = null;
@@ -457,7 +468,11 @@ window.addEventListener('load', () => {
   goBtn.disabled = true;
   goBtn.textContent = '准备模型…';
   dlog('页面加载完成，后台预下载模型…');
-  dlog('版本自报：app.js?v=10（看不到这行=跑的旧代码，清缓存硬刷新）');
+  dlog('版本自报：app.js?v=11（看不到这行=跑的旧代码，清缓存硬刷新）');
+  // 测试入口 ?sample=URL：一键载入公网/同源测试音频（复测计时、issue 复现用）。
+  // 无参时“🧪 测试音频”按钮进默认样例；有参则自动下载解码并走自动转写（复用 pickFile）。
+  const sampleUrl = new URLSearchParams(location.search).get('sample');
+  if (sampleUrl) fetchSample(sampleUrl).catch(err => dlog('测试音频加载失败：' + (err && err.message || err), 'err'));
   ensureModels().then(models => {
     preloadedModels = models;
     dlog('模型预下载完成，转写可秒开', 'ok');
