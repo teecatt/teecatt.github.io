@@ -47,10 +47,8 @@ jobs:
             printf 'window.AREA_BUILD={midi:%s,viz:%s,library:%s,links:%s,transcribe:%s,pianov2:%s};\n' "$midi" "$viz" "$library" "$links" "$transcribe" "$pianov2"
           } > build-info.js
           for f in index.html crypto/index.html gpu_enhanced.html midi_player/index.html midi_player_v2/index.html music_visualization/index.html library/index.html links/index.html globe/index.html audio_to_midi/index.html; do
-            [ -f "$f" ] && sed -i -E "s#build-info\.js\?[^\"']*#build-info.js?v=$psha#" "$f" && sed -i -E "s#((\.\./|\./)?shared/[A-Za-z0-9_.-]+\.js)\?[^\"']*#\1?v=$psha#" "$f" && sed -i -E "s#(\./app\.js)\?[^\"]*#\1?v=$psha#" "$f"
+            [ -f "$f" ] && sed -i -E "s#build-info\.js\?[^\"']*#build-info.js?v=$psha#" "$f" && sed -i -E "s#((\.\./|\./)?shared/[A-Za-z0-9_.-]+\.js)\?[^\"']*#\1?v=$psha#" "$f"
           done
-          # 转写页 worker 地址写在 app.js 里（非 html），单独跟随版本，避免“改了 worker 却刷不出”
-          sed -i -E "s#(\./worker\.js)\?[^\"]*#\1?v=$psha#" audio_to_midi/app.js
       - name: Stage site files
         run: |
           mkdir -p /tmp/gh_dist
@@ -90,10 +88,8 @@ jobs:
             printf 'window.AREA_BUILD={midi:%s,viz:%s,library:%s,links:%s,transcribe:%s,pianov2:%s};\n' "$midi" "$viz" "$library" "$links" "$transcribe" "$pianov2"
           } > build-info.js
           for f in index.html crypto/index.html gpu_enhanced.html midi_player/index.html midi_player_v2/index.html music_visualization/index.html library/index.html links/index.html globe/index.html audio_to_midi/index.html; do
-            [ -f "$f" ] && sed -i -E "s#build-info\.js\?[^\"']*#build-info.js?v=$psha#" "$f" && sed -i -E "s#((\.\./|\./)?shared/[A-Za-z0-9_.-]+\.js)\?[^\"']*#\1?v=$psha#" "$f" && sed -i -E "s#(\./app\.js)\?[^\"]*#\1?v=$psha#" "$f"
+            [ -f "$f" ] && sed -i -E "s#build-info\.js\?[^\"']*#build-info.js?v=$psha#" "$f" && sed -i -E "s#((\.\./|\./)?shared/[A-Za-z0-9_.-]+\.js)\?[^\"']*#\1?v=$psha#" "$f"
           done
-          # 转写页 worker 地址写在 app.js 里（非 html），单独跟随版本，避免“改了 worker 却刷不出”
-          sed -i -E "s#(\./worker\.js)\?[^\"]*#\1?v=$psha#" audio_to_midi/app.js
       - name: Stage site files
         run: |
           mkdir -p /tmp/cf_dist

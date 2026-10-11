@@ -10,9 +10,3 @@
 /audio_to_midi/*
   Cross-Origin-Opener-Policy: same-origin-allow-popups
   Cross-Origin-Embedder-Policy: credentialless
-# HTML 文档本身不缓存（每次重验证，304 开销可忽略）：杜绝“部署了用户还跑旧页面”
-# 导致的一整类缓存背锅（旧 worker/旧 header 表现）。
-/audio_to_midi/
-  Cache-Control: public, max-age=0, must-revalidate
-/midi_player_v2/
-  Cache-Control: public, max-age=0, must-revalidate
