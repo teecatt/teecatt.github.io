@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=overlays-content">
 <!-- 改页面内容时同步更新 page-updated -->
-<meta name="page-updated" content="2026-10-11T13:39:00+08:00">
+<meta name="build-area" content="pianov2">
 <title>MIDI播放器_V2 · 刚刚更新</title>
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
@@ -602,7 +602,7 @@ select:focus{border-color:var(--accent)}
           </div>
           <div class="debug-panel drop-panel" id="debugPanel">
             <div class="dbg-header">
-              <div class="dbg-build"><span data-build="midi" data-build-color="#0000EE"></span></div>
+              <div class="dbg-build"><span data-build="pianov2" data-build-color="#0000EE"></span></div>
               <div class="dbg-toolbar">
                 <label class="switch"><input id="dbgEnabled" type="checkbox" checked onchange="onDebugEnabledChange()"><span class="track"><span class="knob"></span></span>启用调试</label>
                 <button class="dbg-reset-btn" id="debugResetBtn" onclick="confirmResetAll()" title="重置所有设置"><span>重置所有选项</span><svg viewBox="0 0 20 20" fill="currentColor"><path d="M5.854 2.646a.5.5 0 0 1 0 .708L4.207 5H11a6 6 0 1 1-6 6a.5.5 0 0 1 1 0a5 5 0 1 0 5-5H4.207l1.647 1.646a.5.5 0 1 1-.708.708l-2.5-2.5a.5.5 0 0 1 0-.708l2.5-2.5a.5.5 0 0 1 .708 0"/></svg></button>
@@ -963,26 +963,5 @@ select:focus{border-color:var(--accent)}
   </div>
 </div>
 <!-- 谱面管理弹窗 -->
-<script>
-/* 标签标题相对更新时间（page-updated 为页面内容最后更新时刻） */
-(function(){
-  var t = document.querySelector('meta[name=page-updated]');
-  if(!t) return;
-  var base = document.title.split(' · ')[0];
-  function rel(){
-    var s = Math.max(0, (Date.now() - new Date(t.content).getTime()) / 1000);
-    if (s < 60) return '刚刚更新';
-    var m = Math.floor(s/60);
-    if (m < 60) return m + '分钟前更新';
-    var h = Math.floor(m/60);
-    if (h < 24) return h + '小时前更新';
-    var d = Math.floor(h/24);
-    if (d < 30) return d + '天前更新';
-    return Math.floor(d/30) + '个月前更新';
-  }
-  function tick(){ document.title = base + ' · ' + rel(); }
-  tick(); setInterval(tick, 60000);
-})();
-</script>
 </body>
 </html>

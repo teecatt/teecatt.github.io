@@ -38,6 +38,17 @@
     Array.prototype.forEach.call(nodes, function(el){
       render(el, infoFor(el.getAttribute('data-build')));
     });
+    tickTitle();
+  }
+  // 标签标题相对时间：<meta name="build-area" content="transcribe"> 的页面，
+  // 标题自动变为“基础名 · x 分钟前更新”，与页脚 data-build 同一数据源（AREA_BUILD）。
+  function tickTitle(){
+    var m = document.querySelector('meta[name="build-area"]');
+    if(!m) return;
+    var info = infoFor(m.content);
+    if(!info || !info.time) return;
+    var base = m.getAttribute('data-title-base') || document.title.split(' · ')[0];
+    document.title = base + ' · ' + ago(Date.now() - info.time) + '更新';
   }
   g.BuildStamp = { init: init, render: render, ago: ago };
   if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function(){ init(); });
