@@ -153,16 +153,18 @@ onmessage = async (e) => {
 
     let notes, mode, segDiag = null;
     if (!msg.models) throw new Error('未收到模型字节（主线程应先经 OPFS/网络备好双权重）');
-    const r = await runModel(pcm, msg.models, msg.forceBackend || null);
+    const runOpts = { extend: true, outMode: msg.outMode || 'piano' };
+    const r = await runModel(pcm, msg.models, msg.forceBackend || null, runOpts);
     notes = r.notes; segDiag = r.diag; mode = 'onnx';
     const tInf = performance.now();
 
     phase('生成 MIDI…', 0.92);
-    const midiBytes = writeMidi(notes);
+    const midiBytes = writeMidi(notes, msg.outMode || 'piano');
     phase('完成', 1);
     self._fbArmed = false; // 正常完成，解除 gpuLost 武装
     postMessage({
       type: 'done', midi: midiBytes.buffer, notes, mode,
+      extended: !!(runOpts && runOpts.extend),
       diag: Object.assign({ msResample: tRs - t0, msInfer: tInf - tRs, msTotal: performance.now() - t0 }, segDiag || {})
     }, [midiBytes.buffer]);
   } catch (err) {
@@ -223,21 +225,34 @@ function varlen(v) {
   for (let i = 0; i < bytes.length - 1; i++) bytes[i] |= 0x80;
   return bytes;
 }
-function writeMidi(notes) {
+function writeMidi(notes, mode) {
+  // 输出音色：piano=全曲钢琴(ch0/prog0)；multi=按音区分区配器（<48 大提琴 ch1，
+  // 48–71 钢琴 ch0，≥72 小提琴 ch2），踏板 CC 发到所有在用通道（各通道都要延音）。
+  // v2 预览当前只读 ch0（解析时即展平，见 midi_player_v2 parse 处注释），multi 文件在外部
+  // 播放器/DAW 里才是完整多音色 —— 预览限制，非文件问题。
+  const multi = (mode === 'multi');
+  const zoneOf = (p) => p < 48 ? { prog: 42, ch: 1 } : p < 72 ? { prog: 0, ch: 0 } : { prog: 40, ch: 2 };
+  const usedCh = new Map(); // ch -> prog
+  if (multi) for (const n of notes) { if (n.pitch > 0) { const z = zoneOf(n.pitch); if (!usedCh.has(z.ch)) usedCh.set(z.ch, z.prog); } }
+  else usedCh.set(0, 0);
   const ev = [];
   const tpq = 960, bpm = 120, spb = Math.round(60000000 / bpm);
   ev.push(...[0x00, 0xFF, 0x51, 0x03, (spb >> 16) & 0xff, (spb >> 8) & 0xff, spb & 0xff]);
-  ev.push(...[0x00, 0xC0, 0x00]); // program 0 Acoustic Grand Piano, ch0
+  for (const [ch, prog] of [...usedCh.entries()].sort((a, b) => a[0] - b[0]))
+    ev.push(...[0x00, 0xC0 | ch, prog]);
   const raw = [];
   for (const n of notes) {
     const on = Math.round(n.start * tpq * bpm / 60), off = Math.round(n.end * tpq * bpm / 60);
     if (n.pitch > 0) {
-      raw.push([on, [0x90, n.pitch, Math.max(1, Math.min(127, n.velocity | 0))]]);
-      raw.push([off, [0x80, n.pitch, 0]]);
+      const ch = multi ? zoneOf(n.pitch).ch : 0;
+      raw.push([on, [0x90 | ch, n.pitch, Math.max(1, Math.min(127, n.velocity | 0))]]);
+      raw.push([off, [0x80 | ch, n.pitch, 0]]);
     } else {
       const cc = -n.pitch;
-      raw.push([on, [0xB0, cc, 100]]);
-      raw.push([off, [0xB0, cc, 0]]);
+      for (const ch of usedCh.keys()) {
+        raw.push([on, [0xB0 | ch, cc, 100]]);
+        raw.push([off, [0xB0 | ch, cc, 0]]);
+      }
     }
   }
   raw.sort((a, b) => a[0] - b[0]);
@@ -302,7 +317,7 @@ function viterbiPlantedTest(){
   postMessage({ type: 'viterbiSelftest', ok, notes: notes.length, singletons });
   return ok;
 }
-async function runModel(pcm, models, forceBackend) {
+async function runModel(pcm, models, forceBackend, runOpts) {
   loadOrt(); // 双 CDN 回退加载（动态，不阻塞页面）
   const ortNS = self.ort;
   // 后端：优先 WebGPU，失败回退 WASM（任务6要求明示回退）；gpuLost 重跑可强制指定
@@ -325,15 +340,18 @@ async function runModel(pcm, models, forceBackend) {
     // WebGPU 用 fp16 权重（29MB，显存减半；位置精确、力度±2，老设备无 fp16 分片时回退 fp32）
     let scorerBuf = models.scorer, scorerTag = 'fp32';
     if (be === 'webgpu' && models.scorerFp16) { scorerBuf = models.scorerFp16; scorerTag = 'fp16'; }
-    phase(`下载运行时（首次一次性；后端${be}）…`, 0.28);
-    const scorer = await mkSession(scorerBuf, prov);
+    // 会话池：WebGPU 建 2 个 scorer 会话做波次并发（wasm 建 1 个串行，见 inferAll poolN）
+    const nPool = (be === 'webgpu') ? 2 : 1;
+    phase(`下载运行时（首次一次性；后端${be}，scorer×${nPool}）…`, 0.28);
+    const scorers = [];
+    for (let i = 0; i < nPool; i++) scorers.push(await mkSession(scorerBuf, prov));
     phase('scorer 会话就绪，加载 attr 会话…', 0.36);
     const attr = await mkSession(models.attr, prov);
-    log(`ONNX 就绪：后端=${be}，scorer=${scorerTag}，S=${scorer.outputNames}，attr=${attr.outputNames}`);
+    log(`ONNX 就绪：后端=${be}，scorer=${scorerTag}×${nPool}，S=${scorers[0].outputNames}，attr=${attr.outputNames}`);
     try {
-      return await inferAll(ortNS, scorer, attr, be, pcm);
+      return await inferAll(ortNS, scorers, attr, be, pcm, runOpts);
     } finally {
-      try { scorer && scorer.release && (await scorer.release()); } catch (_) {}
+      for (const s of scorers) { try { s && s.release && (await s.release()); } catch (_) {} }
       try { attr && attr.release && (await attr.release()); } catch (_) {}
     }
   };
@@ -349,7 +367,10 @@ async function runModel(pcm, models, forceBackend) {
 }
 
 // 全量分段推理（与 transcribe() 逐行对齐；无状态，可整体重跑）
-async function inferAll(ortNS, scorer, attr, backend, pcm) {
+async function inferAll(ortNS, scorers, attr, backend, pcm, opts) {
+  const scorerPool = Array.isArray(scorers) ? scorers : [scorers]; // 兼容旧单会话调用
+
+  // 分段常量（与 transcribe() 逐行对齐）
 
   // 分段常量（与 transcribe() 逐行对齐）
   const SEG = Math.ceil(SEG_SEC * FS);          // 705600 采样
@@ -363,25 +384,41 @@ async function inferAll(ortNS, scorer, attr, backend, pcm) {
   const eventsByType = new Map(); // pitch -> Note[](hasOnset/hasOffset 保留到终筛)
   let segIdx = 0, nSegTotal = 0;
   for (let s0 = 0; s0 < nSample; s0 += STEP) nSegTotal++;
-  for (let s0 = 0; s0 < nSample; s0 += STEP) {
-    segIdx++;
-    phase(`推理 ${segIdx}/${nSegTotal} 段…`, 0.3 + 0.55 * segIdx / nSegTotal);
-    const slice = padded.subarray(s0, Math.min(s0 + SEG, nSample));
-    const seg = slice.length < SEG ? (() => { const z = new Float32Array(SEG); z.set(slice); return z; })() : slice;
-    const frames = makeFrames(seg); // 691 帧
-    gainNorm(frames);
-    const mel = framesToMel6(frames, T); // [691,229,6]
-    const melT = new ortNS.Tensor('float32', mel, [1, T, N_MELS, 6]);
-    const segRatio = 0.3 + 0.55 * segIdx / nSegTotal;
-    phase(`第${segIdx}/${nSegTotal}段：神经网络打分（最耗时一步，WASM下每段约几十秒）…`, segRatio);
-    const out = await scorer.run({ mel: melT });
-    const S = out.S.data, Sskip = out.Sskip.data, CTX = out.CTX.data;
-    try { melT.dispose && melT.dispose(); } catch (_) {}
-    try { for (const t of out.values()) t.dispose && t.dispose(); } catch (_) {} // S单张171MB，及时还显存
+  // Phase A：全部 mel 预计算（CPU 快活；内存约 nSeg×3.8MB），Phase B 波次打分时不再碰音频
+  const segMel = [];
+  {
+    let fi = 0;
+    for (let s0 = 0; s0 < nSample; s0 += STEP) {
+      fi++;
+      phase(`特征 ${fi}/${nSegTotal} 段…`, 0.28 + 0.06 * fi / nSegTotal);
+      const slice = padded.subarray(s0, Math.min(s0 + SEG, nSample));
+      const seg = slice.length < SEG ? (() => { const z = new Float32Array(SEG); z.set(slice); return z; })() : slice;
+      const frames = makeFrames(seg); // 691 帧
+      gainNorm(frames);
+      segMel.push({ s0, mel: framesToMel6(frames, T) }); // [691,229,6]
+    }
+  }
+  // Phase B：波次打分。WebGPU 用 2 会话并发（单次 691 帧已基本吃满手机 GPU，
+  // 并发只在有余量时提速；波次失败由外层 attempt 整体回 wasm 串行重跑）。
+  // WASM 强制串行（CPU 内存带宽共享 + 手机内存， 并发无收益）。
+  const poolN = (backend === 'webgpu' && scorerPool.length > 1) ? 2 : 1;
+  for (let w = 0; w < segMel.length; w += poolN) {
+    const wave = segMel.slice(w, w + poolN);
+    segIdx += wave.length; // 进度按波次末段算；段内组装仍严格按顺序，链式不断
+    const segRatio = 0.34 + 0.51 * segIdx / nSegTotal;
+    phase(`第${w + 1}~${segIdx}/${nSegTotal}段：神经网络打分（${poolN}并发，最耗时一步）…`, segRatio);
+    const tensors = wave.map(sg => new ortNS.Tensor('float32', sg.mel, [1, T, N_MELS, 6]));
+    const outs = await Promise.all(wave.map((sg, k) => scorerPool[k].run({ mel: tensors[k] })));
+    for (const t of tensors) { try { t.dispose && t.dispose(); } catch (_) {} }
+    for (let k = 0; k < wave.length; k++) {
+      const dispIdx = w + k + 1; // 段内显示序号（心跳/属性头用）
+      const out = outs[k];
+      const S = out.S.data, Sskip = out.Sskip.data, CTX = out.CTX.data;
+      try { for (const t of out.values()) t.dispose && t.dispose(); } catch (_) {} // S单张171MB(fp16 86MB)，及时还显存
     // 90 symbol 各自 Viterbi（与 torch nBatch=nSym 等价；每30个报一次心跳，避免长静默）
     const intervals = [];
     for (let sym = 0; sym < 90; sym++) {
-      if (sym % 30 === 0) phase(`第${segIdx}/${nSegTotal}段：Viterbi 解码 ${sym}/90…`, segRatio);
+      if (sym % 30 === 0) phase(`第${dispIdx}/${nSegTotal}段：Viterbi 解码 ${sym}/90…`, segRatio);
       intervals.push(TranskunViterbi.decode({
         T,
         getScore: (e, b) => S[(e * T + b) * 90 + sym],
@@ -394,7 +431,7 @@ async function inferAll(ortNS, scorer, attr, backend, pcm) {
     for (let sym = 0; sym < 90; sym++) total += intervals[sym].length;
     let vel = [], ofVal = [], ofPres = [];
     if (total > 0) {
-      phase(`第${segIdx}/${nSegTotal}段：力度/离位属性头（${total}检出）…`, segRatio);
+      phase(`第${dispIdx}/${nSegTotal}段：力度/离位属性头（${total}检出）…`, segRatio);
       const ca = new Float32Array(total * 256), cb = new Float32Array(total * 256);
       let n = 0;
       for (let sym = 0; sym < 90; sym++) {
@@ -412,7 +449,7 @@ async function inferAll(ortNS, scorer, attr, backend, pcm) {
       try { for (const t of ao.values()) t.dispose && t.dispose(); } catch (_) {}
     }
     // 组装（与 transcribeFrames/test_e2e_v3.assemble 逐行对齐）
-    const beginTime = s0 / FS - (SEG_SEC - STEP_SEC);
+    const beginTime = wave[k].s0 / FS - (SEG_SEC - STEP_SEC);
     const lastP = new Array(90).fill(0);
     let n = 0;
     const curNotes = [];
@@ -450,7 +487,8 @@ async function inferAll(ortNS, scorer, attr, backend, pcm) {
       if (ev.hasOnset) { arr.push(ev); eventsByType.set(ev.pitch, arr); }
     }
     startPos = lastP.map(v => Math.max(v - STEP_F, 0));
-  }
+    } // end k（波次内逐段顺序组装，forcedStart 链不断）
+  } // end w（波次）
   // 终筛（与 transcribe() 尾部逐行对齐）：末事件 hasOffset → 只留有offset → resolveOverlapping
   let eventsAll = [];
   for (const arr of eventsByType.values()) {
@@ -458,10 +496,34 @@ async function inferAll(ortNS, scorer, attr, backend, pcm) {
     eventsAll = eventsAll.concat(arr);
   }
   eventsAll = eventsAll.filter(v => v.hasOffset);
+  if (opts && opts.extend) eventsAll = extendEnds(eventsAll); // 延音展开（Data.extendPedal 语义；验证 harness 传 extend:false 保与 torch transcribe() 的 12/12）
   eventsAll = resolveOverlapping(eventsAll);
   const notes = eventsAll.map(v => ({ start: v.start, end: v.end, pitch: v.pitch, velocity: v.velocity }));
   log(`转写完成：${notes.length} 音符（ pedals=${notes.filter(v => v.pitch < 0).length}），后端=${backend}`);
   return { notes, diag: { segments: nSegTotal, backend } };
+}
+
+// 延音踏板展开（对标 Data.extendPedal：按键已松但踏板还踩着 → 音延到踏板抬起；
+// 同 pitch 先截断；力度保留；踏板事件原样保留。训练数据即此语义，故默认开。）
+function extendEnds(evs) {
+  const pedals = evs.filter(n => n.pitch === -64)
+    .map(n => ({ start: n.start, end: n.end }))
+    .sort((a, b) => a.start - b.start || a.end - b.end);
+  const keys = evs.filter(n => n.pitch > 0)
+    .sort((a, b) => a.start - b.start || a.end - b.end || a.pitch - b.pitch);
+  const out = [], buf = new Map();
+  for (const n of keys) {
+    if (buf.has(n.pitch)) {
+      const prev = out[buf.get(n.pitch)];
+      if (prev.end > n.start) prev.end = n.start;
+    }
+    for (const p of pedals) {
+      if (n.end < p.end && n.end > p.start) n.end = p.end; // 级联延到最晚覆盖的踏板（与原版一致，无 break）
+    }
+    buf.set(n.pitch, out.length);
+    out.push(n);
+  }
+  return evs.filter(n => n.pitch <= 0).concat(out);
 }
 
 // resolveOverlapping（与 Data.py 逐行对齐：同pitch后音截断前音，丢弃 start>=end）

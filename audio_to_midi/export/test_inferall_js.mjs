@@ -107,7 +107,7 @@ const fakeAttr2 = {
   }
 };
 
-const out = await sandbox.inferAll(fakeOrt, fakeScorer2, fakeAttr2, 'cpu', pcm);
+const out = await sandbox.inferAll(fakeOrt, [fakeScorer2], fakeAttr2, 'cpu', pcm, { extend: false }); // extend:false 保与 torch transcribe() 的 12/12（延音展开另由 test_extend 对拍）
 console.log(`JS notes: ${out.notes.length}, segments run: ${captured.length}`);
 
 // 逐段：mel 对比 + gather 对比（intervals 一致性由终判音符覆盖；另 action 量）

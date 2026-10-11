@@ -56,6 +56,12 @@ label.chk{font-size:13px;color:var(--dim);display:flex;gap:6px;align-items:cente
       <button id="playv2" class="ghost" disabled>在重制版中播放</button>
       <button id="rec" class="ghost">🎤 录音</button>
       <span id="recTime" style="font-size:12px;color:var(--dim)"></span>
+      <label class="chk">输出音色
+        <select id="outMode" style="background:#161b22;color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:3px 6px;font-size:12px">
+          <option value="piano">仅钢琴</option>
+          <option value="multi">多乐器（&lt;48大提琴/48–71钢琴/≥72小提琴）</option>
+        </select>
+      </label>
     </div>
     <div id="prog"><div id="progBar"></div></div>
     <div id="phase"></div>
@@ -81,6 +87,6 @@ label.chk{font-size:13px;color:var(--dim);display:flex;gap:6px;align-items:cente
 <script src="../shared/cdn-race.js?v=dev"></script>
 <script src="../build-info.js?v=dev"></script>
 <script src="../shared/build-stamp.js?v=dev"></script>
-<script src="./app.js?v=6"></script>
+<script src="./app.js?v=7"></script>
 </body>
 </html>

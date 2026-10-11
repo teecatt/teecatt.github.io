@@ -80,7 +80,7 @@ let audioFile = null, pcmMono = null, sampleRate = 0, midiBlob = null, worker = 
 
 function getWorker() {
   if (!worker) {
-    worker = new Worker('./worker.js?v=8');
+    worker = new Worker('./worker.js?v=9');
     worker.onmessage = onWorkerMsg;
     worker.onerror = e => dlog('Worker 错误：' + JSON.stringify({ message: e && e.message, filename: e && e.filename, lineno: e && e.lineno }) + '（多为 worker 崩溃/OOM/脚本加载失败；看上一行日志定位阶段）', 'err');
     worker.postMessage({ type: 'probeBackend' });
@@ -289,6 +289,7 @@ $('go').onclick = async () => {
     const w = getWorker();
     const buf = pcmMono.slice().buffer; // 拷贝后 transfer（保留原数据可重跑）
     const msg = { type: 'transcribe', pcm: new Float32Array(buf), sampleRate };
+    msg.outMode = ($('outMode') && $('outMode').value) || 'piano'; // 仅钢琴 / 多乐器分区
     if (forceBackendOnce) { msg.forceBackend = forceBackendOnce; forceBackendOnce = null; } // gpuLost 重跑：跳过后端探测直走 wasm
     const transfer = [buf];
     msg.models = models; // 90MB 经 transfer 零拷贝给 Worker（下次跑重新读 OPFS）
@@ -335,7 +336,7 @@ function finish(m) {
   $('dl').disabled = false;
   if ($('playv2')) $('playv2').disabled = false;
   $('go').disabled = false;
-  $('phase').textContent = `完成：${m.notes.length} 个事件（模型输出）`;
+  $('phase').textContent = `完成：${m.notes.length} 个事件（模型输出，${($('outMode') && $('outMode').value) === 'multi' ? '多乐器' : '仅钢琴'}${m.extended ? '·延音已展开' : ''}）`;
   dlog(`耗时：重采样 ${d.msResample.toFixed(0)}ms / 推理 ${d.msInfer.toFixed(0)}ms / 共 ${(d.msTotal / 1000).toFixed(1)}s；${d.segments}段 / 后端 ${d.backend || '?'}`, 'ok');
   $('stats').innerHTML =
     `<span>事件 <b>${m.notes.length}</b></span>` +
