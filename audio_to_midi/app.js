@@ -25,6 +25,7 @@ const MODEL_R2 = 'https://weights.down2.top';
 const MODEL_R2_DIRECT = 'https://pub-b8d95e05900c4ad98bf1420adcda0148.r2.dev';
 const MODEL_FILES = [
   { key: 'scorer', urls: [MODEL_R2 + '/transkun_scorer.onnx', MODEL_R2_DIRECT + '/transkun_scorer.onnx'], name: 'transkun_scorer.onnx', size: 57104274 },
+  { key: 'scorerFp16', urls: [MODEL_R2 + '/transkun_scorer_fp16.onnx', MODEL_R2_DIRECT + '/transkun_scorer_fp16.onnx'], name: 'transkun_scorer_fp16.onnx', size: 30750038 }, // WebGPU 专用（半显存；位置精确、力度±2，见 dump_fp16 验证）
   { key: 'attr', urls: [MODEL_R2 + '/transkun_attr.onnx', MODEL_R2_DIRECT + '/transkun_attr.onnx'], name: 'transkun_attr.onnx', size: 3427886 },
 ];
 
@@ -79,7 +80,7 @@ let audioFile = null, pcmMono = null, sampleRate = 0, midiBlob = null, worker = 
 
 function getWorker() {
   if (!worker) {
-    worker = new Worker('./worker.js?v=7');
+    worker = new Worker('./worker.js?v=8');
     worker.onmessage = onWorkerMsg;
     worker.onerror = e => dlog('Worker 错误：' + JSON.stringify({ message: e && e.message, filename: e && e.filename, lineno: e && e.lineno }) + '（多为 worker 崩溃/OOM/脚本加载失败；看上一行日志定位阶段）', 'err');
     worker.postMessage({ type: 'probeBackend' });
@@ -288,9 +289,11 @@ $('go').onclick = async () => {
     const w = getWorker();
     const buf = pcmMono.slice().buffer; // 拷贝后 transfer（保留原数据可重跑）
     const msg = { type: 'transcribe', pcm: new Float32Array(buf), sampleRate };
+    if (forceBackendOnce) { msg.forceBackend = forceBackendOnce; forceBackendOnce = null; } // gpuLost 重跑：跳过后端探测直走 wasm
     const transfer = [buf];
-    msg.models = models; // 60MB 经 transfer 零拷贝给 Worker（下次跑重新读 OPFS）
+    msg.models = models; // 90MB 经 transfer 零拷贝给 Worker（下次跑重新读 OPFS）
     transfer.push(models.scorer, models.attr);
+    if (models.scorerFp16) transfer.push(models.scorerFp16); // 老预下载无此键时跳过（worker 回退 fp32）
     dlog(`送入 Worker：${pcmMono.length} 采样 @${sampleRate}Hz`);
     w.postMessage(msg, transfer);
   } catch (err) {
@@ -316,6 +319,13 @@ function onWorkerMsg(e) {
   } else if (m.type === 'error') {
     dlog('转写失败：' + m.text, 'err');
     $('go').disabled = false;
+  } else if (m.type === 'gpuLost') {
+    // ort 内部 GPU 崩溃走的是游离 promise（try/catch 抓不到），由 worker 的
+    // unhandledrejection 转换而来。这里用已解码的 pcm 直接重跑 wasm，不用用户动手。
+    dlog('WebGPU 崩溃（device lost），转 WASM 自动重跑…', 'warn');
+    forceBackendOnce = 'wasm';
+    $('go').disabled = false;
+    $('go').click();
   }
 }
 
@@ -403,6 +413,7 @@ function drawRoll(notes) {
 // ---------- 进页预下载：load 后台调用 ensureModels（复用 fetchOne 进度条 + phase + 竞速逻辑） ----------
 let preloadedModels = null; // 预下载好的模型（ArrayBuffer），转写时优先复用
 let autoGo = false; // 上传/录音解码完成后自动开始转写（预下载中则等其结束再触发）
+let forceBackendOnce = null; // gpuLost 重跑一次性后端指定（worker 收到后跳过探测）
 let prefetching = false; // 预下载进行中时 pickFile/onRecStop 不提前启用转写按钮，避免并行双下载
 window.addEventListener('load', () => {
   prefetching = true;

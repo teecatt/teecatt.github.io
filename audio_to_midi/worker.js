@@ -20,7 +20,16 @@ importScripts('viterbi.js'); // Semi-CRF 后向 Viterbi（node --check 只做语
 self.addEventListener('unhandledrejection', (e) => {
   let msg = 'worker 未捕获异步错误';
   try { msg += '：' + String((e && e.reason && (e.reason.stack || e.reason.message)) || e.reason); } catch (_) {}
-  try { postMessage({ type: 'error', text: msg }); } catch (_) {}
+  try {
+    // GPU 崩溃（device lost / mapAsync）经常挂在 ort 内部游离 promise 上，try/catch 抓不到。
+    // 若正跑在 webgpu 上，转显式 gpuLost 让主线程切 wasm 重跑（只转一次）。
+    if (self._be === 'webgpu' && self._fbArmed && /mapAsync|device.*lost|lost|webgpu|GPUBuffer/i.test(msg)) {
+      self._fbArmed = false;
+      postMessage({ type: 'gpuLost', text: msg });
+      return;
+    }
+    postMessage({ type: 'error', text: msg });
+  } catch (_) {}
 });
 
 const FS = 44100, WIN = 4096, HOP = 1024, N_MELS = 229;
@@ -144,18 +153,20 @@ onmessage = async (e) => {
 
     let notes, mode, segDiag = null;
     if (!msg.models) throw new Error('未收到模型字节（主线程应先经 OPFS/网络备好双权重）');
-    const r = await runModel(pcm, msg.models);
+    const r = await runModel(pcm, msg.models, msg.forceBackend || null);
     notes = r.notes; segDiag = r.diag; mode = 'onnx';
     const tInf = performance.now();
 
     phase('生成 MIDI…', 0.92);
     const midiBytes = writeMidi(notes);
     phase('完成', 1);
+    self._fbArmed = false; // 正常完成，解除 gpuLost 武装
     postMessage({
       type: 'done', midi: midiBytes.buffer, notes, mode,
       diag: Object.assign({ msResample: tRs - t0, msInfer: tInf - tRs, msTotal: performance.now() - t0 }, segDiag || {})
     }, [midiBytes.buffer]);
   } catch (err) {
+    self._fbArmed = false; // 失败已转 error 通道，解除武装（gpuLost 另行上报）
     postMessage({ type: 'error', text: String((err && err.stack) || err) });
   }
 };
@@ -291,25 +302,34 @@ function viterbiPlantedTest(){
   postMessage({ type: 'viterbiSelftest', ok, notes: notes.length, singletons });
   return ok;
 }
-async function runModel(pcm, models) {
+async function runModel(pcm, models, forceBackend) {
   loadOrt(); // 双 CDN 回退加载（动态，不阻塞页面）
   const ortNS = self.ort;
-  // 后端：优先 WebGPU，失败回退 WASM（任务6要求明示回退）
+  // 后端：优先 WebGPU，失败回退 WASM（任务6要求明示回退）；gpuLost 重跑可强制指定
   let backend = 'wasm';
   try {
     if (self.navigator && self.navigator.gpu && (await self.navigator.gpu.requestAdapter())) backend = 'webgpu';
   } catch (_) { /* 回退 wasm */ }
+  if (forceBackend === 'wasm' || forceBackend === 'webgpu') {
+    backend = forceBackend;
+    log('后端强制指定：' + backend + '（gpuLost 重跑，不再探测）');
+  }
+  self._fbArmed = true; // 武装 gpuLost 转换（done/error 发出后解除，见 onmessage 收尾）
   const mkSession = async (buf, providers) =>
     ortNS.InferenceSession.create(buf, { executionProviders: providers });
   // 单次尝试：建会话 + 全量推理。WebGPU 在创建期或运行期（device lost/内存爆）失败时，
   // 外层整体回退 WASM 重跑（幂等：startPos/事件全是局部状态）。
   const attempt = async (be) => {
     const prov = [be];
+    self._be = be; // 当前后端（unhandledrejection 据此判定是否转 gpuLost）
+    // WebGPU 用 fp16 权重（29MB，显存减半；位置精确、力度±2，老设备无 fp16 分片时回退 fp32）
+    let scorerBuf = models.scorer, scorerTag = 'fp32';
+    if (be === 'webgpu' && models.scorerFp16) { scorerBuf = models.scorerFp16; scorerTag = 'fp16'; }
     phase(`下载运行时（首次一次性；后端${be}）…`, 0.28);
-    const scorer = await mkSession(models.scorer, prov);
+    const scorer = await mkSession(scorerBuf, prov);
     phase('scorer 会话就绪，加载 attr 会话…', 0.36);
     const attr = await mkSession(models.attr, prov);
-    log(`ONNX 就绪：后端=${be}，S=${scorer.outputNames}，attr=${attr.outputNames}`);
+    log(`ONNX 就绪：后端=${be}，scorer=${scorerTag}，S=${scorer.outputNames}，attr=${attr.outputNames}`);
     try {
       return await inferAll(ortNS, scorer, attr, be, pcm);
     } finally {
