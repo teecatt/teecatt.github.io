@@ -113,12 +113,33 @@ function getWorker() {
   if (!worker) {
     worker = new Worker('./worker.js?v=18');
     worker.onmessage = onWorkerMsg;
-    worker.onerror = e => dlog('Worker 错误：' + JSON.stringify({ message: e && e.message, filename: e && e.filename, lineno: e && e.lineno }) + '（多为 worker 崩溃/OOM/脚本加载失败；看上一行日志定位阶段）', 'err');
+    worker.onerror = e => { transcribing = false; unlockScreen(); dlog('Worker 错误：' + JSON.stringify({ message: e && e.message, filename: e && e.filename, lineno: e && e.lineno }) + '（多为 worker 崩溃/OOM/脚本加载失败；看上一行日志定位阶段）', 'err'); };
     worker.postMessage({ type: 'probeBackend' });
     worker.postMessage({ type: 'warmup' }); // 约定消息名：通知 worker 后台预热 ort（worker 侧实现，就绪后回 warmupOk）
   }
   return worker;
 }
+
+// ---------- 屏幕常亮锁（转写期间防后台冻结；无 API 全程静默跳过） ----------
+let wakeLock = null, transcribing = false;
+async function lockScreen() {
+  if (!('wakeLock' in navigator)) return;
+  try {
+    wakeLock = await navigator.wakeLock.request('screen');
+    try { wakeLock.addEventListener('release', () => { if (transcribing) wakeLock = null; }); } catch (_) {}
+    dlog('屏幕常亮已锁（防后台冻结）', 'ok');
+  } catch (err) {
+    wakeLock = null;
+    dlog('屏幕常亮申请失败（不拦转写）：' + (err && err.message || err), 'warn');
+  }
+}
+async function unlockScreen() {
+  try { if (wakeLock) await wakeLock.release(); } catch (_) {}
+  wakeLock = null;
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && transcribing && !wakeLock) lockScreen();
+});
 
 // ---------- 上传 ----------
 const drop = $('drop'), fileInput = $('file');
@@ -143,6 +164,7 @@ if (sampleBtn) sampleBtn.onclick = () => { location.href = '?sample=' + encodeUR
 
 async function pickFile(f) {
   audioFile = f; pcmMono = null; midiBlob = null;
+  armFreshAudio(); // 新文件：废弃旧断点
   $('dl').disabled = true;
   if ($('playv2')) $('playv2').disabled = true;
   $('fileInfo').textContent = `${f.name}（${(f.size / 1048576).toFixed(1)} MB）· 解码中…`;
@@ -246,6 +268,7 @@ async function onRecStop() {
   if (!blob.size) { dlog('录音为空，请重试', 'err'); return; }
   audioFile = { name: 'mic-' + new Date(recT0).toISOString().replace(/[:.]/g, '-').slice(0, 19) + '.webm', size: blob.size };
   pcmMono = null; midiBlob = null;
+  armFreshAudio(); // 新录音：废弃旧断点
   $('dl').disabled = true;
   if ($('playv2')) $('playv2').disabled = true;
   $('fileInfo').textContent = '麦克风录音 · 解码中…';
@@ -319,10 +342,104 @@ async function ensureModels() {
   return out;
 }
 
+// ---------- 断点续跑（ckpt 落 OPFS；写失败只 warn 不中断转写） ----------
+const CKPT_META = 'ckpt-meta.json', CKPT_PCM = 'ckpt-pcm.raw';
+let ckptInfo = null, resumeArmed = false, lastPcm44 = null, lastSr = 44100, goOrigText = '开始转写';
+async function ckptDir() {
+  const root = await navigator.storage.getDirectory();
+  return root.getDirectoryHandle('audio_to_midi', { create: true });
+}
+async function clearCkpt() {
+  try {
+    const dir = await ckptDir();
+    await dir.removeEntry(CKPT_META).catch(() => {});
+    await dir.removeEntry(CKPT_PCM).catch(() => {});
+  } catch (_) {}
+}
+function armFreshAudio() { // 新音频（上传/录音）：废弃旧断点，按钮文案恢复
+  resumeArmed = false; ckptInfo = null;
+  try { $('go').textContent = goOrigText; } catch (_) {}
+  clearCkpt();
+}
+// 主线程收到 worker 每波 ckpt：meta 必写；pcm 只在缺失/大小不对时写一次（同一任务内容不变）
+async function saveCkpt(m) {
+  try {
+    const dir = await ckptDir();
+    if (lastPcm44) {
+      let needPcm = true;
+      try {
+        const f = await (await dir.getFileHandle(CKPT_PCM)).getFile();
+        needPcm = (f.size !== lastPcm44.byteLength);
+      } catch (_) { needPcm = true; }
+      if (needPcm) {
+        const w = await (await dir.getFileHandle(CKPT_PCM, { create: true })).createWritable();
+        await w.write(lastPcm44);
+        await w.close();
+      }
+    }
+    const meta = { doneSeg: m.doneSeg, nSegTotal: m.nSegTotal, sampleRate: lastSr, outMode: m.outMode || 'piano', startPos: m.startPos, events: m.events, time: Date.now() };
+    const mw = await (await dir.getFileHandle(CKPT_META, { create: true })).createWritable();
+    await mw.write(JSON.stringify(meta));
+    await mw.close();
+  } catch (err) {
+    dlog('断点存档失败（不中断转写）：' + (err && err.message || err), 'warn');
+  }
+}
+// load 时检查未完成任务：有断点则面板提示，按钮临时改“继续转写”（仅无新音频时）
+async function checkCkpt() {
+  try {
+    const dir = await ckptDir();
+    const meta = JSON.parse(await (await (await dir.getFileHandle(CKPT_META)).getFile()).text());
+    const pf = await (await dir.getFileHandle(CKPT_PCM)).getFile();
+    if (meta && meta.doneSeg > 0 && pf.size > 0) {
+      ckptInfo = meta;
+      dlog(`检测到未完成任务（${meta.doneSeg}段/${meta.nSegTotal}段），点“开始转写”继续`, 'warn');
+      const gb = $('go');
+      if (gb && !pcmMono) { gb.textContent = '继续转写'; gb.disabled = false; resumeArmed = true; }
+    }
+  } catch (_) { /* 无断点，正常 */ }
+}
+
 // ---------- 转写 ----------
 $('go').onclick = async () => {
   autoGo = false; // 本次已触发，清除挂起的自动转写
+  // 断点续跑：无新音频但有断点时，直接读 ckpt 发 resume（不走 pickFile）
+  if (resumeArmed && !pcmMono && ckptInfo) {
+    $('go').disabled = true;
+    $('prog').style.display = 'block';
+    transcribing = true;
+    if (!wakeLock) await lockScreen();
+    try {
+      const dir = await ckptDir();
+      const meta = JSON.parse(await (await (await dir.getFileHandle(CKPT_META)).getFile()).text());
+      const raw = await (await (await dir.getFileHandle(CKPT_PCM)).getFile()).arrayBuffer();
+      const rp = new Float32Array(raw);
+      lastPcm44 = rp.slice(); lastSr = meta.sampleRate || 44100; // rp.buffer 随 transfer 剥离，留拷贝供后续 ckpt
+      let models = preloadedModels;
+      preloadedModels = null;
+      if (!models) models = await ensureModels();
+      const w = getWorker();
+      const outMode = meta.outMode || 'piano';
+      if ($('outMode')) $('outMode').value = outMode;
+      const msg = { type: 'transcribe', sampleRate: lastSr, outMode, resume: { pcm: rp, startPos: meta.startPos, events: meta.events, fromSeg: meta.doneSeg, outMode } };
+      const transfer = [rp.buffer];
+      transfer.push(models.scorer, models.attr);
+      if (models.scorerFp16) transfer.push(models.scorerFp16);
+      if (forceBackendOnce) { msg.forceBackend = forceBackendOnce; forceBackendOnce = null; }
+      dlog(`断点续跑：从第${meta.doneSeg + 1}段起，共${meta.nSegTotal}段`);
+      w.postMessage(msg, transfer);
+    } catch (err) {
+      dlog('续跑启动失败：' + (err && err.message || err), 'err');
+      $('go').disabled = false;
+      transcribing = false;
+      await unlockScreen();
+    }
+    return;
+  }
   if (!pcmMono) return;
+  transcribing = true;
+  if (!wakeLock) await lockScreen();
+  resumeArmed = false; // 新转写起跑（旧断点已在选文件时废弃）
   $('go').disabled = true;
   $('prog').style.display = 'block';
   try {
@@ -330,6 +447,7 @@ $('go').onclick = async () => {
     let models = preloadedModels;
     preloadedModels = null;
     if (!models) models = await ensureModels();
+    lastPcm44 = pcmMono; lastSr = sampleRate; // pcmMono 本体不 transfer（传的是拷贝），可直接引用供 ckpt
     const w = getWorker();
     const buf = pcmMono.slice().buffer; // 拷贝后 transfer（保留原数据可重跑）
     const msg = { type: 'transcribe', pcm: new Float32Array(buf), sampleRate };
@@ -344,6 +462,8 @@ $('go').onclick = async () => {
   } catch (err) {
     dlog('启动失败：' + (err && err.message || err), 'err');
     $('go').disabled = false;
+    transcribing = false;
+    await unlockScreen();
   }
 };
 
@@ -362,9 +482,13 @@ function onWorkerMsg(e) {
     $('buildStatus').textContent = `在线转写 · 权重 R2/OPFS（scorer 57MB + attr 3.4MB）· ${m.webgpu ? '本机支持 WebGPU' : '本机无 WebGPU，走 WASM（慢 5–10 倍）'}`;
   } else if (m.type === 'done') {
     finish(m);
+  } else if (m.type === 'ckpt') {
+    saveCkpt(m); // 断点存档（失败只 warn，函数内部处理，不中断转写）
   } else if (m.type === 'error') {
     dlog('转写失败：' + m.text, 'err');
     $('go').disabled = false;
+    transcribing = false; // 断点保留，可点“继续转写”重试
+    unlockScreen();
   } else if (m.type === 'gpuLost') {
     // ort 内部 GPU 崩溃走的是游离 promise（try/catch 抓不到），由 worker 的
     // unhandledrejection 转换而来。这里用已解码的 pcm 直接重跑 wasm，不用用户动手。
@@ -377,6 +501,11 @@ function onWorkerMsg(e) {
 
 function finish(m) {
   const d = m.diag;
+  transcribing = false;
+  unlockScreen();
+  clearCkpt(); // 完成删断点（resume 跑完同样）
+  resumeArmed = false; ckptInfo = null;
+  try { $('go').textContent = goOrigText; } catch (_) {}
   midiBlob = new Blob([m.midi], { type: 'audio/midi' });
   $('dl').disabled = false;
   if ($('playv2')) $('playv2').disabled = false;
@@ -484,5 +613,7 @@ window.addEventListener('load', () => {
     goBtn.textContent = origText;
     goBtn.disabled = !pcmMono; // 无解码音频仍保持禁用，有则恢复可用
     if (autoGo && pcmMono && !goBtn.disabled) { autoGo = false; goBtn.click(); } // 预下载期间上传的文件，补触发自动转写
+    goOrigText = origText;
+    checkCkpt(); // 有未完成任务则按钮变“继续转写”（仅无新音频时）
   });
 });

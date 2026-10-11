@@ -167,19 +167,20 @@ onmessage = async (e) => {
   const t0 = performance.now();
   try {
     phase('重采样到 44.1kHz…', 0.05);
-    let pcm = msg.pcm, sr = msg.sampleRate;
+    const resume = msg.resume || null; // 断点续跑：{pcm,startPos,events,fromSeg,outMode}
+    let pcm = (resume && resume.pcm) || msg.pcm, sr = msg.sampleRate;
     if (sr !== FS) pcm = resample(pcm, sr, FS);
     const tRs = performance.now();
 
     let notes, mode, segDiag = null;
     if (!msg.models) throw new Error('未收到模型字节（主线程应先经 OPFS/网络备好双权重）');
-    const runOpts = { extend: true, outMode: msg.outMode || 'piano' };
-    const r = await runModel(pcm, msg.models, msg.forceBackend || null, runOpts);
+    const runOpts = { extend: true, outMode: msg.outMode || (resume && resume.outMode) || 'piano' };
+    const r = await runModel(pcm, msg.models, msg.forceBackend || null, runOpts, resume);
     notes = r.notes; segDiag = r.diag; mode = 'onnx';
     const tInf = performance.now();
 
     phase('生成 MIDI…', 0.92);
-    const midiBytes = writeMidi(notes, msg.outMode || 'piano');
+    const midiBytes = writeMidi(notes, runOpts.outMode);
     phase('完成', 1);
     self._fbArmed = false; // 正常完成，解除 gpuLost 武装
     postMessage({
@@ -339,7 +340,7 @@ function viterbiPlantedTest(){
   postMessage({ type: 'viterbiSelftest', ok, notes: notes.length, singletons });
   return ok;
 }
-async function runModel(pcm, models, forceBackend, runOpts) {
+async function runModel(pcm, models, forceBackend, runOpts, resume) {
   loadOrt(); // 双 CDN 回退加载（动态，不阻塞页面）
   const ortNS = self.ort;
   // 后端：优先 WebGPU，失败回退 WASM（任务6要求明示回退）；gpuLost 重跑可强制指定
@@ -356,7 +357,7 @@ async function runModel(pcm, models, forceBackend, runOpts) {
     ortNS.InferenceSession.create(buf, { executionProviders: providers });
   // 单次尝试：建会话 + 全量推理。WebGPU 在创建期或运行期（device lost/内存爆）失败时，
   // 外层整体回退 WASM 重跑（幂等：startPos/事件全是局部状态）。
-  const attempt = async (be) => {
+  const attempt = async (be, rs) => {
     const prov = [be];
     self._be = be; // 当前后端（unhandledrejection 据此判定是否转 gpuLost）
     // WebGPU 用 fp16 权重（29MB，显存减半；位置精确、力度±2，老设备无 fp16 分片时回退 fp32）
@@ -372,18 +373,18 @@ async function runModel(pcm, models, forceBackend, runOpts) {
     log(`ONNX 就绪：后端=${be}，scorer=${scorerTag}×${nPool}，S=${scorers[0].outputNames}，attr=${attr.outputNames}，worker.js?v=18`);
     const freshScorer = () => mkSession(scorerBuf, prov); // 会话损坏时重建用（见 inferAll 限流处理）
     try {
-      return await inferAll(ortNS, scorers, attr, be, pcm, runOpts, freshScorer, scorerTag);
+      return await inferAll(ortNS, scorers, attr, be, pcm, runOpts, freshScorer, scorerTag, rs);
     } finally {
       for (const s of scorers) { try { s && s.release && (await s.release()); } catch (_) {} }
       try { attr && attr.release && (await attr.release()); } catch (_) {}
     }
   };
   try {
-    return await attempt(backend);
+    return await attempt(backend, resume);
   } catch (err) {
     if (backend === 'webgpu') {
       log('WebGPU 推理失败（创建期或运行期），整体回退 WASM 重跑：' + (err && err.message || err));
-      return await attempt('wasm');
+      return await attempt('wasm', null); // 回退全量重跑，不用断点（跨后端 forcedStart 链恐有细差，精度红线）
     }
     throw err;
   }
@@ -395,7 +396,7 @@ function runWithTimeout(p, ms, label) {
 }
 
 // 全量分段推理（与 transcribe() 逐行对齐；无状态，可整体重跑）
-async function inferAll(ortNS, scorers, attr, backend, pcm, opts, freshScorer, scorerTag) {
+async function inferAll(ortNS, scorers, attr, backend, pcm, opts, freshScorer, scorerTag, resume) {
   let scorerPool = Array.isArray(scorers) ? scorers : [scorers]; // 兼容旧单会话调用
   // 分相探针注记：ort-web run()为单调用，upload/run/readback无法拆分，score_ms只记run总时长
   log('探针注记：score_ms=run总时长（ort单调用，upload/run/readback不可拆）');
@@ -416,6 +417,14 @@ async function inferAll(ortNS, scorers, attr, backend, pcm, opts, freshScorer, s
   const eventsByType = new Map(); // pitch -> Note[](hasOnset/hasOffset 保留到终筛)
   let segIdx = 0, nSegTotal = 0;
   for (let s0 = 0; s0 < nSample; s0 += STEP) nSegTotal++;
+  // 断点续跑：恢复 forcedStart 链与已组装事件（只恢复状态，不碰算法；mel 照算）。
+  // 注意 events 经 JSON 后 Map 数字键变字符串，恢复时 Number() 转回，否则跨断点合并失效。
+  const fromSeg = (resume && resume.fromSeg) | 0;
+  if (resume) {
+    if (Array.isArray(resume.startPos) && resume.startPos.length === 90) startPos = resume.startPos.slice();
+    if (Array.isArray(resume.events)) for (const [pitch, arr] of resume.events) eventsByType.set(Number(pitch), arr);
+    if (fromSeg > 0) log(`断点续跑：从第${fromSeg + 1}段起（已完成${fromSeg}/${nSegTotal}段，mel 照算）`);
+  }
   // Phase A：全部 mel 预计算（CPU 快活；内存约 nSeg×3.8MB），Phase B 波次打分时不再碰音频
   const segMel = [];
   {
@@ -450,6 +459,7 @@ async function inferAll(ortNS, scorers, attr, backend, pcm, opts, freshScorer, s
     const poolN = stickySerial ? 1 : 2;
     const wave = segMel.slice(w, w + poolN);
     segIdx += wave.length; // 进度按波次末段算；段内组装仍严格按顺序，链式不断
+    if (fromSeg > 0 && segIdx <= fromSeg) { w += wave.length; continue; } // 断点续跑：已完成波次跳过打分与组装
     const segRatio = 0.34 + 0.51 * segIdx / nSegTotal;
     phase(`第${w + 1}~${segIdx}/${nSegTotal}段：神经网络打分（${poolN}并发，最耗时一步）…`, segRatio, true); // 日志治理：只动进度条，面板以打分完成行（含用时）为准
     const tensors = wave.map(sg => new ortNS.Tensor('float32', sg.mel, [1, T, N_MELS, 6]));
@@ -572,6 +582,8 @@ async function inferAll(ortNS, scorers, attr, backend, pcm, opts, freshScorer, s
     startPos = lastP.map(v => Math.max(v - STEP_F, 0));
     } // end k（波次内逐段顺序组装，forcedStart 链不断）
     w += wave.length;
+    // 断点续跑：每波组装完成后发存档（Map 转数组可序列化；phase/心跳不动；主线程写 OPFS 失败不中断）
+    try { postMessage({ type: 'ckpt', doneSeg: segIdx, nSegTotal, startPos: startPos.slice(), events: [...eventsByType], outMode: (opts && opts.outMode) || 'piano' }); } catch (_) {}
     // 喘息：每波次让出事件循环，给 GPU 合成器/温控回口气（防手机卡顿；32 段仅多约 5 秒）
     await new Promise(r => setTimeout(r, 150));
   } // end w（波次）
