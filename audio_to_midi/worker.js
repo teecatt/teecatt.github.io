@@ -60,7 +60,9 @@ const HANN = (() => {
   return w;
 })();
 
-// ---------- mel 滤波器组（slaney 面积归一 + htk，与 torchaudio 默认一致） ----------
+// ---------- mel 滤波器组（与 torchaudio melscale_fbanks 默认一致：htk、无面积归一） ----------
+// 注：checkpoint 自带的 freq2mels 经实测与 norm=None 版 maxDiff=0.0（slaney 版差 0.98），
+// 故此处故意不做 slaney enorm——这是对的，不是漏写。
 function buildMelBank() {
   const hz2mel = f => 2595 * Math.log10(1 + f / 700);
   const mel2hz = m => 700 * (Math.pow(10, m / 2595) - 1);
@@ -76,8 +78,6 @@ function buildMelBank() {
       const f = k * (FS / 2) / (nFreqs - 1);
       row[k] = f <= f0 || f >= f2 ? 0 : (f <= f1 ? (f - f0) / (f1 - f0) : (f2 - f) / (f2 - f1));
     }
-    const enorm = 2 / (f2 - f0);
-    for (let k = 0; k < nFreqs; k++) row[k] *= enorm;
     bank.push(row);
   }
   return bank;
@@ -173,9 +173,10 @@ function framesToMel(frames, nFrame) {
       let s = 0;
       const row = MEL_BANK[m];
       for (let k = 0; k <= WIN / 2; k++) {
+        // 与 torch 一致：直接取 |rfft|²（ortho 归一），不做单边谱 ×2
+        // （torch.stft/rfft 的 onesided 输出就是原始 DFT bin，无加倍）
         let p = _re[k] * _re[k] + _im[k] * _im[k];
         p *= ortho * ortho;
-        if (k > 0 && k < WIN / 2) p *= 2; // rfft 单边谱能量修正
         s += p * row[k];
       }
       out[f * N_MELS + m] = (Math.log(s + MEL_EPS) - logEps) / negLogEps;
