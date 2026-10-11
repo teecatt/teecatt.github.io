@@ -399,7 +399,7 @@ async function inferAll(ortNS, scorers, attr, backend, pcm, opts) {
     }
   }
   // Phase B：波次打分。WebGPU 用 2 会话并发（单次 691 帧已基本吃满手机 GPU，
-  // 并发只在有余量时提速；波次失败由外层 attempt 整体回 wasm 串行重跑）。
+  // 并发只在有余量时提速；并发被限流时本波次串行重试，见下；波次失败由外层 attempt 整体回 wasm 串行重跑）。
   // WASM 强制串行（CPU 内存带宽共享 + 手机内存， 并发无收益）。
   const poolN = (backend === 'webgpu' && scorerPool.length > 1) ? 2 : 1;
   for (let w = 0; w < segMel.length; w += poolN) {
@@ -408,7 +408,31 @@ async function inferAll(ortNS, scorers, attr, backend, pcm, opts) {
     const segRatio = 0.34 + 0.51 * segIdx / nSegTotal;
     phase(`第${w + 1}~${segIdx}/${nSegTotal}段：神经网络打分（${poolN}并发，最耗时一步）…`, segRatio);
     const tensors = wave.map(sg => new ortNS.Tensor('float32', sg.mel, [1, T, N_MELS, 6]));
-    const outs = await Promise.all(wave.map((sg, k) => scorerPool[k].run({ mel: tensors[k] })));
+    // WebGPU 波次打分：先 2 会话并发；移动端 ORT 对并发 session.run 限流
+    //（Session already started，2026-10-11 真机实证）时本波次改串行重跑，
+    // 保住 GPU 路径；串行再败才由外层 attempt 整体回 WASM。
+    const tScore0 = Date.now();
+    let outs;
+    const runs = wave.map((sg, k) => scorerPool[k].run({ mel: tensors[k] }));
+    try {
+      outs = await Promise.all(runs);
+    } catch (err) {
+      if (backend === 'webgpu' && /session already started/i.test(String((err && err.message) || err))) {
+        // Promise.all 会丢弃已成功的输出：先 allSettled 回收（S 单张 86MB 起，低端机防 OOM），再串行重试
+        try {
+          const settled = await Promise.allSettled(runs);
+          for (const s of settled) {
+            if (s.status === 'fulfilled' && s.value) {
+              try { for (const t of s.value.values()) t.dispose && t.dispose(); } catch (_) {}
+            }
+          }
+        } catch (_) {}
+        log(`WebGPU 并发受限（Session already started），第${w + 1}~${segIdx}段改串行重试…`);
+        outs = [];
+        for (let k = 0; k < wave.length; k++) outs.push(await scorerPool[0].run({ mel: tensors[k] }));
+      } else throw err;
+    }
+    log(`第${w + 1}~${segIdx}段打分完成，用时${Date.now() - tScore0}ms`);
     for (const t of tensors) { try { t.dispose && t.dispose(); } catch (_) {} }
     for (let k = 0; k < wave.length; k++) {
       const dispIdx = w + k + 1; // 段内显示序号（心跳/属性头用）

@@ -4,7 +4,7 @@
  */
 'use strict';
 
-// 全局错误进页日志：加载期/运行时未捕获异常直接写进诊断框（不再只躺F12控制台）。
+// 全局错误进页日志：加载期/运行时未捕获异常直接写进调试面板（不再只躺F12控制台）。
 // 放第一行，保证后面任何初始化暴毙都留字条。
 window.addEventListener('error', (e) => {
   try {
@@ -13,7 +13,7 @@ window.addEventListener('error', (e) => {
     if (box.dataset.init !== '1') { box.textContent = ''; box.dataset.init = '1'; }
     const line = document.createElement('div');
     line.className = 'err';
-    line.textContent = '✗ 页面错误：' + String((e && e.message) || e) +
+    line.textContent = `[${ts()}] ✗ 页面错误：` + String((e && e.message) || e) +
       (e && e.lineno ? `（${e.lineno}行）` : '') + ' —— 把这行贴给开发者';
     box.appendChild(line);
     box.scrollTop = box.scrollHeight;
@@ -31,16 +31,21 @@ const MODEL_FILES = [
 
 const $ = id => document.getElementById(id);
 const diagBox = $('diag');
+// 调试面板时间戳（本地时分秒.毫秒）：面板内所有行统一前缀，还原手机端无 F12 时的时序。
+function ts() {
+  const d = new Date(), p = (n, l) => String(n).padStart(l, '0');
+  return `${p(d.getHours(), 2)}:${p(d.getMinutes(), 2)}:${p(d.getSeconds(), 2)}.${p(d.getMilliseconds(), 3)}`;
+}
 function dlog(text, cls) {
   if (diagBox.dataset.init !== '1') { diagBox.textContent = ''; diagBox.dataset.init = '1'; }
   const line = document.createElement('div');
   if (cls) line.className = cls;
-  line.textContent = (cls === 'err' ? '✗ ' : cls === 'warn' ? '⚠ ' : '· ') + text;
+  line.textContent = `[${ts()}] ` + (cls === 'err' ? '✗ ' : cls === 'warn' ? '⚠ ' : '· ') + text;
   diagBox.appendChild(line);
   diagBox.scrollTop = diagBox.scrollHeight;
 }
 
-// ---------- 诊断日志按钮：清空 / 复制（风格参考 midi_player_v2/app.js copyDebugTerminal 一家，简化版，无 confirm 弹窗） ----------
+// ---------- 调试面板按钮：清空 / 复制
 $('diagClear').onclick = () => {
   diagBox.textContent = ''; // 清空日志
   delete diagBox.dataset.init; // 重置初始化标记，下次 dlog 重新走初始化分支
@@ -80,7 +85,7 @@ let audioFile = null, pcmMono = null, sampleRate = 0, midiBlob = null, worker = 
 
 function getWorker() {
   if (!worker) {
-    worker = new Worker('./worker.js?v=9');
+    worker = new Worker('./worker.js?v=10');
     worker.onmessage = onWorkerMsg;
     worker.onerror = e => dlog('Worker 错误：' + JSON.stringify({ message: e && e.message, filename: e && e.filename, lineno: e && e.lineno }) + '（多为 worker 崩溃/OOM/脚本加载失败；看上一行日志定位阶段）', 'err');
     worker.postMessage({ type: 'probeBackend' });
@@ -253,7 +258,7 @@ async function fetchOne(dir, spec) {
       $('progBar').style.width = pct.toFixed(1) + '%';
       $('phase').textContent = `下载 ${spec.name}… ${pct.toFixed(0)}%（${(pct / 100 * spec.size / 1048576).toFixed(1)}/${(spec.size / 1048576).toFixed(1)} MB）`;
     },
-    onLive: text => { $('phase').textContent = text; },
+    onLive: text => { $('phase').textContent = text; dlog(text); },
     onFinal: text => dlog(text, 'ok'),
   });
   if (blob.size !== spec.size) throw new Error(`${spec.name} 字节数不对：${blob.size}/${spec.size}（来源 ${url}）`);
@@ -308,6 +313,7 @@ function onWorkerMsg(e) {
   if (m.type === 'phase') {
     $('phase').textContent = m.text;
     $('progBar').style.width = Math.round(m.ratio * 100) + '%';
+    dlog(m.text); // 进度过程同步进调试面板（此前只写进度条，面板里看不到过程）
   } else if (m.type === 'log') {
     dlog('[worker] ' + m.text);
   } else if (m.type === 'warmupOk') {
