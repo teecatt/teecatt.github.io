@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LifeReplay — 人生轨迹</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; margin: 0; background: #f5f5f4; color: #1c1917; }
+  header { background: #1c1917; color: #fafaf9; padding: 12px 16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  header h1 { font-size: 18px; margin: 0 8px 0 0; }
+  header input[type="date"] { padding: 4px 8px; border-radius: 6px; border: none; }
+  header button, header select { padding: 5px 12px; border-radius: 6px; border: none; cursor: pointer; }
+  header button { background: #44403c; color: #fff; }
+  main { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 12px; max-width: 1400px; margin: 0 auto; }
+  .card { background: #fff; border-radius: 10px; padding: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  .card h2 { font-size: 15px; margin: 0 0 8px; }
+  .full { grid-column: 1 / -1; }
+  #map { height: 380px; border-radius: 8px; }
+  #chart-glucose, #chart-hr { height: 260px; }
+  #chips { display: flex; gap: 6px; flex-wrap: wrap; margin: 4px 0 8px; }
+  #chips button { border: 1px solid #d6d3d1; background: #fafaf9; border-radius: 20px; padding: 3px 10px; cursor: pointer; font-size: 12px; }
+  #chips button.off { opacity: .35; text-decoration: line-through; }
+  #timeline { max-height: 520px; overflow: auto; font-size: 13px; }
+  .t-item { border-left: 3px solid #d6d3d1; padding: 4px 0 4px 10px; margin: 6px 0; }
+  .t-item.auto { border-color: #16a34a; }
+  .t-item.human { border-color: #f59e0b; }
+  .t-item.ai { border-color: #8b5cf6; border-left-style: dashed; }
+  .t-item time { font-family: monospace; color: #57534e; margin-right: 6px; }
+  .tag { font-size: 11px; border-radius: 4px; padding: 0 5px; margin-left: 4px; }
+  .tag.auto { background: #dcfce7; } .tag.human { background: #fef3c7; } .tag.ai { background: #ede9fe; }
+  .kv { color: #44403c; }
+  details.ai summary { cursor: pointer; color: #7c3aed; }
+  #err { color: #b91c1c; font-size: 13px; white-space: pre-wrap; }
+  textarea#paste { width: 100%; height: 90px; font-family: monospace; font-size: 12px; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>LifeReplay</h1>
+  <button id="prev">← 前一天</button>
+  <input type="date" id="date" value="2026-09-19">
+  <button id="next">后一天 →</button>
+  <select id="datelist" title="已有日期"></select>
+  <button id="load">加载</button>
+  <span id="stat" style="font-size:12px;opacity:.8"></span>
+</header>
+<main>
+  <div class="card full">
+    <h2>轨道筛选 <span style="font-weight:normal;font-size:12px;color:#78716c">（新轨道自动出现，无需改代码）</span></h2>
+    <div id="chips"></div>
+    <div id="err"></div>
+  </div>
+  <div class="card">
+    <h2>血糖曲线（CGM 实线 + 指血★ + 饮食标记）</h2>
+    <div id="chart-glucose"></div>
+  </div>
+  <div class="card">
+    <h2>心率 / 血压 / 体征</h2>
+    <div id="chart-hr"></div>
+  </div>
+  <div class="card">
+    <h2>地图轨迹（GPS）</h2>
+    <div id="map"></div>
+  </div>
+  <div class="card">
+    <h2>媒体与区间（录音/录像/监控/运动）</h2>
+    <div id="media" style="font-size:13px"></div>
+  </div>
+  <div class="card full">
+    <h2>时间线</h2>
+    <div id="timeline"></div>
+  </div>
+  <div class="card full">
+    <details>
+      <summary style="cursor:pointer;font-size:13px">file:// 本地打不开？点这里粘贴 md 手动渲染</summary>
+      <textarea id="paste" placeholder="把 data/YYYY-MM-DD.md 内容粘进来"></textarea><br>
+      <button id="render-paste" style="margin-top:6px;padding:5px 12px">手动渲染</button>
+    </details>
+  </div>
+</main>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+<script>
+// ===== 解析器（按 docs/data-format.md §解析规则，零依赖）=====
+function parseMD(text) {
+  const points = [];   // {t: Date, ts: string, track: string, kv: {}}
+  const blocks = [];   // {track, meta, rows: []}
+  const lines = text.split(/\r?\n/);
+  let curTS = null, curTrack = null, curKV = null, inCSV = false, csvMeta = null, csvRows = [];
+  const flushPoint = () => { if (curTS && curTrack && curKV) points.push({ ts: curTS, t: new Date(curTS), track: curTrack, kv: { ...curKV } }); curKV = null; };
+  for (const raw of lines) {
+    const line = raw.replace(/\s+$/, '');
+    if (/^```/.test(line)) {
+      if (!inCSV) { inCSV = true; const m = line.match(/track=([\w\-]+)/); csvMeta = { track: m ? m[1] : 'unknown', head: line }; csvRows = []; }
+      else { inCSV = false; blocks.push({ ...csvMeta, rows: csvRows }); csvMeta = null; }
+      continue;
+    }
+    if (inCSV) { if (line.trim() && !/^time,/.test(line.trim())) csvRows.push(line.trim()); continue; }
+    let m;
+    if ((m = line.match(/^# (\S+)\s*$/)) && !line.startsWith('##')) {
+      flushPoint(); curTS = m[1]; curTrack = null; curKV = null;
+      if (curTS === 'Blocks') curTS = null;
+      continue;
+    }
+    if ((m = line.match(/^## (\S+)\s*$/))) { flushPoint(); curTrack = m[1]; curKV = {}; continue; }
+    if ((m = line.match(/^- ([\w][\w\-]*):\s*(.+)$/))) { if (curKV) curKV[m[1]] = m[2].trim(); continue; }
+  }
+  flushPoint();
+  points.sort((a, b) => a.t - b.t);
+  return { points, blocks };
+}
+function srcKind(kv) {
+  if (kv['src'] === 'auto') return 'auto';
+  const c = kv['comment'] || '';
+  if (c === 'human') return 'human';
+  if (c.startsWith('ai')) return 'ai';
+  return 'human';
+}
+// ===== 渲染 =====
+let map, poly, chartG, chartH;
+const hidden = new Set();
+function initMap() {
+  map = L.map('map').setView([31.23, 121.47], 13);
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(map);
+}
+function render(text, datestr) {
+  const errBox = document.getElementById('err');
+  errBox.textContent = '';
+  const { points, blocks } = parseMD(text);
+  const vis = points.filter(p => !hidden.has(p.track));
+  document.getElementById('stat').textContent = `${datestr} · ${points.length} 记录 · ${blocks.length} 稠密块`;
+  renderChips([...new Set(points.map(p => p.track))]);
+  renderTimeline(vis);
+  renderGlucose(vis, blocks);
+  renderVitals(vis);
+  renderMap(vis, blocks);
+  renderMedia(vis);
+}
+function renderChips(tracks) {
+  const box = document.getElementById('chips');
+  box.innerHTML = '';
+  tracks.forEach(t => {
+    const b = document.createElement('button');
+    b.textContent = t;
+    if (hidden.has(t)) b.classList.add('off');
+    b.onclick = () => { hidden.has(t) ? hidden.delete(t) : hidden.add(t); reload(); };
+    box.appendChild(b);
+  });
+}
+function renderTimeline(pts) {
+  const box = document.getElementById('timeline');
+  box.innerHTML = pts.map(p => {
+    const k = srcKind(p.kv);
+    const kvs = Object.entries(p.kv).map(([kk, vv]) => `<span class="kv">${kk}: ${vv}</span>`).join('<br>');
+    const body = k === 'ai' ? `<details class="ai"><summary>AI 分析（默认折叠）</summary>${kvs}</details>` : kvs;
+    return `<div class="t-item ${k}"><time>${p.ts.slice(11, 16)}</time><b>${p.track}</b><span class="tag ${k}">${k}</span><br>${body}</div>`;
+  }).join('') || '<span style="color:#a8a29e">该日无记录</span>';
+}
+function renderGlucose(pts, blocks) {
+  chartG = chartG || echarts.init(document.getElementById('chart-glucose'));
+  const cgmBlock = blocks.find(b => b.track === 'glucose');
+  let cgm = [];
+  if (cgmBlock) cgm = cgmBlock.rows.map(r => { const [t, v] = r.split(','); return [new Date(t), +v]; });
+  else cgm = pts.filter(p => p.track === 'glucose' && p.kv['mmol']).map(p => [p.t, +p.kv['mmol']]);
+  const finger = pts.filter(p => p.track === 'glucose' && p.kv['method'] === 'finger').map(p => [p.t, +p.kv['mmol']]);
+  const diet = pts.filter(p => p.track === 'diet').map(p => ({ coord: [p.t, p.kv['kcal'] ? 9 : 8], label: p.kv['text'] || p.kv['meal'] }));
+  chartG.setOption({
+    animation: false, tooltip: { trigger: 'axis' },
+    xAxis: { type: 'time' }, yAxis: { name: 'mmol/L', min: 3 },
+    series: [
+      { name: 'CGM', type: 'line', showSymbol: false, data: cgm, markLine: { data: [{ yAxis: 3.9, name: '低' }, { yAxis: 10, name: '高' }] } },
+      { name: '指血', type: 'scatter', symbol: 'star', symbolSize: 14, data: finger },
+      { name: '饮食', type: 'scatter', data: diet.map(d => d.coord) }
+    ]
+  }, true);
+}
+function renderVitals(pts) {
+  chartH = chartH || echarts.init(document.getElementById('chart-hr'));
+  const hr = pts.filter(p => p.track === 'heartrate' && p.kv['bpm']).map(p => [p.t, +p.kv['bpm']]);
+  const sys = pts.filter(p => p.track === 'bp' && p.kv['sys']).map(p => [p.t, +p.kv['sys']]);
+  const dia = pts.filter(p => p.track === 'bp' && p.kv['dia']).map(p => [p.t, +p.kv['dia']]);
+  chartH.setOption({
+    animation: false, tooltip: { trigger: 'axis' }, legend: { data: ['心率', '收缩压', '舒张压'] },
+    xAxis: { type: 'time' }, yAxis: { name: 'bpm/mmHg' },
+    series: [
+      { name: '心率', type: 'line', showSymbol: false, data: hr },
+      { name: '收缩压', type: 'scatter', data: sys },
+      { name: '舒张压', type: 'scatter', data: dia }
+    ]
+  }, true);
+}
+function renderMap(pts, blocks) {
+  if (poly) { map.removeLayer(poly); poly = null; }
+  let latlons = [];
+  const gpsBlock = blocks.find(b => b.track === 'gps');
+  if (gpsBlock) latlons = gpsBlock.rows.map(r => { const [t, la, lo] = r.split(','); return [+la, +lo]; });
+  else latlons = pts.filter(p => p.track === 'gps' && p.kv['lat']).map(p => [+p.kv['lat'], +p.kv['lon']]);
+  if (!latlons.length) return;
+  poly = L.polyline(latlons, { color: '#16a34a' }).addTo(map);
+  map.fitBounds(poly.getBounds());
+}
+function renderMedia(pts) {
+  const mediaTracks = ['audio', 'video', 'bodycam', 'cctv-home', 'cctv-office', 'sport', 'ecg'];
+  const items = pts.filter(p => mediaTracks.includes(p.track));
+  document.getElementById('media').innerHTML = items.map(p => {
+    const k = srcKind(p.kv);
+    const span = p.kv['span-start'] ? ` ${p.kv['span-start'].slice(11, 16)}→${(p.kv['span-end'] || '').slice(11, 16)}` : '';
+    const file = p.kv['file'] ? ` <code>${p.kv['file']}</code>` : '';
+    return `<div class="t-item ${k}"><time>${p.ts.slice(11, 16)}</time><b>${p.track}</b>${span}${file}<br>${p.kv['note'] || p.kv['event'] || p.kv['text'] || ''}</div>`;
+  }).join('') || '<span style="color:#a8a29e">当日无媒体/区间记录</span>';
+}
+// ===== 加载 =====
+async function loadDate(d) {
+  try {
+    const r = await fetch(`data/${d}.md`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    render(await r.text(), d);
+  } catch (e) {
+    document.getElementById('err').textContent = `fetch data/${d}.md 失败（${e.message}）。\nGitHub Pages 上正常；本地 file:// 请用下方粘贴框手动渲染，或起一个静态服务：python3 -m http.server`;
+  }
+}
+function shift(n) {
+  const d = new Date(document.getElementById('date').value + 'T12:00:00');
+  d.setDate(d.getDate() + n);
+  document.getElementById('date').value = d.toISOString().slice(0, 10);
+  reload();
+}
+function reload() { loadDate(document.getElementById('date').value); }
+async function initDates() {
+  try {
+    const r = await fetch('data/manifest.json');
+    if (r.ok) {
+      const list = await r.json();
+      const sel = document.getElementById('datelist');
+      sel.innerHTML = list.map(d => `<option>${d}</option>`).join('');
+      sel.onchange = () => { document.getElementById('date').value = sel.value; reload(); };
+    }
+  } catch (e) { /* 无 manifest 不阻塞 */ }
+}
+document.getElementById('load').onclick = reload;
+document.getElementById('prev').onclick = () => shift(-1);
+document.getElementById('next').onclick = () => shift(1);
+document.getElementById('render-paste').onclick = () => render(document.getElementById('paste').value, document.getElementById('date').value + '（粘贴）');
+window.addEventListener('resize', () => { chartG && chartG.resize(); chartH && chartH.resize(); });
+initMap(); initDates(); reload();
+</script>
+</body>
+</html>
