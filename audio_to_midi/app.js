@@ -4,6 +4,22 @@
  */
 'use strict';
 
+// 全局错误进页日志：加载期/运行时未捕获异常直接写进诊断框（不再只躺F12控制台）。
+// 放第一行，保证后面任何初始化暴毙都留字条。
+window.addEventListener('error', (e) => {
+  try {
+    const box = document.getElementById('diag');
+    if (!box) return;
+    if (box.dataset.init !== '1') { box.textContent = ''; box.dataset.init = '1'; }
+    const line = document.createElement('div');
+    line.className = 'err';
+    line.textContent = '✗ 页面错误：' + String((e && e.message) || e) +
+      (e && e.lineno ? `（${e.lineno}行）` : '') + ' —— 把这行贴给开发者';
+    box.appendChild(line);
+    box.scrollTop = box.scrollHeight;
+  } catch (_) {}
+});
+
 // ---- 权重地址（R2，OPFS 缓存 + 字节数校验）----
 const MODEL_R2 = 'https://weights.down2.top';
 const MODEL_R2_DIRECT = 'https://pub-b8d95e05900c4ad98bf1420adcda0148.r2.dev';
