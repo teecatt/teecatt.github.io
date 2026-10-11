@@ -45,7 +45,7 @@ Viterbi 取分方向、力度 argmax、offset 公式，全部和 torch 源码对
   加载期暴毙也留字条。
 - Viterbi 取数长度 bug，Python 自测 30 轮没发现，JS 对拍抓到；CB 均值差 0.058，
   根因是 torch 内部偷偷 clamp 了 probs；高斯窗 4 位小数引入 2.5e-4 误差，换全精度。
-- 两次 `?v=` 漏 bump 让用户跑到旧代码：改 app/worker 必手工 bump（当前 `app.js?v=16`/`worker.js?v=18`）。
+- 两次 `?v=` 漏 bump 让用户跑到旧代码：现部署工作流按文件内容哈希自动重写 `?v=`（`deploy.yml`：`git hash-object … | cut -c1-7` 取 app/worker 短哈希分别 sed 进 `index.html`/`app.js`），没改代码就不 bust 缓存，人不用记；版本自报行运行时回读（app 读 script src，worker 读 `self.location.search`）。
 
 ## 精度（实测数，不吹）
 

@@ -597,7 +597,16 @@ window.addEventListener('load', () => {
   goBtn.disabled = true;
   goBtn.textContent = '准备模型…';
   dlog('页面加载完成，后台预下载模型…');
-  dlog('版本自报：app.js?v=16（看不到这行=跑的旧代码，清缓存硬刷新）');
+  // 版本自报：?v= 由部署工作流按内容哈希自动重写，此处运行时从 script src 回读（人不用记）。
+  // load 回调里 currentScript 已失效，主走 querySelector 兜底；取不到则空字串，不炸。
+  let appVer = '';
+  try {
+    const cs = document.currentScript;
+    let src = (cs && cs.src) || '';
+    if (!src) { const s = document.querySelector('script[src*="app.js"]'); src = (s && s.src) || ''; }
+    appVer = src ? (new URL(src, location.href).search || '') : '';
+  } catch (_) { appVer = ''; }
+  dlog(`版本自报：app.js${appVer}（看不到这行=跑的旧代码，清缓存硬刷新）`);
   // 测试入口 ?sample=URL：一键载入公网/同源测试音频（复测计时、issue 复现用）。
   // 无参时“🧪 测试音频”按钮进默认样例；有参则自动下载解码并走自动转写（复用 pickFile）。
   const sampleUrl = new URLSearchParams(location.search).get('sample');

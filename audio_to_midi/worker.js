@@ -370,7 +370,10 @@ async function runModel(pcm, models, forceBackend, runOpts, resume) {
     for (let i = 0; i < nPool; i++) scorers.push(await mkSession(scorerBuf, prov));
     phase('scorer 会话就绪，加载 attr 会话…', 0.36);
     const attr = await mkSession(models.attr, prov);
-    log(`ONNX 就绪：后端=${be}，scorer=${scorerTag}×${nPool}，S=${scorers[0].outputNames}，attr=${attr.outputNames}，worker.js?v=18`);
+    // 版本自报：?v= 由部署工作流按内容哈希自动重写，此处读自身 URL；file:// 或测试沙箱无 search 时置空兜底。
+    let workerVer = '';
+    try { workerVer = (self.location && self.location.search) || ''; } catch (_) { workerVer = ''; }
+    log(`ONNX 就绪：后端=${be}，scorer=${scorerTag}×${nPool}，S=${scorers[0].outputNames}，attr=${attr.outputNames}，worker.js${workerVer}`);
     const freshScorer = () => mkSession(scorerBuf, prov); // 会话损坏时重建用（见 inferAll 限流处理）
     try {
       return await inferAll(ortNS, scorers, attr, be, pcm, runOpts, freshScorer, scorerTag, rs);
