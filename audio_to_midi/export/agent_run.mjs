@@ -10,6 +10,7 @@
 //   extendEnds+resolveOverlapping+symToPitch（后处理，inferAll 内部调用）/
 //   TranskunViterbi.decode（viterbi.js，inferAll 内部调用）。
 // ONNX 会话由 onnxruntime-node 建 CPU 会话（缺失即报错提示安装，绝不自动安装）。
+// 跨 realm 注意：传给 inferAll 的是包了 Tensor 的 ortForSandbox（沙箱数组→主域拷贝，见下）。
 import fs from 'fs';
 import path from 'path';
 import vm from 'vm';
@@ -79,6 +80,28 @@ if (sr !== 44100) pcm = sandbox.resample(pcm, sr, 44100);
 
 // ---- CPU 会话 + 计时包装（打分每段 / attr 每段） ----
 const msScorePerCall = [], msAttrPerCall = [];
+// 跨 realm 修补：vm 沙箱内的 TypedArray/Array 与主域不是同一个类，
+// onnxruntime-node 建 Tensor 时做 instanceof 校验会拒收沙箱数组
+// （TypeError: A float32 tensor's data must be type of Float32Array）。
+// 故凡进 Tensor 的数据/dims 一律在主域侧拷贝一道（数值/形状不变）。
+function toMainRealm(data) {
+  if (ArrayBuffer.isView(data)) {
+    const name = data.constructor && data.constructor.name;
+    if (name === 'Float32Array') return Float32Array.from(data);
+    if (name === 'Uint8Array') return Uint8Array.from(data);
+    if (name === 'Int32Array') return Int32Array.from(data);
+    if (name === 'Float64Array') return Float64Array.from(data);
+    if (name === 'BigInt64Array') return BigInt64Array.from(data);
+    const Ctor = globalThis[name];
+    if (typeof Ctor === 'function') return Ctor.from(data);
+  }
+  return data;
+}
+// 须是普通 function（可被 new 调用；返回对象即覆盖 this）：把沙箱数组转主域后再建真 Tensor。
+function OrtTensor(type, data, dims) {
+  return new ort.Tensor(type, toMainRealm(data), Array.isArray(dims) ? Array.from(dims) : dims);
+}
+const ortForSandbox = { ...ort, Tensor: OrtTensor };
 const scorerSession = await ort.InferenceSession.create(path.join(modelsDir, 'transkun_scorer.onnx'));
 const attrSession = await ort.InferenceSession.create(path.join(modelsDir, 'transkun_attr.onnx'));
 const scorer = {
@@ -103,7 +126,7 @@ sandbox.framesToMel6 = (...a) => {
 
 // ---- 真实 inferAll + 写 MIDI ----
 const t0 = performance.now();
-const r = await sandbox.inferAll(ort, [scorer], attr, 'cpu', pcm, { extend: true });
+const r = await sandbox.inferAll(ortForSandbox, [scorer], attr, 'cpu', pcm, { extend: true });
 const msTotal = performance.now() - t0;
 const midiBytes = Buffer.from(sandbox.writeMidi(r.notes, outMode));
 fs.writeFileSync(outMid, midiBytes);

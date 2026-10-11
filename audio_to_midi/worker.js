@@ -355,7 +355,7 @@ async function runModel(pcm, models, forceBackend, runOpts) {
     for (let i = 0; i < nPool; i++) scorers.push(await mkSession(scorerBuf, prov));
     phase('scorer 会话就绪，加载 attr 会话…', 0.36);
     const attr = await mkSession(models.attr, prov);
-    log(`ONNX 就绪：后端=${be}，scorer=${scorerTag}×${nPool}，S=${scorers[0].outputNames}，attr=${attr.outputNames}，worker.js?v=14`);
+    log(`ONNX 就绪：后端=${be}，scorer=${scorerTag}×${nPool}，S=${scorers[0].outputNames}，attr=${attr.outputNames}，worker.js?v=15`);
     const freshScorer = () => mkSession(scorerBuf, prov); // 会话损坏时重建用（见 inferAll 限流处理）
     try {
       return await inferAll(ortNS, scorers, attr, be, pcm, runOpts, freshScorer);
@@ -544,6 +544,8 @@ async function inferAll(ortNS, scorers, attr, backend, pcm, opts, freshScorer) {
     startPos = lastP.map(v => Math.max(v - STEP_F, 0));
     } // end k（波次内逐段顺序组装，forcedStart 链不断）
     w += wave.length;
+    // 喘息：每波次让出事件循环，给 GPU 合成器/温控回口气（防手机卡顿；32 段仅多约 5 秒）
+    await new Promise(r => setTimeout(r, 150));
   } // end w（波次）
   // 终筛（与 transcribe() 尾部逐行对齐）：末事件 hasOffset → 只留有offset → resolveOverlapping
   let eventsAll = [];
