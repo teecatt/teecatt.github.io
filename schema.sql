@@ -76,7 +76,7 @@ BEGIN
     lon = COALESCE(excluded.lon, place_stats.lon);
 END;
 
--- 去重查询索引：middleware 写入前按 (ip, path, ts) 判断 30 分钟窗口内是否已记录
+-- 去重查询索引：middleware 写入前按 (vid, path, ts) 判断 30 分钟窗口内是否已记录
 CREATE INDEX IF NOT EXISTS idx_visits_ip_path ON visits (ip, path, ts DESC);
 
 -- 升级已有库时执行（新装环境由上面的 CREATE 语句覆盖）：

@@ -1,4 +1,5 @@
 /* 构建信息展示（按区域）：读取 window.AREA_BUILD[区域] 或 SITE_BUILD/CRYPTO_BUILD/NOTES_BUILD。
+   NOTES_BUILD 预留未启用。
    区域时间线 = 该页面目录 + 其用到的共享组件文件的最后一次提交，因此 shared/ 变更会同时抬高所有使用方的“最近构建”。
    用法：<span data-build="midi"></span>，脚本自动初始化并每 30s 刷新相对时间。 */
 (function(g){
@@ -23,7 +24,7 @@
     if(!info || !info.sha){ el.textContent = '最近构建：未知'; return; }
     el.textContent = '';
     var a = document.createElement('a');
-    a.href = 'https://github.com/23776301/23776301.github.io/commit/' + info.sha;
+    a.href = 'https://github.com/teecatt/teecatt.github.io/commit/' + info.sha;
     a.target = '_blank';
     a.rel = 'noopener';
     a.textContent = '最近构建：' + ago(Date.now() - (info.time || 0)) + ' · ' + String(info.sha).substring(0, 7);
