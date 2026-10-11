@@ -63,7 +63,7 @@ let audioFile = null, pcmMono = null, sampleRate = 0, midiBlob = null, worker = 
 
 function getWorker() {
   if (!worker) {
-    worker = new Worker('./worker.js?v=5');
+    worker = new Worker('./worker.js?v=6');
     worker.onmessage = onWorkerMsg;
     worker.onerror = e => dlog('Worker 错误：' + JSON.stringify({ message: e && e.message, filename: e && e.filename, lineno: e && e.lineno }) + '（多为 worker 崩溃/OOM/脚本加载失败；看上一行日志定位阶段）', 'err');
     worker.postMessage({ type: 'probeBackend' });
