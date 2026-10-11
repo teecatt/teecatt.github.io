@@ -3,3 +3,10 @@
 
 /shared/*
   Cache-Control: public, max-age=31536000, immutable
+
+# 音频转 MIDI：ONNX 多线程 wasm 需要 SharedArrayBuffer，必须跨域隔离。
+# 只圈本目录（全站加会打断 midi_player 等页面的跨域 CDN）。credentialless 保证
+# 对 jsdelivr / R2 的 CORS 拉取不断；popup 用 allow-popups 不影响外链新窗口。
+/audio_to_midi/*
+  Cross-Origin-Opener-Policy: same-origin-allow-popups
+  Cross-Origin-Embedder-Policy: credentialless

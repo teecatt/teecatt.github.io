@@ -34,8 +34,16 @@ function loadOrt() {
   if (self.ort) return; // warmup 已加载过
   let lastErr = null;
   for (const url of ORT_CDN_LIST) {
-    try { importScripts(url); if (self.ort) { log('ort 加载 ← ' + url); return; } }
-    catch (e) { lastErr = e; log('ort 加载失败，换镜像：' + url); }
+    try {
+      importScripts(url);
+      if (self.ort) {
+        // wasm/.mjs 默认相对 worker 地址解析（会 404 到本站），必须指到 CDN 目录
+        self._ortBase = url.slice(0, url.lastIndexOf('/') + 1);
+        self.ort.env.wasm.wasmPaths = self._ortBase;
+        log('ort 加载 ← ' + url);
+        return;
+      }
+    } catch (e) { lastErr = e; log('ort 加载失败，换镜像：' + url); }
   }
   throw new Error('onnxruntime-web 全部镜像加载失败：' + (lastErr && lastErr.message || lastErr));
 }
@@ -487,5 +495,7 @@ async function probeBackend() {
       info = ad ? String((await ad.requestDevice()).label || 'adapter ok') : 'no adapter';
     }
   } catch (err) { info = String((err && err.message) || err); }
+  const isolated = (typeof crossOriginIsolated !== 'undefined' && crossOriginIsolated);
+  log('后端探测：navigator.gpu adapter=' + (webgpu ? '有' : '无') + ' / crossOriginIsolated=' + (isolated ? '是' : '否（多线程 wasm 跑不了）'));
   postMessage({ type: 'backend', webgpu, info, fallback: webgpu ? 'webgpu' : 'wasm' });
 }
