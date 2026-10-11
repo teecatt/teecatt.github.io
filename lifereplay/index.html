@@ -3,94 +3,140 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LifeReplay — 人生轨迹</title>
+<title>人生记录仪 · LifeReplay</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
-  * { box-sizing: border-box; }
-  body { font-family: system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; margin: 0; background: #f5f5f4; color: #1c1917; }
-  header { background: #1c1917; color: #fafaf9; padding: 12px 16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
-  header h1 { font-size: 18px; margin: 0 8px 0 0; }
-  header input[type="date"] { padding: 4px 8px; border-radius: 6px; border: none; }
-  header button, header select { padding: 5px 12px; border-radius: 6px; border: none; cursor: pointer; }
-  header button { background: #44403c; color: #fff; }
-  main { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 12px; max-width: 1400px; margin: 0 auto; }
-  .card { background: #fff; border-radius: 10px; padding: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
-  .card h2 { font-size: 15px; margin: 0 0 8px; }
-  .full { grid-column: 1 / -1; }
-  #map { height: 380px; border-radius: 8px; }
-  #chart-glucose, #chart-hr { height: 260px; }
-  #chips { display: flex; gap: 6px; flex-wrap: wrap; margin: 4px 0 8px; }
-  #chips button { border: 1px solid #d6d3d1; background: #fafaf9; border-radius: 20px; padding: 3px 10px; cursor: pointer; font-size: 12px; }
-  #chips button.off { opacity: .35; text-decoration: line-through; }
-  #timeline { max-height: 520px; overflow: auto; font-size: 13px; }
-  .t-item { border-left: 3px solid #d6d3d1; padding: 4px 0 4px 10px; margin: 6px 0; }
-  .t-item.auto { border-color: #16a34a; }
-  .t-item.human { border-color: #f59e0b; }
-  .t-item.ai { border-color: #8b5cf6; border-left-style: dashed; }
-  .t-item time { font-family: monospace; color: #57534e; margin-right: 6px; }
-  .tag { font-size: 11px; border-radius: 4px; padding: 0 5px; margin-left: 4px; }
-  .tag.auto { background: #dcfce7; } .tag.human { background: #fef3c7; } .tag.ai { background: #ede9fe; }
-  .kv { color: #44403c; }
-  details.ai summary { cursor: pointer; color: #7c3aed; }
-  #err { color: #b91c1c; font-size: 13px; white-space: pre-wrap; }
-  textarea#paste { width: 100%; height: 90px; font-family: monospace; font-size: 12px; }
-  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+:root{
+  --bg:#0d0d14; --panel:#16161f; --border:#2a2a3a; --text:#e8e8f0;
+  --dim:#8a8aa0; --accent:#f472b6; --accent-a18:rgba(244,114,182,.18); --accent-a28:rgba(244,114,182,.28);
+  --ok:#2fbf6f; --warn:#e8b64c; --ai:#8b5cf6;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;min-height:100vh}
+.container{max-width:1200px;margin:0 auto;padding:16px}
+h1{font-size:22px;font-weight:700;margin-bottom:4px}
+.subtitle{color:var(--dim);font-size:13px;margin-bottom:16px}
+.subtitle code{color:var(--accent)}
+.toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:16px}
+.toolbar input[type="date"]{background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:6px 10px}
+.toolbar button,.toolbar select{background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 14px;cursor:pointer;font-size:13px}
+.toolbar button:hover{border-color:var(--accent)}
+.toolbar button.primary{background:var(--accent-a18);border-color:var(--accent)}
+#stat{font-size:12px;color:var(--dim)}
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:16px}
+.panel h2{font-size:14px;font-weight:600;margin-bottom:12px;color:var(--dim);text-transform:uppercase;letter-spacing:1px}
+.panel h2 .idx{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:var(--accent-a18);border:1px solid var(--accent);color:var(--accent);font-size:11px;margin-right:8px;letter-spacing:0}
+#map{height:380px;border-radius:8px;background:#0a0a10}
+#chart-glucose,#chart-hr{height:260px}
+#chips{display:flex;gap:6px;flex-wrap:wrap}
+#chips button{border:1px solid var(--border);background:rgba(255,255,255,.04);color:var(--text);border-radius:20px;padding:4px 12px;cursor:pointer;font-size:12px}
+#chips button.off{opacity:.35;text-decoration:line-through}
+details.track{border:1px solid var(--border);border-radius:10px;margin-bottom:8px;overflow:hidden}
+details.track summary{cursor:pointer;padding:10px 14px;font-size:14px;font-weight:600;list-style:none;display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.02)}
+details.track summary::-webkit-details-marker{display:none}
+details.track summary::before{content:'▾';color:var(--accent);font-size:12px;transition:transform .15s}
+details.track:not([open]) summary::before{transform:rotate(-90deg)}
+details.track summary .count{margin-left:auto;font-size:11px;color:var(--dim);font-weight:400}
+details.track .tbody{padding:6px 14px 12px}
+.t-item{border-left:3px solid var(--border);padding:4px 0 4px 10px;margin:8px 0;font-size:13px}
+.t-item.auto{border-color:var(--ok)}
+.t-item.human{border-color:var(--warn)}
+.t-item.ai{border-color:var(--ai);border-left-style:dashed}
+.t-item time{font-family:monospace;color:var(--dim);margin-right:6px}
+.tag{font-size:11px;border-radius:4px;padding:0 5px;margin-left:4px}
+.tag.auto{background:rgba(47,191,111,.18);color:var(--ok)}
+.tag.human{background:rgba(232,182,76,.18);color:var(--warn)}
+.tag.ai{background:rgba(139,92,246,.2);color:#c4b5fd}
+.kv{color:var(--text);opacity:.85}
+.t-item code{color:var(--accent);font-size:12px}
+.empty{color:var(--dim);font-size:13px}
+#err{color:#ff7b7b;font-size:13px;white-space:pre-wrap;margin-top:8px}
+#drop{border:1px dashed var(--border);border-radius:10px;padding:14px;text-align:center;color:var(--dim);font-size:13px;cursor:pointer}
+#drop:hover,#drop.over{border-color:var(--accent);color:var(--text)}
+#drop input{display:none}
+textarea#paste{width:100%;height:90px;background:#0a0a10;border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:monospace;font-size:12px;padding:8px}
+@media(max-width:800px){.container{padding:12px}#map{height:280px}}
 </style>
 </head>
 <body>
-<header>
-  <h1>LifeReplay</h1>
-  <button id="prev">← 前一天</button>
-  <input type="date" id="date" value="2026-09-19">
-  <button id="next">后一天 →</button>
-  <select id="datelist" title="已有日期"></select>
-  <button id="load">加载</button>
-  <span id="stat" style="font-size:12px;opacity:.8"></span>
-</header>
-<main>
-  <div class="card full">
-    <h2>轨道筛选 <span style="font-weight:normal;font-size:12px;color:#78716c">（新轨道自动出现，无需改代码）</span></h2>
+<div class="container">
+  <h1>🕰️ 人生记录仪</h1>
+  <div class="subtitle">GPS · 血糖 · 心率 · 血压 · 饮食 · 录音录像 · 多轨道时间线 · 数据格式见 <code>docs/data-format.md</code></div>
+
+  <div class="toolbar">
+    <button id="prev">← 前一天</button>
+    <input type="date" id="date" value="2026-09-19">
+    <button id="next">后一天 →</button>
+    <select id="datelist" title="已有日期"></select>
+    <button id="load" class="primary">加载</button>
+    <span id="stat"></span>
+  </div>
+
+  <div class="panel">
+    <h2>轨道筛选 · 新轨道自动出现</h2>
     <div id="chips"></div>
     <div id="err"></div>
   </div>
-  <div class="card">
-    <h2>血糖曲线（CGM 实线 + 指血★ + 饮食标记）</h2>
-    <div id="chart-glucose"></div>
-  </div>
-  <div class="card">
-    <h2>心率 / 血压 / 体征</h2>
-    <div id="chart-hr"></div>
-  </div>
-  <div class="card">
-    <h2>地图轨迹（GPS）</h2>
+
+  <!-- ① GPS -->
+  <div class="panel">
+    <h2><span class="idx">1</span>GPS · 地图轨迹</h2>
     <div id="map"></div>
   </div>
-  <div class="card">
-    <h2>媒体与区间（录音/录像/监控/运动）</h2>
-    <div id="media" style="font-size:13px"></div>
+
+  <!-- ② 录音录像 -->
+  <div class="panel">
+    <h2><span class="idx">2</span>录音录像 · 随身 / 家 / 办公室</h2>
+    <div id="media"></div>
   </div>
-  <div class="card full">
-    <h2>时间线</h2>
+
+  <!-- ③ 心率血糖 -->
+  <div class="panel">
+    <h2><span class="idx">3</span>心率 · 血压 · 体征</h2>
+    <div id="chart-hr"></div>
+  </div>
+  <div class="panel">
+    <h2><span class="idx">4</span>血糖曲线 · CGM 实线 + 指血 ★ + 饮食标记</h2>
+    <div id="chart-glucose"></div>
+  </div>
+
+  <!-- ⑤ 其他轨道：默认全部展开，可收起 -->
+  <div class="panel">
+    <h2><span class="idx">5</span>全部轨道 · 默认展开，点击标题收起</h2>
     <div id="timeline"></div>
   </div>
-  <div class="card full">
-    <details>
-      <summary style="cursor:pointer;font-size:13px">file:// 本地打不开？点这里粘贴 md 手动渲染</summary>
-      <textarea id="paste" placeholder="把 data/YYYY-MM-DD.md 内容粘进来"></textarea><br>
-      <button id="render-paste" style="margin-top:6px;padding:5px 12px">手动渲染</button>
+
+  <div class="panel">
+    <h2>上传数据 · 本地解析不经过服务器</h2>
+    <div id="drop">把 <code>.md</code> / <code>.csv</code> / <code>.gpx</code> 拖到这里，或点击选择文件<input type="file" id="file" accept=".md,.csv,.gpx" multiple></div>
+    <div style="height:10px"></div>
+    <details class="track">
+      <summary>file:// 打不开？点这里粘贴 md 手动渲染<span class="count">备用入口</span></summary>
+      <div class="tbody">
+        <textarea id="paste" placeholder="把 data/YYYY-MM-DD.md 内容粘进来"></textarea><br>
+        <div style="height:8px"></div>
+        <button id="render-paste" class="primary" style="background:var(--accent-a18);border:1px solid var(--accent);color:var(--text);border-radius:8px;padding:7px 14px;cursor:pointer">手动渲染</button>
+      </div>
     </details>
   </div>
-</main>
+</div>
+
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
 <script>
-// ===== 解析器（按 docs/data-format.md §解析规则，零依赖）=====
+// ===== 轨道展示顺序：GPS → 录音录像 → 心率血糖 → 其他 =====
+const ORDER = ['gps', 'audio', 'video', 'bodycam', 'cctv-home', 'cctv-office',
+  'heartrate', 'ecg', 'glucose', 'bp', 'vitals', 'diet', 'meds', 'sport', 'events'];
+const TRACK_LABEL = { gps: 'GPS', audio: '录音', video: '录像', bodycam: '随身录像', 'cctv-home': '家里监控', 'cctv-office': '办公室监控', heartrate: '心率', ecg: '心电', glucose: '血糖', bp: '血压', vitals: '体征', diet: '饮食', meds: '用药', sport: '运动', events: '事件' };
+const label = t => TRACK_LABEL[t] || t;
+const orderIdx = t => { const i = ORDER.indexOf(t); return i < 0 ? 100 + t.charCodeAt(0) : i; };
+
+// ===== 解析器（docs/data-format.md §解析规则，零依赖）=====
 function parseMD(text) {
-  const points = [];   // {t: Date, ts: string, track: string, kv: {}}
-  const blocks = [];   // {track, meta, rows: []}
+  const points = [], blocks = [];
   const lines = text.split(/\r?\n/);
   let curTS = null, curTrack = null, curKV = null, inCSV = false, csvMeta = null, csvRows = [];
-  const flushPoint = () => { if (curTS && curTrack && curKV) points.push({ ts: curTS, t: new Date(curTS), track: curTrack, kv: { ...curKV } }); curKV = null; };
+  const flush = () => { if (curTS && curTrack && curKV) points.push({ ts: curTS, t: new Date(curTS), track: curTrack, kv: { ...curKV } }); curKV = null; };
   for (const raw of lines) {
     const line = raw.replace(/\s+$/, '');
     if (/^```/.test(line)) {
@@ -101,16 +147,57 @@ function parseMD(text) {
     if (inCSV) { if (line.trim() && !/^time,/.test(line.trim())) csvRows.push(line.trim()); continue; }
     let m;
     if ((m = line.match(/^# (\S+)\s*$/)) && !line.startsWith('##')) {
-      flushPoint(); curTS = m[1]; curTrack = null; curKV = null;
+      flush(); curTS = m[1]; curTrack = null; curKV = null;
       if (curTS === 'Blocks') curTS = null;
       continue;
     }
-    if ((m = line.match(/^## (\S+)\s*$/))) { flushPoint(); curTrack = m[1]; curKV = {}; continue; }
+    if ((m = line.match(/^## (\S+)\s*$/))) { flush(); curTrack = m[1]; curKV = {}; continue; }
     if ((m = line.match(/^- ([\w][\w\-]*):\s*(.+)$/))) { if (curKV) curKV[m[1]] = m[2].trim(); continue; }
   }
-  flushPoint();
+  flush();
   points.sort((a, b) => a.t - b.t);
   return { points, blocks };
+}
+// 上传的 CSV / GPX 转为 points+blocks
+function parseCSV(text, fname) {
+  const rows = text.trim().split(/\r?\n/).map(r => r.split(','));
+  const head = rows[0].map(h => h.trim().toLowerCase());
+  const has = (...ks) => ks.some(k => head.includes(k));
+  const col = (...ks) => { for (const k of ks) { const i = head.indexOf(k); if (i >= 0) return i; } return -1; };
+  const points = [];
+  const T = col('time', 'timestamp', 'device timestamp');
+  if (has('lat', 'lon') || (has('lat') && has('lon'))) {
+    const la = col('lat'), lo = col('lon');
+    const data = rows.slice(1).map(r => [new Date(r[T] < 0 ? r[T] : r[T]), +r[la], +r[lo]]).filter(x => !isNaN(x[1]));
+    data.forEach(([t, la2, lo2]) => points.push({ ts: t.toISOString(), t, track: 'gps', kv: { lat: la2, lon: lo2, src: 'auto', device: 'upload' } }));
+    return { points, blocks: [{ track: 'gps', head: 'upload ' + fname, rows: data.map(([t, a, o]) => `${t.toISOString()},${a},${o}`) }] };
+  }
+  if (has('bpm', 'heart_rate', 'heart-rate')) {
+    const b = col('bpm', 'heart_rate', 'heart-rate');
+    const data = rows.slice(1).map(r => [new Date(r[T] < 0 ? r[T] : r[T]), +r[b]]).filter(x => !isNaN(x[1]));
+    data.forEach(([t, v]) => points.push({ ts: t.toISOString(), t, track: 'heartrate', kv: { bpm: v, src: 'auto', device: 'upload' } }));
+    return { points, blocks: [{ track: 'heartrate', head: 'upload ' + fname, rows: data.map(([t, v]) => `${t.toISOString()},${v}`) }] };
+  }
+  const g = col('mmol', 'historic glucose mg/dl', 'glucose mg/dl', 'mgdl', 'glucose');
+  if (g >= 0) {
+    const mgdl = /mg|glucose/.test(head[g]);
+    const data = rows.slice(1).map(r => { let v = parseFloat(r[g]); if (mgdl && v > 30) v = +(v / 18).toFixed(1); return [new Date(r[T] < 0 ? r[T] : r[T]), v]; }).filter(x => !isNaN(x[1]));
+    data.forEach(([t, v]) => points.push({ ts: t.toISOString(), t, track: 'glucose', kv: { mmol: v, method: 'cgm', src: 'auto', device: 'upload' } }));
+    return { points, blocks: [{ track: 'glucose', head: 'upload ' + fname, rows: data.map(([t, v]) => `${t.toISOString()},${v}`) }] };
+  }
+  throw new Error('CSV 列名无法识别（要含 lat/lon、bpm 或 mmol/glucose 列）');
+}
+function parseGPX(text) {
+  const doc = new DOMParser().parseFromString(text, 'text/xml');
+  const pts = [...doc.getElementsByTagName('trkpt')].map(e => ({
+    la: +e.getAttribute('lat'), lo: +e.getAttribute('lon'),
+    t: new Date((e.getElementsByTagName('time')[0] || {}).textContent || Date.now())
+  })).filter(p => !isNaN(p.la));
+  if (!pts.length) throw new Error('GPX 里没有 trkpt');
+  return {
+    points: pts.map(p => ({ ts: p.t.toISOString(), t: p.t, track: 'gps', kv: { lat: p.la, lon: p.lo, src: 'auto', device: 'upload' } })),
+    blocks: [{ track: 'gps', head: 'upload gpx', rows: pts.map(p => `${p.t.toISOString()},${p.la},${p.lo}`) }]
+  };
 }
 function srcKind(kv) {
   if (kv['src'] === 'auto') return 'auto';
@@ -122,14 +209,16 @@ function srcKind(kv) {
 // ===== 渲染 =====
 let map, poly, chartG, chartH;
 const hidden = new Set();
+const AX = { axisLine: { lineStyle: { color: '#2a2a3a' } }, axisLabel: { color: '#8a8aa0' }, splitLine: { lineStyle: { color: '#1c1c28' } } };
+const TT = { backgroundColor: '#16161f', borderColor: '#2a2a3a', textStyle: { color: '#e8e8f0' } };
+const darkStyle = id => { const el = document.getElementById(id); el.querySelectorAll('canvas').forEach(() => {}); };
 function initMap() {
   map = L.map('map').setView([31.23, 121.47], 13);
   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(map);
 }
-function render(text, datestr) {
-  const errBox = document.getElementById('err');
-  errBox.textContent = '';
-  const { points, blocks } = parseMD(text);
+function render(parsed, datestr) {
+  const { points, blocks } = parsed;
+  document.getElementById('err').textContent = '';
   const vis = points.filter(p => !hidden.has(p.track));
   document.getElementById('stat').textContent = `${datestr} · ${points.length} 记录 · ${blocks.length} 稠密块`;
   renderChips([...new Set(points.map(p => p.track))]);
@@ -140,40 +229,48 @@ function render(text, datestr) {
   renderMedia(vis);
 }
 function renderChips(tracks) {
+  tracks.sort((a, b) => orderIdx(a) - orderIdx(b));
   const box = document.getElementById('chips');
   box.innerHTML = '';
   tracks.forEach(t => {
     const b = document.createElement('button');
-    b.textContent = t;
+    b.textContent = label(t);
     if (hidden.has(t)) b.classList.add('off');
     b.onclick = () => { hidden.has(t) ? hidden.delete(t) : hidden.add(t); reload(); };
     box.appendChild(b);
   });
 }
+// 全部轨道：默认展开（open），点击收起；按 ORDER 排序
 function renderTimeline(pts) {
   const box = document.getElementById('timeline');
-  box.innerHTML = pts.map(p => {
-    const k = srcKind(p.kv);
-    const kvs = Object.entries(p.kv).map(([kk, vv]) => `<span class="kv">${kk}: ${vv}</span>`).join('<br>');
-    const body = k === 'ai' ? `<details class="ai"><summary>AI 分析（默认折叠）</summary>${kvs}</details>` : kvs;
-    return `<div class="t-item ${k}"><time>${p.ts.slice(11, 16)}</time><b>${p.track}</b><span class="tag ${k}">${k}</span><br>${body}</div>`;
-  }).join('') || '<span style="color:#a8a29e">该日无记录</span>';
+  const groups = {};
+  pts.forEach(p => { (groups[p.track] = groups[p.track] || []).push(p); });
+  const tracks = Object.keys(groups).sort((a, b) => orderIdx(a) - orderIdx(b));
+  box.innerHTML = tracks.map(t => {
+    const items = groups[t].map(p => {
+      const k = srcKind(p.kv);
+      const kvs = Object.entries(p.kv).map(([kk, vv]) => `<span class="kv">${kk}: ${vv}</span>`).join('<br>');
+      return `<div class="t-item ${k}"><time>${(p.ts || '').slice(11, 16) || (p.t.toTimeString() || '').slice(0, 5)}</time><span class="tag ${k}">${k}</span><br>${kvs}</div>`;
+    }).join('');
+    return `<details class="track" open><summary>${label(t)}<span class="count">${groups[t].length} 条 · 点我收起/展开</span></summary><div class="tbody">${items}</div></details>`;
+  }).join('') || '<span class="empty">该日无记录</span>';
 }
 function renderGlucose(pts, blocks) {
   chartG = chartG || echarts.init(document.getElementById('chart-glucose'));
-  const cgmBlock = blocks.find(b => b.track === 'glucose');
-  let cgm = [];
-  if (cgmBlock) cgm = cgmBlock.rows.map(r => { const [t, v] = r.split(','); return [new Date(t), +v]; });
-  else cgm = pts.filter(p => p.track === 'glucose' && p.kv['mmol']).map(p => [p.t, +p.kv['mmol']]);
+  const b = blocks.find(x => x.track === 'glucose');
+  let cgm = b ? b.rows.map(r => { const [t, v] = r.split(','); return [new Date(t), +v]; })
+    : pts.filter(p => p.track === 'glucose' && p.kv['mmol']).map(p => [p.t, +p.kv['mmol']]);
   const finger = pts.filter(p => p.track === 'glucose' && p.kv['method'] === 'finger').map(p => [p.t, +p.kv['mmol']]);
-  const diet = pts.filter(p => p.track === 'diet').map(p => ({ coord: [p.t, p.kv['kcal'] ? 9 : 8], label: p.kv['text'] || p.kv['meal'] }));
+  const diet = pts.filter(p => p.track === 'diet').map(p => [p.t, 8]);
   chartG.setOption({
-    animation: false, tooltip: { trigger: 'axis' },
-    xAxis: { type: 'time' }, yAxis: { name: 'mmol/L', min: 3 },
+    backgroundColor: 'transparent', animation: false, tooltip: { ...TT, trigger: 'axis' },
+    grid: { left: 44, right: 12, top: 30, bottom: 26 },
+    legend: { textStyle: { color: '#8a8aa0' }, top: 0 },
+    xAxis: { type: 'time', ...AX }, yAxis: { name: 'mmol/L', nameTextStyle: { color: '#8a8aa0' }, min: 3, ...AX },
     series: [
-      { name: 'CGM', type: 'line', showSymbol: false, data: cgm, markLine: { data: [{ yAxis: 3.9, name: '低' }, { yAxis: 10, name: '高' }] } },
-      { name: '指血', type: 'scatter', symbol: 'star', symbolSize: 14, data: finger },
-      { name: '饮食', type: 'scatter', data: diet.map(d => d.coord) }
+      { name: 'CGM', type: 'line', showSymbol: false, lineStyle: { color: '#f472b6', width: 2 }, itemStyle: { color: '#f472b6' }, data: cgm, markLine: { silent: true, lineStyle: { color: '#e8b64c', type: 'dashed' }, label: { color: '#e8b64c' }, data: [{ yAxis: 3.9, name: '低' }, { yAxis: 10, name: '高' }] } },
+      { name: '指血', type: 'scatter', symbol: 'star', symbolSize: 14, itemStyle: { color: '#e8b64c' }, data: finger },
+      { name: '饮食', type: 'scatter', symbol: 'triangle', symbolSize: 10, itemStyle: { color: '#2fbf6f' }, data: diet }
     ]
   }, true);
 }
@@ -183,43 +280,51 @@ function renderVitals(pts) {
   const sys = pts.filter(p => p.track === 'bp' && p.kv['sys']).map(p => [p.t, +p.kv['sys']]);
   const dia = pts.filter(p => p.track === 'bp' && p.kv['dia']).map(p => [p.t, +p.kv['dia']]);
   chartH.setOption({
-    animation: false, tooltip: { trigger: 'axis' }, legend: { data: ['心率', '收缩压', '舒张压'] },
-    xAxis: { type: 'time' }, yAxis: { name: 'bpm/mmHg' },
+    backgroundColor: 'transparent', animation: false, tooltip: { ...TT, trigger: 'axis' },
+    grid: { left: 44, right: 12, top: 30, bottom: 26 },
+    legend: { textStyle: { color: '#8a8aa0' }, top: 0, data: ['心率', '收缩压', '舒张压'] },
+    xAxis: { type: 'time', ...AX }, yAxis: { name: 'bpm/mmHg', nameTextStyle: { color: '#8a8aa0' }, ...AX },
     series: [
-      { name: '心率', type: 'line', showSymbol: false, data: hr },
-      { name: '收缩压', type: 'scatter', data: sys },
-      { name: '舒张压', type: 'scatter', data: dia }
+      { name: '心率', type: 'line', showSymbol: false, lineStyle: { color: '#6366f1', width: 2 }, itemStyle: { color: '#6366f1' }, data: hr },
+      { name: '收缩压', type: 'scatter', itemStyle: { color: '#e8b64c' }, data: sys },
+      { name: '舒张压', type: 'scatter', itemStyle: { color: '#2fbf6f' }, data: dia }
     ]
   }, true);
 }
 function renderMap(pts, blocks) {
   if (poly) { map.removeLayer(poly); poly = null; }
-  let latlons = [];
-  const gpsBlock = blocks.find(b => b.track === 'gps');
-  if (gpsBlock) latlons = gpsBlock.rows.map(r => { const [t, la, lo] = r.split(','); return [+la, +lo]; });
-  else latlons = pts.filter(p => p.track === 'gps' && p.kv['lat']).map(p => [+p.kv['lat'], +p.kv['lon']]);
+  const b = blocks.find(x => x.track === 'gps');
+  const latlons = b ? b.rows.map(r => { const [t, la, lo] = r.split(','); return [+la, +lo]; }).filter(x => !isNaN(x[0]))
+    : pts.filter(p => p.track === 'gps' && p.kv['lat']).map(p => [+p.kv['lat'], +p.kv['lon']]);
   if (!latlons.length) return;
-  poly = L.polyline(latlons, { color: '#16a34a' }).addTo(map);
+  poly = L.polyline(latlons, { color: '#f472b6' }).addTo(map);
   map.fitBounds(poly.getBounds());
 }
 function renderMedia(pts) {
   const mediaTracks = ['audio', 'video', 'bodycam', 'cctv-home', 'cctv-office', 'sport', 'ecg'];
-  const items = pts.filter(p => mediaTracks.includes(p.track));
-  document.getElementById('media').innerHTML = items.map(p => {
-    const k = srcKind(p.kv);
-    const span = p.kv['span-start'] ? ` ${p.kv['span-start'].slice(11, 16)}→${(p.kv['span-end'] || '').slice(11, 16)}` : '';
-    const file = p.kv['file'] ? ` <code>${p.kv['file']}</code>` : '';
-    return `<div class="t-item ${k}"><time>${p.ts.slice(11, 16)}</time><b>${p.track}</b>${span}${file}<br>${p.kv['note'] || p.kv['event'] || p.kv['text'] || ''}</div>`;
-  }).join('') || '<span style="color:#a8a29e">当日无媒体/区间记录</span>';
+  const groups = {};
+  pts.filter(p => mediaTracks.includes(p.track)).forEach(p => { (groups[p.track] = groups[p.track] || []).push(p); });
+  const tracks = Object.keys(groups).sort((a, b) => orderIdx(a) - orderIdx(b));
+  document.getElementById('media').innerHTML = tracks.map(t => {
+    const items = groups[t].map(p => {
+      const k = srcKind(p.kv);
+      const span = p.kv['span-start'] ? ` ${(p.kv['span-start'] || '').slice(11, 16)}→${(p.kv['span-end'] || '').slice(11, 16)}` : '';
+      const file = p.kv['file'] ? ` <code>${p.kv['file']}</code>` : '';
+      return `<div class="t-item ${k}"><time>${(p.ts || '').slice(11, 16)}</time>${span}${file}<br>${p.kv['note'] || p.kv['event'] || p.kv['text'] || ''}</div>`;
+    }).join('');
+    return `<details class="track" open><summary>${label(t)}<span class="count">${groups[t].length} 段</span></summary><div class="tbody">${items}</div></details>`;
+  }).join('') || '<span class="empty">当日无录音录像/区间记录</span>';
 }
-// ===== 加载 =====
+// ===== 加载：按天 fetch / 粘贴 / 上传文件 =====
+let lastParsed = null;
 async function loadDate(d) {
   try {
     const r = await fetch(`data/${d}.md`);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    render(await r.text(), d);
+    lastParsed = parseMD(await r.text());
+    render(lastParsed, d);
   } catch (e) {
-    document.getElementById('err').textContent = `fetch data/${d}.md 失败（${e.message}）。\nGitHub Pages 上正常；本地 file:// 请用下方粘贴框手动渲染，或起一个静态服务：python3 -m http.server`;
+    document.getElementById('err').textContent = `fetch data/${d}.md 失败（${e.message}）。\nGitHub Pages 上正常；本地 file:// 请用上传区选文件，或起静态服务：python3 -m http.server`;
   }
 }
 function shift(n) {
@@ -228,7 +333,7 @@ function shift(n) {
   document.getElementById('date').value = d.toISOString().slice(0, 10);
   reload();
 }
-function reload() { loadDate(document.getElementById('date').value); }
+function reload() { lastParsed ? render(lastParsed, document.getElementById('date').value) : loadDate(document.getElementById('date').value); }
 async function initDates() {
   try {
     const r = await fetch('data/manifest.json');
@@ -236,16 +341,37 @@ async function initDates() {
       const list = await r.json();
       const sel = document.getElementById('datelist');
       sel.innerHTML = list.map(d => `<option>${d}</option>`).join('');
-      sel.onchange = () => { document.getElementById('date').value = sel.value; reload(); };
+      sel.onchange = () => { document.getElementById('date').value = sel.value; loadDate(sel.value); };
     }
-  } catch (e) { /* 无 manifest 不阻塞 */ }
+  } catch (e) {}
 }
-document.getElementById('load').onclick = reload;
+function handleFiles(files) {
+  const err = document.getElementById('err');
+  [...files].forEach(f => {
+    const rd = new FileReader();
+    rd.onload = () => {
+      try {
+        const name = f.name.toLowerCase(), text = rd.result;
+        const parsed = name.endsWith('.gpx') ? parseGPX(text) : name.endsWith('.csv') ? parseCSV(text, f.name) : parseMD(text);
+        lastParsed = parsed;
+        render(parsed, f.name + '（本地上传）');
+      } catch (e) { err.textContent = `解析 ${f.name} 失败：${e.message}`; }
+    };
+    rd.readAsText(f);
+  });
+}
+const drop = document.getElementById('drop'), fileInput = document.getElementById('file');
+drop.onclick = () => fileInput.click();
+fileInput.onchange = () => handleFiles(fileInput.files);
+['dragover', 'dragenter'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop', e => handleFiles(e.dataTransfer.files));
+document.getElementById('load').onclick = () => loadDate(document.getElementById('date').value);
 document.getElementById('prev').onclick = () => shift(-1);
 document.getElementById('next').onclick = () => shift(1);
-document.getElementById('render-paste').onclick = () => render(document.getElementById('paste').value, document.getElementById('date').value + '（粘贴）');
+document.getElementById('render-paste').onclick = () => { lastParsed = parseMD(document.getElementById('paste').value); render(lastParsed, document.getElementById('date').value + '（粘贴）'); };
 window.addEventListener('resize', () => { chartG && chartG.resize(); chartH && chartH.resize(); });
-initMap(); initDates(); reload();
+initMap(); initDates(); loadDate(document.getElementById('date').value);
 </script>
 </body>
 </html>
