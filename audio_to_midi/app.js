@@ -1,10 +1,10 @@
 /* 音频转 MIDI · 主线程：上传解码 / OPFS 模型缓存 / Worker 调度 / 卷帘预览 / 诊断
- * 阶段3已预埋：OPFS 缓存（ensureModel）、进度 phase、诊断 diag。
- * 权重到位：填写 MODEL_HF_URL + worker.js 的 ORT_MODEL_URL 即可（两处保持一致）。
+ * 权重：R2 双文件（scorer 57MB + attr 3.4MB），OPFS 缓存 + 字节数校验。
+ *（测试音阶自检已删除；Viterbi 植入自检保留在 worker 供 node 测试用，不经 UI。）
  */
 'use strict';
 
-// ---- 权重地址（HuggingFace，阶段2填写；为空 = 自检模式）----
+// ---- 权重地址（R2，OPFS 缓存 + 字节数校验）----
 const MODEL_R2 = 'https://weights.down2.top';
 const MODEL_FILES = [
   { key: 'scorer', url: MODEL_R2 + '/transkun_scorer.onnx', name: 'transkun_scorer.onnx', size: 57104274 },
@@ -26,7 +26,7 @@ let audioFile = null, pcmMono = null, sampleRate = 0, midiBlob = null, worker = 
 
 function getWorker() {
   if (!worker) {
-    worker = new Worker('./worker.js?v=dev');
+    worker = new Worker('./worker.js?v=2');
     worker.onmessage = onWorkerMsg;
     worker.onerror = e => dlog('Worker 错误：' + e.message, 'err');
     worker.postMessage({ type: 'probeBackend' });
@@ -222,18 +222,14 @@ $('go').onclick = async () => {
   $('go').disabled = true;
   $('prog').style.display = 'block';
   try {
-    const models = $('selftest').checked ? null : await ensureModels();
+    const models = await ensureModels();
     const w = getWorker();
     const buf = pcmMono.slice().buffer; // 拷贝后 transfer（保留原数据可重跑）
-    const msg = { type: 'transcribe', pcm: new Float32Array(buf), sampleRate, selftest: $('selftest').checked };
+    const msg = { type: 'transcribe', pcm: new Float32Array(buf), sampleRate };
     const transfer = [buf];
-    if (models) {
-      msg.models = models; // 60MB 经 transfer 零拷贝给 Worker（下次跑重新读 OPFS）
-      transfer.push(models.scorer, models.attr);
-    } else {
-      dlog('自检模式：只验证“特征→MIDI→预览→下载”链路', 'warn');
-    }
-    dlog(`送入 Worker：${pcmMono.length} 采样 @${sampleRate}Hz${$('selftest').checked ? '（+自检音阶）' : ''}`);
+    msg.models = models; // 60MB 经 transfer 零拷贝给 Worker（下次跑重新读 OPFS）
+    transfer.push(models.scorer, models.attr);
+    dlog(`送入 Worker：${pcmMono.length} 采样 @${sampleRate}Hz`);
     w.postMessage(msg, transfer);
   } catch (err) {
     dlog('启动失败：' + (err && err.message || err), 'err');
@@ -265,12 +261,11 @@ function finish(m) {
   $('dl').disabled = false;
   if ($('playv2')) $('playv2').disabled = false;
   $('go').disabled = false;
-  $('phase').textContent = `完成：${m.notes.length} 个事件（${m.mode === 'selftest' ? '合成自检音阶，非模型输出' : '模型输出'}）`;
-  if (m.mode === 'selftest') dlog('注意：当前 MIDI 为合成测试音阶，仅证明链路通畅', 'warn');
-  dlog(`耗时：重采样 ${d.msResample.toFixed(0)}ms / 归一 ${d.msNorm.toFixed(0)}ms / mel ${d.msMel.toFixed(0)}ms / 推理 ${d.msInfer.toFixed(0)}ms / 共 ${(d.msTotal / 1000).toFixed(1)}s；特征 ${d.frames}帧×${d.mels}维 / ${d.segments}段`, 'ok');
+  $('phase').textContent = `完成：${m.notes.length} 个事件（模型输出）`;
+  dlog(`耗时：重采样 ${d.msResample.toFixed(0)}ms / 推理 ${d.msInfer.toFixed(0)}ms / 共 ${(d.msTotal / 1000).toFixed(1)}s；${d.segments}段 / 后端 ${d.backend || '?'}`, 'ok');
   $('stats').innerHTML =
-    `<span>事件 <b>${m.notes.length}</b></span><span>特征 <b>${d.frames}×${d.mels}</b></span>` +
-    `<span>分段 <b>${d.segments}</b></span><span>总耗时 <b>${(d.msTotal / 1000).toFixed(1)}s</b></span><span>模式 <b>${m.mode}</b></span>`;
+    `<span>事件 <b>${m.notes.length}</b></span>` +
+    `<span>分段 <b>${d.segments}</b></span><span>后端 <b>${d.backend || '?'}</b></span><span>总耗时 <b>${(d.msTotal / 1000).toFixed(1)}s</b></span><span>模式 <b>${m.mode}</b></span>`;
   drawRoll(m.notes);
   dlog('MIDI 已就绪，可下载；卷帘预览已渲染', 'ok');
 }
@@ -317,7 +312,7 @@ $('playv2').onclick = async () => {
 function drawRoll(notes) {
   const cv = $('roll'), ctx = cv.getContext('2d');
   cv.style.display = 'block';
-  $('rollHint').textContent = '钢琴卷帘预览（金色=音符，青色=踏板）。自检模式下为 C 大调音阶。';
+  $('rollHint').textContent = '钢琴卷帘预览（金色=音符，青色=踏板）。';
   const W = cv.width, H = cv.height;
   ctx.fillStyle = '#0a0d12'; ctx.fillRect(0, 0, W, H);
   const pit = notes.filter(n => n.pitch > 0);

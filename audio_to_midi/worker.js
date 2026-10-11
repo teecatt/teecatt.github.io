@@ -114,15 +114,9 @@ onmessage = async (e) => {
     const tRs = performance.now();
 
     let notes, mode, segDiag = null;
-    if (msg.selftest || !msg.models) {
-      phase('链路自检：合成测试音阶（不经模型）…', 0.6);
-      notes = selftestScale();
-      mode = 'selftest';
-      log('自检模式：输出为合成音阶，仅验链路（未传模型时自动进入）');
-    } else {
-      const r = await runModel(pcm, msg.models);
-      notes = r.notes; segDiag = r.diag; mode = 'onnx';
-    }
+    if (!msg.models) throw new Error('未收到模型字节（主线程应先经 OPFS/网络备好双权重）');
+    const r = await runModel(pcm, msg.models);
+    notes = r.notes; segDiag = r.diag; mode = 'onnx';
     const tInf = performance.now();
 
     phase('生成 MIDI…', 0.92);
@@ -179,14 +173,6 @@ function framesToMel(frames, nFrame) {
     if ((f & 255) === 255) phase('提取 log-mel（229维）…', 0.2 + 0.35 * f / nFrame);
   }
   return out;
-}
-
-// 链路自检：C大调上行音阶（明确标记为合成，非模型输出）
-function selftestScale() {
-  const scale = [60, 62, 64, 65, 67, 69, 71, 72];
-  const notes = scale.map((p, i) => ({ start: i * 0.45, end: i * 0.45 + 0.4, pitch: p, velocity: 80 }));
-  notes.push({ start: 0, end: scale.length * 0.45, pitch: -64, velocity: 100 }); // 踏板事件
-  return notes;
 }
 
 // ---------- SMF 写入（对标 Data.writeMidi：format0, resolution 960, Grand Piano） ----------
