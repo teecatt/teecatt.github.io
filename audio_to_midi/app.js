@@ -63,7 +63,7 @@ let audioFile = null, pcmMono = null, sampleRate = 0, midiBlob = null, worker = 
 
 function getWorker() {
   if (!worker) {
-    worker = new Worker('./worker.js?v=2');
+    worker = new Worker('./worker.js?v=3');
     worker.onmessage = onWorkerMsg;
     worker.onerror = e => dlog('Worker 错误：' + e.message, 'err');
     worker.postMessage({ type: 'probeBackend' });
