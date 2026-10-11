@@ -6,9 +6,10 @@
 
 // ---- 权重地址（R2，OPFS 缓存 + 字节数校验）----
 const MODEL_R2 = 'https://weights.down2.top';
+const MODEL_R2_DIRECT = 'https://pub-b8d95e05900c4ad98bf1420adcda0148.r2.dev';
 const MODEL_FILES = [
-  { key: 'scorer', url: MODEL_R2 + '/transkun_scorer.onnx', name: 'transkun_scorer.onnx', size: 57104274 },
-  { key: 'attr', url: MODEL_R2 + '/transkun_attr.onnx', name: 'transkun_attr.onnx', size: 3427886 },
+  { key: 'scorer', urls: [MODEL_R2 + '/transkun_scorer.onnx', MODEL_R2_DIRECT + '/transkun_scorer.onnx'], name: 'transkun_scorer.onnx', size: 57104274 },
+  { key: 'attr', urls: [MODEL_R2 + '/transkun_attr.onnx', MODEL_R2_DIRECT + '/transkun_attr.onnx'], name: 'transkun_attr.onnx', size: 3427886 },
 ];
 
 const $ = id => document.getElementById(id);
@@ -184,28 +185,30 @@ async function fetchOne(dir, spec) {
     }
     dlog(`${spec.name} 缓存不完整（${file.size}/${spec.size}），重新下载…`, 'warn');
   } catch (_) { /* 无缓存，下载 */ }
-  dlog(`下载 ${spec.name}（${(spec.size / 1048576).toFixed(1)} MB，首次较慢）…`);
+  dlog(`下载 ${spec.name}（${(spec.size / 1048576).toFixed(1)} MB，${spec.urls.length}镜像首512KB竞速）…`);
+  $('prog').style.display = 'block';
   const t0 = performance.now();
-  const resp = await fetch(spec.url);
-  if (!resp.ok) throw new Error('权重下载失败 HTTP ' + resp.status + '：' + spec.name);
-  const reader = resp.body.getReader();
-  const chunks = [];
-  let got = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    chunks.push(value); got += value.length;
-    $('phase').textContent = `下载 ${spec.name}… ${(got / 1048576).toFixed(0)}/${(spec.size / 1048576).toFixed(0)} MB`;
-  }
-  const blob = new Blob(chunks);
-  if (got !== spec.size) throw new Error(`${spec.name} 字节数不对：${got}/${spec.size}（网络截断？）`);
+  // 与门户同一套公共竞速组件：双镜像同时下，最先攒够 512KB 者胜出，其余 abort；
+  // onProgress 实时驱动进度条 + MB/速度（用户要求：大文件进度必须可见）。
+  const { blob, url } = await CdnRace.raceDownload(spec.urls, {
+    label: spec.name,
+    threshold: 512 * 1024,
+    onProgress: pct => {
+      $('progBar').style.width = pct.toFixed(1) + '%';
+      $('phase').textContent = `下载 ${spec.name}… ${pct.toFixed(0)}%（${(pct / 100 * spec.size / 1048576).toFixed(1)}/${(spec.size / 1048576).toFixed(1)} MB）`;
+    },
+    onLive: text => { $('phase').textContent = text; },
+    onFinal: text => dlog(text, 'ok'),
+  });
+  if (blob.size !== spec.size) throw new Error(`${spec.name} 字节数不对：${blob.size}/${spec.size}（来源 ${url}）`);
   const fh = await dir.getFileHandle(spec.name, { create: true });
   const w = await fh.createWritable();
   await blob.stream().pipeTo(w);
-  dlog(`${spec.name} 已缓存，${((performance.now() - t0) / 1000).toFixed(0)}s`, 'ok');
+  dlog(`${spec.name} 已缓存 ← ${url}，${((performance.now() - t0) / 1000).toFixed(0)}s`, 'ok');
   return blob;
 }
 async function ensureModels() {
+  if (typeof CdnRace === 'undefined') throw new Error('竞速组件 shared/cdn-race.js 未加载（清缓存硬刷新试试）');
   const root = await navigator.storage.getDirectory();
   const dir = await root.getDirectoryHandle('audio_to_midi', { create: true });
   const out = {};
