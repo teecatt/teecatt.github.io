@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Transkun 评分网络导出为 ONNX（手机 CPU 可跑）。
 
-只导出推理必需的两块（CRF/Viterbi、velocity/of 后处理留给 JS）：
-  A. transkun_scorer.onnx：mel 特征 [1,T,229,6] → S[T,T,90], Sskip[T-1,90]
-  B. transkun_attr.onnx：ctx_a[N,256], ctx_b[N,256] → vLogits[N,128], ofRaw[N,4]
+只导出推理必需的两块（CRF/Viterbi、音符组装留给 JS）：
+  A. transkun_scorer.onnx：mel 特征 [1,691,229,6] → S[691,691,90], Sskip[690,90], CTX[1,90,691,256]
+     （单 backbone；JS 按 [sym,frame] 直接取端点 ctx，不做 Gather 输入）
+  B. transkun_attr.onnx：ctx_a[N,256], ctx_b[N,256] → vel[N] int64, ofVal[N,2], ofPres[N,2] bool
+     （softmax/argmax/CB均值/钳制/>0 已在图内，JS 只做组装）
 另存：gauss_windows.json（5 组高斯窗 sigma/center，JS 端 6 通道 STFT 用）。
 
 用法：
@@ -83,12 +85,18 @@ class ScorerNet(torch.nn.Module):
         self.register_buffer('pitches', torch.tensor(model.targetMIDIPitch, dtype=torch.long))
 
     def forward(self, mel):
-        ctx = self.backbone(mel, outputIndices=self.pitches)
+        ctx = self.backbone(mel, outputIndices=self.pitches)  # [1,90,691,256]
         S, Ss = self.scorer(ctx)
-        return S.squeeze(2), Ss.squeeze(1)
+        # 全量 ctx 由 JS 按 (sym,frame) 直接取（单 backbone、前向一次；
+        # 63MB 瞬时输出相对 171MB 的 S 可忽略，避免 double-backbone）。
+        return S.squeeze(2), Ss.squeeze(1), ctx
 
 
 class AttrNet(torch.nn.Module):
+    """属性头 v2：直接输出最终量（JS 不做任何数学，只做组装）。
+    vel[N] int64（hamming=argmax）；ofVal[N,2]（CB均值公式+钳制）；
+    ofPres[N,2] bool（>0）。与 transcribeFrames 逐行对齐。"""
+
     def __init__(self, model):
         super().__init__()
         self.vp = model.velocityPredictor
@@ -96,7 +104,23 @@ class AttrNet(torch.nn.Module):
 
     def forward(self, a, b):
         x = torch.cat([a, b, a * b], dim=-1)
-        return self.vp(x), self.ofp(x)
+        pV = torch.softmax(self.vp(x), dim=-1)
+        vel = torch.argmax(pV, dim=-1)
+        ofRaw = self.ofp(x)
+        ofV, ofP = ofRaw.chunk(2, dim=-1)
+        # ContinuousBernoulli 均值（与 torch.distributions 逐行等价，
+        # 但把 bool 上的 torch.max 改写为逻辑或——Max(bool) 非法 ONNX）：
+        # mean = where(outside, mus, taylor)，lims=(0.499, 0.501)
+        probs = torch.sigmoid(ofV).clamp(1.1920928955078125e-07, 1.0 - 1.1920928955078125e-07)
+        outside = (probs <= 0.499) | (probs > 0.501)
+        cut = torch.where(outside, probs, torch.full_like(probs, 0.499))
+        mus = cut / (2.0 * cut - 1.0) + 1.0 / (torch.log1p(-cut) - torch.log(cut))
+        px = probs - 0.5
+        taylor = 0.5 + (1.0 / 3.0 + 16.0 / 45.0 * px * px) * px
+        mean = torch.where(outside, mus, taylor)
+        ofVal = torch.clamp((mean - 0.5) / 0.99, -0.5, 0.5)
+        ofPres = ofP > 0
+        return vel, ofVal, ofPres
 
 
 def main():
@@ -117,22 +141,26 @@ def main():
     with torch.no_grad():
         mel = torch.randn(1, 691, 229, 6)  # 固定 T=691（ceil(705600/1024)+1），16s 段恒定帧数
         sn = ScorerNet(model)
-        S, Ss = sn(mel)
+        # 先确认 ctx 形态（JS 端按 [sym,frame] 取，顺序决定正确性），再导出
+        ctxProbe = sn.backbone(mel, outputIndices=sn.pitches)
+        assert list(ctxProbe.shape) == [1, 90, 691, 256], ctxProbe.shape
+        S, Ss, C = sn(mel)
         assert list(S.shape) == [691, 691, 90], S.shape
         assert list(Ss.shape) == [690, 90], Ss.shape
+        assert list(C.shape) == [1, 90, 691, 256], C.shape
         torch.onnx.export(sn, (mel,), os.path.join(args.out, 'transkun_scorer.onnx'),
-                          input_names=['mel'], output_names=['S', 'Sskip'],
+                          input_names=['mel'], output_names=['S', 'Sskip', 'CTX'],
                           dynamic_axes=None,
                           opset_version=args.opset, dynamo=False)
-        D = S.shape[-1] and 256
         a = torch.randn(4, 256)
         an = AttrNet(model)
-        v, o = an(a, a)
-        assert list(v.shape) == [4, 128] and list(o.shape) == [4, 4]
+        vel, ofVal, ofPres = an(a, a)
+        assert list(vel.shape) == [4] and list(ofVal.shape) == [4, 2] and list(ofPres.shape) == [4, 2]
+        assert vel.dtype == torch.int64 and ofPres.dtype == torch.bool
         torch.onnx.export(an, (a, a), os.path.join(args.out, 'transkun_attr.onnx'),
-                          input_names=['ctx_a', 'ctx_b'], output_names=['vLogits', 'ofRaw'],
+                          input_names=['ctx_a', 'ctx_b'], output_names=['vel', 'ofVal', 'ofPres'],
                           dynamic_axes={'ctx_a': {0: 'N'}, 'ctx_b': {0: 'N'},
-                                        'vLogits': {0: 'N'}, 'ofRaw': {0: 'N'}},
+                                        'vel': {0: 'N'}, 'ofVal': {0: 'N'}, 'ofPres': {0: 'N'}},
                           opset_version=args.opset, dynamo=False)
         spec = model.framewiseFeatureExtractor.spectrogramExtractor
         gw = {'nWin': spec.winGen.nWin,

@@ -5,9 +5,11 @@
 'use strict';
 
 // ---- 权重地址（HuggingFace，阶段2填写；为空 = 自检模式）----
-const MODEL_HF_URL = '';
-const MODEL_OPFS_NAME = 'transkun-v2.onnx';
-const MODEL_SIZE_HINT = 0; // 权重实际字节数，填写后用于完整性校验（0=跳过）
+const MODEL_R2 = 'https://weights.down2.top';
+const MODEL_FILES = [
+  { key: 'scorer', url: MODEL_R2 + '/transkun_scorer.onnx', name: 'transkun_scorer.onnx', size: 57104274 },
+  { key: 'attr', url: MODEL_R2 + '/transkun_attr.onnx', name: 'transkun_attr.onnx', size: 3427886 },
+];
 
 const $ = id => document.getElementById(id);
 const diagBox = $('diag');
@@ -171,28 +173,21 @@ async function onRecStop() {
   }
 }
 
-// ---------- OPFS 模型缓存（阶段3；URL 为空时跳过并明示） ----------
-async function ensureModel() {
-  if (!MODEL_HF_URL) {
-    dlog('模型地址未填写 → 自检模式：只验证“特征→MIDI→预览→下载”链路', 'warn');
-    return null;
-  }
-  const root = await navigator.storage.getDirectory();
-  const dir = await root.getDirectoryHandle('audio_to_midi', { create: true });
+// ---------- OPFS 模型缓存（双权重；命中则秒开，否则下载并校验字节数） ----------
+async function fetchOne(dir, spec) {
   try {
-    const fh = await dir.getFileHandle(MODEL_OPFS_NAME);
+    const fh = await dir.getFileHandle(spec.name);
     const file = await fh.getFile();
-    if (file.size > 0 && (!MODEL_SIZE_HINT || file.size === MODEL_SIZE_HINT)) {
-      dlog(`OPFS 命中模型缓存：${(file.size / 1048576).toFixed(1)} MB（秒开）`, 'ok');
+    if (file.size === spec.size) {
+      dlog(`OPFS 命中：${spec.name} ${(file.size / 1048576).toFixed(1)} MB（秒开）`, 'ok');
       return file;
     }
-    dlog('缓存不完整，重新下载…', 'warn');
+    dlog(`${spec.name} 缓存不完整（${file.size}/${spec.size}），重新下载…`, 'warn');
   } catch (_) { /* 无缓存，下载 */ }
-  dlog('下载 ONNX 权重（首次较慢，已走 OPFS 缓存，下次秒开）…');
+  dlog(`下载 ${spec.name}（${(spec.size / 1048576).toFixed(1)} MB，首次较慢）…`);
   const t0 = performance.now();
-  const resp = await fetch(MODEL_HF_URL);
-  if (!resp.ok) throw new Error('权重下载失败 HTTP ' + resp.status);
-  const total = +resp.headers.get('content-length') || 0;
+  const resp = await fetch(spec.url);
+  if (!resp.ok) throw new Error('权重下载失败 HTTP ' + resp.status + '：' + spec.name);
   const reader = resp.body.getReader();
   const chunks = [];
   let got = 0;
@@ -200,14 +195,25 @@ async function ensureModel() {
     const { done, value } = await reader.read();
     if (done) break;
     chunks.push(value); got += value.length;
-    if (total) $('phase').textContent = `下载权重… ${(got / 1048576).toFixed(0)}/${(total / 1048576).toFixed(0)} MB`;
+    $('phase').textContent = `下载 ${spec.name}… ${(got / 1048576).toFixed(0)}/${(spec.size / 1048576).toFixed(0)} MB`;
   }
   const blob = new Blob(chunks);
-  const fh = await dir.getFileHandle(MODEL_OPFS_NAME, { create: true });
+  if (got !== spec.size) throw new Error(`${spec.name} 字节数不对：${got}/${spec.size}（网络截断？）`);
+  const fh = await dir.getFileHandle(spec.name, { create: true });
   const w = await fh.createWritable();
   await blob.stream().pipeTo(w);
-  dlog(`权重已缓存：${(got / 1048576).toFixed(1)} MB，${((performance.now() - t0) / 1000).toFixed(0)}s`, 'ok');
+  dlog(`${spec.name} 已缓存，${((performance.now() - t0) / 1000).toFixed(0)}s`, 'ok');
   return blob;
+}
+async function ensureModels() {
+  const root = await navigator.storage.getDirectory();
+  const dir = await root.getDirectoryHandle('audio_to_midi', { create: true });
+  const out = {};
+  for (const spec of MODEL_FILES) {
+    const blob = await fetchOne(dir, spec);
+    out[spec.key] = await blob.arrayBuffer();
+  }
+  return out;
 }
 
 // ---------- 转写 ----------
@@ -216,11 +222,19 @@ $('go').onclick = async () => {
   $('go').disabled = true;
   $('prog').style.display = 'block';
   try {
-    await ensureModel();
+    const models = $('selftest').checked ? null : await ensureModels();
     const w = getWorker();
     const buf = pcmMono.slice().buffer; // 拷贝后 transfer（保留原数据可重跑）
+    const msg = { type: 'transcribe', pcm: new Float32Array(buf), sampleRate, selftest: $('selftest').checked };
+    const transfer = [buf];
+    if (models) {
+      msg.models = models; // 60MB 经 transfer 零拷贝给 Worker（下次跑重新读 OPFS）
+      transfer.push(models.scorer, models.attr);
+    } else {
+      dlog('自检模式：只验证“特征→MIDI→预览→下载”链路', 'warn');
+    }
     dlog(`送入 Worker：${pcmMono.length} 采样 @${sampleRate}Hz${$('selftest').checked ? '（+自检音阶）' : ''}`);
-    w.postMessage({ type: 'transcribe', pcm: new Float32Array(buf), sampleRate, selftest: $('selftest').checked }, [buf]);
+    w.postMessage(msg, transfer);
   } catch (err) {
     dlog('启动失败：' + (err && err.message || err), 'err');
     $('go').disabled = false;
@@ -236,7 +250,7 @@ function onWorkerMsg(e) {
     dlog('[worker] ' + m.text);
   } else if (m.type === 'backend') {
     dlog(m.webgpu ? '后端：WebGPU 可用（阶段4将优先使用）' : '后端：无 WebGPU → 阶段4将回退 WASM 模式（慢 5–10 倍）', m.webgpu ? 'ok' : 'warn');
-    $('buildStatus').textContent = `框架阶段 · 等待 ONNX 权重（链路自检模式）· ${m.webgpu ? '本机支持 WebGPU' : '本机无 WebGPU'}`;
+    $('buildStatus').textContent = `在线转写 · 权重 R2/OPFS（scorer 57MB + attr 3.4MB）· ${m.webgpu ? '本机支持 WebGPU' : '本机无 WebGPU，走 WASM（慢 5–10 倍）'}`;
   } else if (m.type === 'done') {
     finish(m);
   } else if (m.type === 'error') {
