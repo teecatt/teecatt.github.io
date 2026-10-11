@@ -11,6 +11,7 @@ const sandbox = {
   onmessage: null, // worker.js 顶部 'use strict' 下直接赋值 onmessage，需预置
   postMessage: (m) => posted.push(m),
   importScripts: (p) => vm.runInContext(read(p), sandbox),
+  addEventListener: () => {}, // worker.js 注册 unhandledrejection，node 沙箱打桩
   performance,
   console,
 };

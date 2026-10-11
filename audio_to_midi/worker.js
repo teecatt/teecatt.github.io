@@ -295,32 +295,41 @@ async function runModel(pcm, models) {
   loadOrt(); // 双 CDN 回退加载（动态，不阻塞页面）
   const ortNS = self.ort;
   // 后端：优先 WebGPU，失败回退 WASM（任务6要求明示回退）
-  let providers = ['wasm'], backend = 'wasm';
+  let backend = 'wasm';
   try {
-    if (self.navigator && self.navigator.gpu && (await self.navigator.gpu.requestAdapter())) {
-      providers = ['webgpu'];
-      backend = 'webgpu';
-    }
+    if (self.navigator && self.navigator.gpu && (await self.navigator.gpu.requestAdapter())) backend = 'webgpu';
   } catch (_) { /* 回退 wasm */ }
   const mkSession = async (buf, providers) =>
     ortNS.InferenceSession.create(buf, { executionProviders: providers });
-  phase(`下载 wasm 运行时（约30MB，首次一次性；后端${backend}）…`, 0.28);
-  let scorer, attr;
-  try {
-    scorer = await mkSession(models.scorer, providers);
+  // 单次尝试：建会话 + 全量推理。WebGPU 在创建期或运行期（device lost/内存爆）失败时，
+  // 外层整体回退 WASM 重跑（幂等：startPos/事件全是局部状态）。
+  const attempt = async (be) => {
+    const prov = [be];
+    phase(`下载运行时（首次一次性；后端${be}）…`, 0.28);
+    const scorer = await mkSession(models.scorer, prov);
     phase('scorer 会话就绪，加载 attr 会话…', 0.36);
-    attr = await mkSession(models.attr, providers);
+    const attr = await mkSession(models.attr, prov);
+    log(`ONNX 就绪：后端=${be}，S=${scorer.outputNames}，attr=${attr.outputNames}`);
+    try {
+      return await inferAll(ortNS, scorer, attr, be, pcm);
+    } finally {
+      try { scorer && scorer.release && (await scorer.release()); } catch (_) {}
+      try { attr && attr.release && (await attr.release()); } catch (_) {}
+    }
+  };
+  try {
+    return await attempt(backend);
   } catch (err) {
     if (backend === 'webgpu') {
-      log('WebGPU 会话失败，回退 WASM：' + (err && err.message || err));
-      backend = 'wasm'; providers = ['wasm'];
-      phase('下载 wasm 运行时（约30MB，首次一次性；后端wasm）…', 0.28);
-      scorer = await mkSession(models.scorer, providers);
-      phase('scorer 会话就绪，加载 attr 会话…', 0.36);
-      attr = await mkSession(models.attr, providers);
-    } else throw err;
+      log('WebGPU 推理失败（创建期或运行期），整体回退 WASM 重跑：' + (err && err.message || err));
+      return await attempt('wasm');
+    }
+    throw err;
   }
-  log(`ONNX 就绪：后端=${backend}，S=${scorer.outputNames}，attr=${attr.outputNames}`);
+}
+
+// 全量分段推理（与 transcribe() 逐行对齐；无状态，可整体重跑）
+async function inferAll(ortNS, scorer, attr, backend, pcm) {
 
   // 分段常量（与 transcribe() 逐行对齐）
   const SEG = Math.ceil(SEG_SEC * FS);          // 705600 采样
@@ -347,6 +356,8 @@ async function runModel(pcm, models) {
     phase(`第${segIdx}/${nSegTotal}段：神经网络打分（最耗时一步，WASM下每段约几十秒）…`, segRatio);
     const out = await scorer.run({ mel: melT });
     const S = out.S.data, Sskip = out.Sskip.data, CTX = out.CTX.data;
+    try { melT.dispose && melT.dispose(); } catch (_) {}
+    try { for (const t of out.values()) t.dispose && t.dispose(); } catch (_) {} // S单张171MB，及时还显存
     // 90 symbol 各自 Viterbi（与 torch nBatch=nSym 等价；每30个报一次心跳，避免长静默）
     const intervals = [];
     for (let sym = 0; sym < 90; sym++) {
@@ -378,6 +389,7 @@ async function runModel(pcm, models) {
         ctx_b: new ortNS.Tensor('float32', cb, [total, 256])
       });
       vel = ao.vel.data; ofVal = ao.ofVal.data; ofPres = ao.ofPres.data;
+      try { for (const t of ao.values()) t.dispose && t.dispose(); } catch (_) {}
     }
     // 组装（与 transcribeFrames/test_e2e_v3.assemble 逐行对齐）
     const beginTime = s0 / FS - (SEG_SEC - STEP_SEC);
@@ -509,6 +521,8 @@ async function probeBackend() {
     }
   } catch (err) { info = String((err && err.message) || err); }
   const isolated = (typeof crossOriginIsolated !== 'undefined' && crossOriginIsolated);
-  log('后端探测：navigator.gpu adapter=' + (webgpu ? '有' : '无') + ' / crossOriginIsolated=' + (isolated ? '是' : '否（多线程 wasm 跑不了）'));
+  let ua = '';
+  try { ua = String((self.navigator && self.navigator.userAgent) || '').replace(/ \([^)]*\)/, ''); } catch (_) {}
+  log('后端探测：adapter=' + (webgpu ? '有' : '无') + ' / crossOriginIsolated=' + (isolated ? '是' : '否（多线程 wasm 跑不了；换 Chrome/Edge 107+ 并硬刷新，微信/QQ等内置浏览器不支持）') + ' / UA=' + ua.slice(0, 80));
   postMessage({ type: 'backend', webgpu, info, fallback: webgpu ? 'webgpu' : 'wasm' });
 }
