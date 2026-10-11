@@ -108,6 +108,11 @@ function _fmtSize(n){ return CdnRace.fmtSize(n); }
 const MEDIA_BR_SIZES = {
   "midi/Rush E 3.mid": 97614,
   "midi/The Sound of Silence.mid": 3601,
+  "midi/unchanged mind.mid": 3048,
+  "midi/AfterSchool-DJ Okawari.mid": 507,
+  "midi/幻昼.mid": 7123,
+  "midi/消失在记忆里的海.mid": 4860,
+  "midi/piaoyun.mid": 12534,
   "midi/concurrent_44_500ms.mid": 246,
   "midi/concurrent_88_100ms.mid": 301,
   "midi/concurrent_88_10ms.mid": 302,
