@@ -298,16 +298,19 @@ async function runModel(pcm, models) {
   } catch (_) { /* 回退 wasm */ }
   const mkSession = async (buf, providers) =>
     ortNS.InferenceSession.create(buf, { executionProviders: providers });
-  phase(`加载 ONNX（${backend}）…`, 0.3);
+  phase(`下载 wasm 运行时（约30MB，首次一次性；后端${backend}）…`, 0.28);
   let scorer, attr;
   try {
     scorer = await mkSession(models.scorer, providers);
+    phase('scorer 会话就绪，加载 attr 会话…', 0.36);
     attr = await mkSession(models.attr, providers);
   } catch (err) {
     if (backend === 'webgpu') {
       log('WebGPU 会话失败，回退 WASM：' + (err && err.message || err));
       backend = 'wasm'; providers = ['wasm'];
+      phase('下载 wasm 运行时（约30MB，首次一次性；后端wasm）…', 0.28);
       scorer = await mkSession(models.scorer, providers);
+      phase('scorer 会话就绪，加载 attr 会话…', 0.36);
       attr = await mkSession(models.attr, providers);
     } else throw err;
   }
@@ -334,11 +337,14 @@ async function runModel(pcm, models) {
     gainNorm(frames);
     const mel = framesToMel6(frames, T); // [691,229,6]
     const melT = new ortNS.Tensor('float32', mel, [1, T, N_MELS, 6]);
+    const segRatio = 0.3 + 0.55 * segIdx / nSegTotal;
+    phase(`第${segIdx}/${nSegTotal}段：神经网络打分（最耗时一步，WASM下每段约几十秒）…`, segRatio);
     const out = await scorer.run({ mel: melT });
     const S = out.S.data, Sskip = out.Sskip.data, CTX = out.CTX.data;
-    // 90 symbol 各自 Viterbi（与 torch nBatch=nSym 等价）
+    // 90 symbol 各自 Viterbi（与 torch nBatch=nSym 等价；每30个报一次心跳，避免长静默）
     const intervals = [];
     for (let sym = 0; sym < 90; sym++) {
+      if (sym % 30 === 0) phase(`第${segIdx}/${nSegTotal}段：Viterbi 解码 ${sym}/90…`, segRatio);
       intervals.push(TranskunViterbi.decode({
         T,
         getScore: (e, b) => S[(e * T + b) * 90 + sym],
@@ -351,6 +357,7 @@ async function runModel(pcm, models) {
     for (let sym = 0; sym < 90; sym++) total += intervals[sym].length;
     let vel = [], ofVal = [], ofPres = [];
     if (total > 0) {
+      phase(`第${segIdx}/${nSegTotal}段：力度/离位属性头（${total}检出）…`, segRatio);
       const ca = new Float32Array(total * 256), cb = new Float32Array(total * 256);
       let n = 0;
       for (let sym = 0; sym < 90; sym++) {
