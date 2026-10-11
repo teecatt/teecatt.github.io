@@ -355,9 +355,10 @@ async function runModel(pcm, models, forceBackend, runOpts) {
     for (let i = 0; i < nPool; i++) scorers.push(await mkSession(scorerBuf, prov));
     phase('scorer 会话就绪，加载 attr 会话…', 0.36);
     const attr = await mkSession(models.attr, prov);
-    log(`ONNX 就绪：后端=${be}，scorer=${scorerTag}×${nPool}，S=${scorers[0].outputNames}，attr=${attr.outputNames}，worker.js?v=13`);
+    log(`ONNX 就绪：后端=${be}，scorer=${scorerTag}×${nPool}，S=${scorers[0].outputNames}，attr=${attr.outputNames}，worker.js?v=14`);
+    const freshScorer = () => mkSession(scorerBuf, prov); // 会话损坏时重建用（见 inferAll 限流处理）
     try {
-      return await inferAll(ortNS, scorers, attr, be, pcm, runOpts);
+      return await inferAll(ortNS, scorers, attr, be, pcm, runOpts, freshScorer);
     } finally {
       for (const s of scorers) { try { s && s.release && (await s.release()); } catch (_) {} }
       try { attr && attr.release && (await attr.release()); } catch (_) {}
@@ -374,9 +375,14 @@ async function runModel(pcm, models, forceBackend, runOpts) {
   }
 }
 
+// 波次超时兜底：任何 hang（会话损坏、驱动卡死）都转为可落地的失败，绝不无限卡死
+function runWithTimeout(p, ms, label) {
+  return Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error(label + `超时（${ms}ms），转失败处理`)), ms))]);
+}
+
 // 全量分段推理（与 transcribe() 逐行对齐；无状态，可整体重跑）
-async function inferAll(ortNS, scorers, attr, backend, pcm, opts) {
-  const scorerPool = Array.isArray(scorers) ? scorers : [scorers]; // 兼容旧单会话调用
+async function inferAll(ortNS, scorers, attr, backend, pcm, opts, freshScorer) {
+  let scorerPool = Array.isArray(scorers) ? scorers : [scorers]; // 兼容旧单会话调用
 
   // 分段常量（与 transcribe() 逐行对齐）
 
@@ -407,38 +413,55 @@ async function inferAll(ortNS, scorers, attr, backend, pcm, opts) {
     }
   }
   // Phase B：波次打分。WebGPU 用 2 会话并发（单次 691 帧已基本吃满手机 GPU，
-  // 并发只在有余量时提速；并发被限流时本波次串行重试，见下；波次失败由外层 attempt 整体回 wasm 串行重跑）。
-  // WASM 强制串行（CPU 内存带宽共享 + 手机内存， 并发无收益）。
-  const poolN = (backend === 'webgpu' && scorerPool.length > 1) ? 2 : 1;
-  for (let w = 0; w < segMel.length; w += poolN) {
+  // 并发只在有余量时提速。真机实证（2026-10-11）：并发被限流（Session already started）
+  // 后原会话状态损坏、复用会永久 hang（无 resolve 无 reject），故一旦限流就重建会话
+  // 并粘滞串行（stickySerial），之后所有波次只走单会话；波次失败由外层回 wasm 重跑。
+  // 每波次 120s 超时兜底：任何 hang 都转为可落地的失败，绝不无限卡死。
+  // WASM 强制串行（CPU 内存带宽共享 + 手机内存，并发无收益）。
+  let stickySerial = !(backend === 'webgpu' && scorerPool.length > 1);
+  const WAVE_TIMEOUT_MS = 120000;
+  const runSerial = (tensors) => (async () => {
+    const r = [];
+    for (let k = 0; k < tensors.length; k++) r.push(await scorerPool[0].run({ mel: tensors[k] }));
+    return r;
+  })();
+  for (let w = 0; w < segMel.length;) {
+    const poolN = stickySerial ? 1 : 2;
     const wave = segMel.slice(w, w + poolN);
     segIdx += wave.length; // 进度按波次末段算；段内组装仍严格按顺序，链式不断
     const segRatio = 0.34 + 0.51 * segIdx / nSegTotal;
     phase(`第${w + 1}~${segIdx}/${nSegTotal}段：神经网络打分（${poolN}并发，最耗时一步）…`, segRatio);
     const tensors = wave.map(sg => new ortNS.Tensor('float32', sg.mel, [1, T, N_MELS, 6]));
-    // WebGPU 波次打分：先 2 会话并发；移动端 ORT 对并发 session.run 限流
-    //（Session already started，2026-10-11 真机实证）时本波次改串行重跑，
-    // 保住 GPU 路径；串行再败才由外层 attempt 整体回 WASM。
+    // WebGPU 波次打分：非粘滞时先 2 会话并发；被限流则回收→重建会话（清损坏状态）→粘滞串行，
+    // 保住 GPU 路径；串行再败（或任一步超时）才由外层 attempt 整体回 WASM。
     const tScore0 = Date.now();
+    const waveLabel = `第${w + 1}~${segIdx}段打分`;
     let outs;
-    const runs = wave.map((sg, k) => scorerPool[k].run({ mel: tensors[k] }));
-    try {
-      outs = await Promise.all(runs);
-    } catch (err) {
-      if (backend === 'webgpu' && /session already started/i.test(String((err && err.message) || err))) {
-        // Promise.all 会丢弃已成功的输出：先 allSettled 回收（S 单张 86MB 起，低端机防 OOM），再串行重试
-        try {
-          const settled = await Promise.allSettled(runs);
-          for (const s of settled) {
-            if (s.status === 'fulfilled' && s.value) {
-              try { for (const t of Object.values(s.value)) t.dispose && t.dispose(); } catch (_) {}
+    if (!stickySerial) {
+      const runs = wave.map((sg, k) => scorerPool[k].run({ mel: tensors[k] }));
+      try {
+        outs = await runWithTimeout(Promise.all(runs), WAVE_TIMEOUT_MS, waveLabel + '并发');
+      } catch (err) {
+        if (/session already started/i.test(String((err && err.message) || err))) {
+          // Promise.all 会丢弃已成功的输出：先 allSettled 回收（S 单张 86MB 起，低端机防 OOM）
+          try {
+            const settled = await Promise.allSettled(runs);
+            for (const s of settled) {
+              if (s.status === 'fulfilled' && s.value) {
+                try { for (const t of Object.values(s.value)) t.dispose && t.dispose(); } catch (_) {}
+              }
             }
-          }
-        } catch (_) {}
-        log(`WebGPU 并发受限（Session already started），第${w + 1}~${segIdx}段改串行重试…`);
-        outs = [];
-        for (let k = 0; k < wave.length; k++) outs.push(await scorerPool[0].run({ mel: tensors[k] }));
-      } else throw err;
+          } catch (_) {}
+          log(`WebGPU 并发受限（Session already started），重建会话并转串行…`);
+          try { for (const s of scorerPool) { try { s && s.release && (await s.release()); } catch (_) {} } } catch (_) {}
+          scorerPool = (typeof freshScorer === 'function') ? [await freshScorer()] : scorerPool.slice(0, 1);
+          if (Array.isArray(scorers)) { scorers.length = 0; scorers.push(scorerPool[0]); }
+          stickySerial = true;
+          outs = await runWithTimeout(runSerial(tensors), WAVE_TIMEOUT_MS, waveLabel + '串行重试');
+        } else throw err;
+      }
+    } else {
+      outs = await runWithTimeout(runSerial(tensors), WAVE_TIMEOUT_MS, waveLabel + '串行');
     }
     log(`第${w + 1}~${segIdx}段打分完成，用时${Date.now() - tScore0}ms`);
     for (const t of tensors) { try { t.dispose && t.dispose(); } catch (_) {} }
@@ -520,6 +543,7 @@ async function inferAll(ortNS, scorers, attr, backend, pcm, opts) {
     }
     startPos = lastP.map(v => Math.max(v - STEP_F, 0));
     } // end k（波次内逐段顺序组装，forcedStart 链不断）
+    w += wave.length;
   } // end w（波次）
   // 终筛（与 transcribe() 尾部逐行对齐）：末事件 hasOffset → 只留有offset → resolveOverlapping
   let eventsAll = [];

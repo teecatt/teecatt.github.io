@@ -111,7 +111,7 @@ let audioFile = null, pcmMono = null, sampleRate = 0, midiBlob = null, worker = 
 
 function getWorker() {
   if (!worker) {
-    worker = new Worker('./worker.js?v=13');
+    worker = new Worker('./worker.js?v=14');
     worker.onmessage = onWorkerMsg;
     worker.onerror = e => dlog('Worker 错误：' + JSON.stringify({ message: e && e.message, filename: e && e.filename, lineno: e && e.lineno }) + '（多为 worker 崩溃/OOM/脚本加载失败；看上一行日志定位阶段）', 'err');
     worker.postMessage({ type: 'probeBackend' });
@@ -468,7 +468,7 @@ window.addEventListener('load', () => {
   goBtn.disabled = true;
   goBtn.textContent = '准备模型…';
   dlog('页面加载完成，后台预下载模型…');
-  dlog('版本自报：app.js?v=11（看不到这行=跑的旧代码，清缓存硬刷新）');
+  dlog('版本自报：app.js?v=12（看不到这行=跑的旧代码，清缓存硬刷新）');
   // 测试入口 ?sample=URL：一键载入公网/同源测试音频（复测计时、issue 复现用）。
   // 无参时“🧪 测试音频”按钮进默认样例；有参则自动下载解码并走自动转写（复用 pickFile）。
   const sampleUrl = new URLSearchParams(location.search).get('sample');
