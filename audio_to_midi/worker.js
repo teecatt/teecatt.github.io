@@ -64,9 +64,22 @@ function loadOrt() {
 }
 
 const log = (...a) => postMessage({ type: 'log', text: a.join(' ') });
-const phase = (text, ratio) => postMessage({ type: 'phase', text, ratio });
+const phase = (text, ratio, quiet) => postMessage({ type: 'phase', text, ratio, quiet: !!quiet }); // quiet=true：只动进度条，不进面板日志（日志治理）
 
-// ---------- FFT（基2，4096点） ----------
+// ---------- FFT（基2，4096点；P0 twiddle 查表：删蝶形内递推连乘，查表直算更准） ----------
+// 启动建表：各 len 级共 4095 对 (cos,sin)，Float64 常驻约 64KB。
+const TWIDDLE = (() => {
+  const t = {};
+  for (let len = 2; len <= WIN; len <<= 1) {
+    const wr = new Float64Array(len / 2), wi = new Float64Array(len / 2);
+    for (let k = 0; k < len / 2; k++) {
+      const a = -2 * Math.PI * k / len;
+      wr[k] = Math.cos(a); wi[k] = Math.sin(a);
+    }
+    t[len] = [wr, wi];
+  }
+  return t;
+})();
 function fft(re, im) {
   const n = re.length;
   for (let i = 1, j = 0; i < n; i++) {
@@ -79,18 +92,15 @@ function fft(re, im) {
     }
   }
   for (let len = 2; len <= n; len <<= 1) {
-    const ang = -2 * Math.PI / len;
-    const wr = Math.cos(ang), wi = Math.sin(ang);
+    const tw = TWIDDLE[len], twR = tw[0], twI = tw[1];
     for (let i = 0; i < n; i += len) {
-      let cwr = 1, cwi = 0;
       for (let k = 0; k < len / 2; k++) {
         const ar = re[i + k], ai = im[i + k];
         const br = re[i + k + len / 2], bi = im[i + k + len / 2];
+        const cwr = twR[k], cwi = twI[k];
         const vr = br * cwr - bi * cwi, vi = br * cwi + bi * cwr;
         re[i + k] = ar + vr; im[i + k] = ai + vi;
         re[i + k + len / 2] = ar - vr; im[i + k + len / 2] = ai - vi;
-        const nwr = cwr * wr - cwi * wi;
-        cwi = cwr * wi + cwi * wr; cwr = nwr;
       }
     }
   }
@@ -131,6 +141,8 @@ function buildMelBank() {
       const f = k * (FS / 2) / (nFreqs - 1);
       row[k] = f <= f0 || f >= f2 ? 0 : (f <= f1 ? (f - f0) / (f1 - f0) : (f2 - f) / (f2 - f1));
     }
+    // P2 ortho 折叠：ortho²=1/4096 为 2 的幂，指数缩放精确无舍入（配 framesToMel6 去 ortho 乘）
+    for (let k = 0; k < nFreqs; k++) row[k] /= 4096;
     bank.push(row);
   }
   return bank;
@@ -201,6 +213,7 @@ function makeFrames(pcm) {
 }
 const _re = new Float64Array(WIN), _im = new Float64Array(WIN);
 // hann → rfft(ortho) → 功率谱 → mel → log归一（对标 MelSpectrum.forward）
+// 注：遗留单通道版，已无调用；MEL_BANK 自 P2 起已折 ortho²，不可直接复用。
 function framesToMel(frames, nFrame) {
   const out = new Float32Array(nFrame * N_MELS);
   const ortho = 1 / Math.sqrt(WIN);
@@ -356,7 +369,7 @@ async function runModel(pcm, models, forceBackend, runOpts) {
     for (let i = 0; i < nPool; i++) scorers.push(await mkSession(scorerBuf, prov));
     phase('scorer 会话就绪，加载 attr 会话…', 0.36);
     const attr = await mkSession(models.attr, prov);
-    log(`ONNX 就绪：后端=${be}，scorer=${scorerTag}×${nPool}，S=${scorers[0].outputNames}，attr=${attr.outputNames}，worker.js?v=16`);
+    log(`ONNX 就绪：后端=${be}，scorer=${scorerTag}×${nPool}，S=${scorers[0].outputNames}，attr=${attr.outputNames}，worker.js?v=18`);
     const freshScorer = () => mkSession(scorerBuf, prov); // 会话损坏时重建用（见 inferAll 限流处理）
     try {
       return await inferAll(ortNS, scorers, attr, be, pcm, runOpts, freshScorer, scorerTag);
@@ -386,8 +399,8 @@ async function inferAll(ortNS, scorers, attr, backend, pcm, opts, freshScorer, s
   let scorerPool = Array.isArray(scorers) ? scorers : [scorers]; // 兼容旧单会话调用
   // 分相探针注记：ort-web run()为单调用，upload/run/readback无法拆分，score_ms只记run总时长
   log('探针注记：score_ms=run总时长（ort单调用，upload/run/readback不可拆）');
-  // worker 1s心跳（转写期间每秒一条极简tick，防长静默误判卡死；主线程无tick分支，忽略即兼容；harness无定时器则静默跳过）
-  try { try { clearInterval(self._tickTimer); } catch (_) {} if (typeof setInterval === 'function') self._tickTimer = setInterval(() => { try { postMessage({ type: 'tick', t: Date.now() }); } catch (_) {} }, 1000); } catch (_) {}
+  // worker心跳：转写期间每10秒一条极简tick（日志治理：原1秒太密；防长静默误判卡死；主线程无tick分支，忽略即兼容；harness无定时器则静默跳过）
+  try { try { clearInterval(self._tickTimer); } catch (_) {} if (typeof setInterval === 'function') self._tickTimer = setInterval(() => { try { postMessage({ type: 'tick', t: Date.now() }); } catch (_) {} }, 10000); } catch (_) {}
 
   // 分段常量（与 transcribe() 逐行对齐）
 
@@ -409,14 +422,14 @@ async function inferAll(ortNS, scorers, attr, backend, pcm, opts, freshScorer, s
     let fi = 0;
     for (let s0 = 0; s0 < nSample; s0 += STEP) {
       fi++;
-      phase(`特征 ${fi}/${nSegTotal} 段…`, 0.28 + 0.06 * fi / nSegTotal);
+      phase(`特征 ${fi}/${nSegTotal} 段…`, 0.28 + 0.06 * fi / nSegTotal, true); // 日志治理：只动进度条，面板以mel完成行（下一行）为准
       const slice = padded.subarray(s0, Math.min(s0 + SEG, nSample));
       const seg = slice.length < SEG ? (() => { const z = new Float32Array(SEG); z.set(slice); return z; })() : slice;
       const frames = makeFrames(seg); // 691 帧
       gainNorm(frames);
       const tMel0 = performance.now();
       const mel6 = framesToMel6(frames, T);
-      log(`第${fi}/${nSegTotal}段mel完成，mel_ms=${(performance.now() - tMel0).toFixed(0)}ms`);
+      log(`第${fi}/${nSegTotal}段mel完成，691帧×6通道，mel_ms=${(performance.now() - tMel0).toFixed(0)}ms`);
       segMel.push({ s0, mel: mel6 }); // [691,229,6]
     }
   }
@@ -438,7 +451,7 @@ async function inferAll(ortNS, scorers, attr, backend, pcm, opts, freshScorer, s
     const wave = segMel.slice(w, w + poolN);
     segIdx += wave.length; // 进度按波次末段算；段内组装仍严格按顺序，链式不断
     const segRatio = 0.34 + 0.51 * segIdx / nSegTotal;
-    phase(`第${w + 1}~${segIdx}/${nSegTotal}段：神经网络打分（${poolN}并发，最耗时一步）…`, segRatio);
+    phase(`第${w + 1}~${segIdx}/${nSegTotal}段：神经网络打分（${poolN}并发，最耗时一步）…`, segRatio, true); // 日志治理：只动进度条，面板以打分完成行（含用时）为准
     const tensors = wave.map(sg => new ortNS.Tensor('float32', sg.mel, [1, T, N_MELS, 6]));
     // WebGPU 波次打分：非粘滞时先 2 会话并发；被限流则回收→重建会话（清损坏状态）→粘滞串行，
     // 保住 GPU 路径；串行再败（或任一步超时）才由外层 attempt 整体回 WASM。
@@ -484,7 +497,7 @@ async function inferAll(ortNS, scorers, attr, backend, pcm, opts, freshScorer, s
     const tVit0 = performance.now();
     const intervals = [];
     for (let sym = 0; sym < 90; sym++) {
-      if (sym % 30 === 0) phase(`第${dispIdx}/${nSegTotal}段：Viterbi 解码 ${sym}/90…`, segRatio);
+      if (sym % 30 === 0) phase(`第${dispIdx}/${nSegTotal}段：Viterbi 解码 ${sym}/90…`, segRatio, true); // 日志治理：中间行只动进度条，面板以解码完成行（90符号＋用时）为准
       intervals.push(TranskunViterbi.decode({
         T,
         getScore: (e, b) => S[(e * T + b) * 90 + sym],
@@ -499,7 +512,7 @@ async function inferAll(ortNS, scorers, attr, backend, pcm, opts, freshScorer, s
     let vel = [], ofVal = [], ofPres = [];
     const tAttr0 = performance.now();
     if (total > 0) {
-      phase(`第${dispIdx}/${nSegTotal}段：力度/离位属性头（${total}检出）…`, segRatio);
+      phase(`第${dispIdx}/${nSegTotal}段：力度/离位属性头（${total}检出）…`, segRatio, true); // 日志治理：只动进度条，面板以解码完成行（含attr_ms＋检出数）为准
       const ca = new Float32Array(total * 256), cb = new Float32Array(total * 256);
       let n = 0;
       for (let sym = 0; sym < 90; sym++) {
@@ -517,7 +530,7 @@ async function inferAll(ortNS, scorers, attr, backend, pcm, opts, freshScorer, s
       try { for (const t of Object.values(ao)) t.dispose && t.dispose(); } catch (_) {}
     }
     const attrMs = performance.now() - tAttr0;
-    log(`第${dispIdx}/${nSegTotal}段解码：vit_ms=${vitMs.toFixed(0)}ms attr_ms=${attrMs.toFixed(0)}ms（${total}检出）`);
+    log(`第${dispIdx}/${nSegTotal}段解码完成：Viterbi 90符号 vit_ms=${vitMs.toFixed(0)}ms，attr ${total}检出 attr_ms=${attrMs.toFixed(0)}ms`);
     // 组装（与 transcribeFrames/test_e2e_v3.assemble 逐行对齐）
     const beginTime = wave[k].s0 / FS - (SEG_SEC - STEP_SEC);
     const lastP = new Array(90).fill(0);
@@ -631,7 +644,6 @@ function gainNorm(frames) {
 function framesToMel6(frames, nFrame) {
   const out = new Float32Array(nFrame * N_MELS * 6);
   const wins = [HANN, ...GAUSS_WINS];
-  const ortho = 1 / Math.sqrt(WIN);
   const logEps = Math.log(MEL_EPS), negLogEps = -logEps;
   for (let f = 0; f < nFrame; f++) {
     const off = f * HOP;
@@ -644,14 +656,13 @@ function framesToMel6(frames, nFrame) {
         let s = 0;
         const row = MEL_BANK[m], rg = MEL_RANGE[m];
         for (let k = rg[0]; k < rg[1]; k++) {
-          let p = _re[k] * _re[k] + _im[k] * _im[k];
-          p *= ortho * ortho;
+          const p = _re[k] * _re[k] + _im[k] * _im[k]; // ortho²已折进 bank（P2），此处不再乘
           s += p * row[k];
         }
         out[base + m * 6] = (Math.log(s + MEL_EPS) - logEps) / negLogEps;
       }
     }
-    if ((f & 127) === 127) phase('提取 log-mel（229维×6通道）…', 0.2 + 0.1 * f / nFrame);
+    if ((f & 127) === 127) phase('提取 log-mel（229维×6通道）…', 0.2 + 0.1 * f / nFrame, true); // 日志治理：框内5行只动进度条，面板以mel完成行（691帧＋用时）为准
   }
   return out;
 }

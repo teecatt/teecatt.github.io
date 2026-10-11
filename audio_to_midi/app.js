@@ -111,7 +111,7 @@ let audioFile = null, pcmMono = null, sampleRate = 0, midiBlob = null, worker = 
 
 function getWorker() {
   if (!worker) {
-    worker = new Worker('./worker.js?v=16');
+    worker = new Worker('./worker.js?v=18');
     worker.onmessage = onWorkerMsg;
     worker.onerror = e => dlog('Worker 错误：' + JSON.stringify({ message: e && e.message, filename: e && e.filename, lineno: e && e.lineno }) + '（多为 worker 崩溃/OOM/脚本加载失败；看上一行日志定位阶段）', 'err');
     worker.postMessage({ type: 'probeBackend' });
@@ -297,7 +297,7 @@ async function fetchOne(dir, spec) {
       $('progBar').style.width = pct.toFixed(1) + '%';
       $('phase').textContent = `下载 ${spec.name}… ${pct.toFixed(0)}%（${(pct / 100 * spec.size / 1048576).toFixed(1)}/${(spec.size / 1048576).toFixed(1)} MB）`;
     },
-    onLive: text => { $('phase').textContent = text; dlog(text, undefined, true); },
+    onLive: (() => { let n = 0; return text => { $('phase').textContent = text; if (n++ === 0) dlog(text, undefined, true); }; })(), // 日志治理：竞速中间速度行只动进度条，首行＋onFinal完成行进面板
     onFinal: text => dlog(text, 'ok'),
   });
   if (blob.size !== spec.size) throw new Error(`${spec.name} 字节数不对：${blob.size}/${spec.size}（来源 ${url}）`);
@@ -352,7 +352,7 @@ function onWorkerMsg(e) {
   if (m.type === 'phase') {
     $('phase').textContent = m.text;
     $('progBar').style.width = Math.round(m.ratio * 100) + '%';
-    dlog(m.text, undefined, true); // 进度过程同步进调试面板（批量 500ms 刷屏，时序不丢）
+    if (!m.quiet) dlog(m.text, undefined, true); // quiet=true：只动进度条，不进面板（日志治理）
   } else if (m.type === 'log') {
     dlog('[worker] ' + m.text);
   } else if (m.type === 'warmupOk') {
@@ -468,7 +468,7 @@ window.addEventListener('load', () => {
   goBtn.disabled = true;
   goBtn.textContent = '准备模型…';
   dlog('页面加载完成，后台预下载模型…');
-  dlog('版本自报：app.js?v=14（看不到这行=跑的旧代码，清缓存硬刷新）');
+  dlog('版本自报：app.js?v=16（看不到这行=跑的旧代码，清缓存硬刷新）');
   // 测试入口 ?sample=URL：一键载入公网/同源测试音频（复测计时、issue 复现用）。
   // 无参时“🧪 测试音频”按钮进默认样例；有参则自动下载解码并走自动转写（复用 pickFile）。
   const sampleUrl = new URLSearchParams(location.search).get('sample');
