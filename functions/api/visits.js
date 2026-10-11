@@ -1,6 +1,6 @@
 // GET /api/visits?limit=300[&since=ts][&purge=days]  —— 仅管理员：逐条访问（含城市、时间、页面）
-// 鉴权：优先读取 X-Admin-Key 或 Authorization: Bearer 头（密钥不再推荐放 query，避免进入日志）；
-// 兼容 ?key= 作为过渡；需要 Pages 环境变量 ADMIN_KEY，否则一律 403。
+// 鉴权：只认 X-Admin-Key 或 Authorization: Bearer 头（密钥禁放 query，防进日志/历史/Referer）；
+// 需要 Pages 环境变量 ADMIN_KEY，否则一律 403。
 // purge=N 时顺带删除 N 天前的明细，供定期清理调用（visits 不再无限增长）。
 // 依赖 D1 绑定：DB
 const HEADERS = {
@@ -23,7 +23,7 @@ export async function onRequestGet({ request, env }) {
   const url = new URL(request.url);
   const auth = request.headers.get('Authorization') || '';
   const bearer = auth.replace(/^Bearer\s+/i, '');
-  const key = request.headers.get('X-Admin-Key') || bearer || url.searchParams.get('key') || '';
+  const key = request.headers.get('X-Admin-Key') || bearer || '';
   if (!env.ADMIN_KEY || !safeEqual(key, env.ADMIN_KEY)) {
     return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: HEADERS });
   }

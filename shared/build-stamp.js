@@ -1,5 +1,4 @@
-/* 构建信息展示（按区域）：读取 window.AREA_BUILD[区域] 或 SITE_BUILD/CRYPTO_BUILD/NOTES_BUILD。
-   NOTES_BUILD 预留未启用。
+/* 构建信息展示（按区域）：读取 window.AREA_BUILD[区域] 或 SITE_BUILD/CRYPTO_BUILD。
    区域时间线 = 该页面目录 + 其用到的共享组件文件的最后一次提交，因此 shared/ 变更会同时抬高所有使用方的“最近构建”。
    用法：<span data-build="midi"></span>，脚本自动初始化并每 30s 刷新相对时间。 */
 (function(g){
@@ -16,7 +15,6 @@
   function infoFor(key){
     if(key === 'site') return g.SITE_BUILD;
     if(key === 'crypto') return g.CRYPTO_BUILD;
-    if(key === 'notes') return g.NOTES_BUILD;
     return (g.AREA_BUILD || {})[key];
   }
   function render(el, info){

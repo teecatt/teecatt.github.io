@@ -5,8 +5,8 @@
 
 ## catalog.json（资源库 + 工具页）
 
-顶层 `{ "items": [...] }`，`library/index.html` 按 `type` 分组（`TYPE_ORDER`），
-`tools/index.html` 取 `tools` 数组按 `platform` 分组。条目字段：
+顶层 `{ "items": [...] }`，`library/index.html` 按 `type` 分组（`TYPE_ORDER`，未知 type 落"其他"分区），
+`tools/index.html` 取其中 `type=tools` 的条目按 `platform` 分组（缺省进通用）。条目字段：
 
 | 字段 | 必填 | 说明 |
 |------|------|------|

@@ -98,10 +98,10 @@ jobs:
           av=$(git hash-object audio_to_midi/app.js | cut -c1-7); wv=$(git hash-object audio_to_midi/worker.js | cut -c1-7)
           sed -i -E "s#\./app\.js\?v=[^\"']*#./app.js?v=$av#" audio_to_midi/index.html
           sed -i -E "s#\./worker\.js\?v=[^\"']*#./worker.js?v=$wv#" audio_to_midi/app.js
-      - name: Stage site files
+      - name: Stage site files (keep functions/ for Pages Functions)
         run: |
           mkdir -p /tmp/cf_dist
-          rsync -a --exclude='.git' --exclude='functions' ./ /tmp/cf_dist/
+          rsync -a --exclude='.git' ./ /tmp/cf_dist/
       - name: Publish snapshot to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
         with:

@@ -37,6 +37,13 @@ a{text-decoration:none;color:var(--accent)}
 .empty{padding:60px 20px;text-align:center;color:var(--muted);font-size:13px}
 footer{border-top:1px solid var(--line);padding:16px;text-align:center;font-size:11px;color:var(--muted)}
 .loading{text-align:center;color:var(--muted);padding:60px 0;font-size:13px}
+@media (max-width:480px){
+  .container{padding:16px 14px 48px}
+  .topbar{padding:0 14px}
+  .tool-card{padding:16px}
+  .cmd code{font-size:12px}
+  .copy-btn{min-height:44px;padding:8px 14px;font-size:12px}
+}
 </style>
 </head>
 <body>
@@ -47,7 +54,7 @@ footer{border-top:1px solid var(--line);padding:16px;text-align:center;font-size
 <div class="container" id="container">
   <div class="loading">加载中...</div>
 </div>
-<footer>teecatt · 工具数据由 tools 仓库 workflow 自动同步</footer>
+<footer>teecatt · 工具数据来自 data/catalog.json（type=tools 条目）</footer>
 <script>
 (function(){
   var container = document.getElementById('container');
@@ -79,8 +86,12 @@ footer{border-top:1px solid var(--line);padding:16px;text-align:center;font-size
     return html;
   }
   function render(data){
-    if(!data || !data.tools || !data.tools.length){ container.innerHTML='<div class="empty">暂无工具数据</div>'; return; }
-    var groups={}; data.tools.forEach(function(t){ if(!groups[t.platform]) groups[t.platform]=[]; groups[t.platform].push(t); });
+    // 数据源：外部同步提供 data.tools 时优先用；否则从 catalog items 取 type=tools 的条目兜底
+    // （catalog 只有 items[]，tools 页不再空态）；缺 platform 的并入通用分组。
+    var list = (data && data.tools && data.tools.length) ? data.tools
+      : ((data && data.items) || []).filter(function(t){ return t && t.type==='tools'; });
+    if(!list.length){ container.innerHTML='<div class="empty">暂无工具数据</div>'; return; }
+    var groups={}; list.forEach(function(t){ var p=t.platform||'General'; if(!groups[p]) groups[p]=[]; groups[p].push(t); });
     var html='';
     PLATFORM_ORDER.forEach(function(p){ if(!groups[p]) return;
       html+='<div class="platform-title">'+esc(PLATFORM_LABEL[p]||p)+' <span class="tag">'+groups[p].length+' 个工具</span></div>';

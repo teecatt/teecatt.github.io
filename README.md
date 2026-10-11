@@ -13,7 +13,7 @@
 | `/audio_to_midi/` | 音频转 MIDI（本地推理，ONNX + Viterbi；详见该目录 README） |
 | `/library/` | 资源库，按类型分类：rules / tools / skills / plugins / guides / context（6 类） |
 | `/links/` | 外部在线工具导航 |
-| `/tools/` | 个人实用工具（⚠️ 已知契约缺口：catalog 暂无 `tools` 数组，页当前为空态，待立项，见 `tools/README.md`） |
+| `/tools/` | 个人实用工具：取 catalog 中 `type=tools` 条目，按平台分组（General / Linux / Android / Windows） |
 | `/globe/` | 访客地图 |
 | `/crypto/` | 加密工具箱（纯前端本地处理） |
 | `/notes/` | 死目录：无页面，仅 `vendor/` 预留（见 `notes/README.md`） |
@@ -39,7 +39,7 @@
 ├── library/                # 资源库页面（index.html + README）
 ├── links/                  # 外部链接页面（index.html + README）
 ├── tools/                  # 工具索引页 + 工具源文件（按 catalog type 分目录，见 tools/README）
-│   ├── index.html          # 按 platform 分组展示（⚠️ 当前空态：缺 data.tools 契约，待立项）
+│   ├── index.html          # 取 catalog type=tools 条目，按 platform 分组展示
 │   └── {context,guides,plugins,rules,skills,tools}/<slug>/
 ├── globe/                  # 访客地图（本地 vendor + CDN 竞速兜底）
 ├── crypto/                 # 加密工具箱（纯前端，依赖全在本地 vendor/）
@@ -60,10 +60,8 @@ GitHub Pages（`*.github.io`）无此隔离头，多线程跑不起来。结论�
   推送即生效（页面有缺 `ico` 时的 `🔗` 兜底）。详见 `links/README.md`、`data/README.md`。
 - 资源库：编辑 `data/catalog.json` 的 `items`，`type` 取 6 类之一
   （`library/index.html` 内 `TYPE_ORDER`：rules / tools / skills / plugins / guides / context），
-  推送即在资源库页生效。
+  推送即在资源库页生效；其中 `type=tools` 的条目会同步出现在工具页（缺 `platform` 的进通用分组）。
   `tools/` 源文件路径用仓库相对路径（如 `tools/tools/<slug>/...`），页面会自动转站点根绝对路径。
-  注意：tools 页不读 `items`，它要的 `data.tools[]` 契约缺口待立项（见 `tools/README.md`），
-  改 catalog 不会让 tools 页生效。
   详见 `library/README.md`、`tools/README.md`、`data/README.md`。
 
 ## 关键 URL

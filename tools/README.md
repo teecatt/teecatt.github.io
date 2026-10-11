@@ -2,13 +2,10 @@
 
 ## 页面定位
 
-`index.html` 单页：拉取 `../data/catalog.json`，取 `tools` 数组按 `platform` 分组展示
-（`PLATFORM_ORDER`：General / Linux / Android / Windows），每卡含一键安装/部署命令
-（复制按钮）、部署文件下载 chip、文档入口。文件与文档链接统一转站点根绝对路径。
-
-> ⚠️ 已知契约缺口：当前 `data/catalog.json` 只有 `items[]`、无 `tools` 数组，
-> `render` 判空后本页为"暂无工具数据"空态。改条目之前须先补 `data.tools[]` 数据契约
-> （字段、各 `platform` 取值、与 `items[]` 是否同源）并立项，**现在改 catalog 不会让本页生效**。
+`index.html` 单页：拉取 `../data/catalog.json`，取 `type=tools` 的 `items` 条目按 `platform`
+分组展示（`PLATFORM_ORDER`：General / Linux / Android / Windows；缺 `platform` 的并入通用），
+每卡含一键安装/部署命令（复制按钮）、部署文件下载 chip、文档入口。文件与文档链接统一转站点根绝对路径。
+外部同步若提供顶层 `data.tools[]` 则优先用它。
 
 ## 本地预览
 
@@ -21,7 +18,7 @@ cd /sdcard/1011 && python3 -m http.server 8000
 
 ## 数据改动路径
 
-- 改条目：先补 `data.tools[]` 契约再动（见上节缺口说明）；契约立项前不要改 catalog 指望本页生效。
+- 改条目：改 `data/catalog.json` 里 `type=tools` 的 `items`（`platform` 缺省进通用分组），推送即生效。
 - 改工具本身：进 `tools/<type>/<slug>/`（type 与 library 的 6 类同名），看该子目录 README：
 
 | 子目录 | 内容举例 |

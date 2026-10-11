@@ -43,6 +43,14 @@ a{text-decoration:none;color:var(--accent)}
 .empty{padding:60px 20px;text-align:center;color:var(--muted);font-size:13px}
 footer{border-top:1px solid var(--line);padding:16px;text-align:center;font-size:11px;color:var(--muted)}
 .loading{text-align:center;color:var(--muted);padding:60px 0;font-size:13px}
+@media (max-width:480px){
+  .container{padding:16px 14px 48px}
+  .topbar{padding:0 14px}
+  .quote{font-size:14px;padding:24px 12px 4px}
+  .tool-card{padding:16px}
+  .cmd code{font-size:12px}
+  .copy-btn,.read-btn{min-height:44px;padding:8px 14px;font-size:12px}
+}
 </style>
 </head>
 <body>
@@ -91,10 +99,16 @@ footer{border-top:1px solid var(--line);padding:16px;text-align:center;font-size
   }
   function render(data){
     if(!data || !data.items || !data.items.length){ container.innerHTML='<div class="quote"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg> 在一次次造轮子的过程中<br>领略计算机科学令人惊叹的美</div><div class="empty">暂无资源数据</div>'; return; }
-    var groups={}; data.items.forEach(function(t){ if(!groups[t.type]) groups[t.type]=[]; groups[t.type].push(t); });
+    var groups={}; data.items.forEach(function(t){ var k=t.type||'other'; if(!groups[k]) groups[k]=[]; groups[k].push(t); });
     var html='<div class="quote"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg> 在一次次造轮子的过程中<br>领略计算机科学令人惊叹的美</div>';
     TYPE_ORDER.forEach(function(p){ if(!groups[p]) return;
       html+='<div class="type-title">'+esc(TYPE_LABEL[p]||p)+' <span class="tag">'+groups[p].length+' 项</span></div>';
+      groups[p].forEach(function(t){ html+=renderTool(t); });
+      delete groups[p];
+    });
+    // 未知 type 不静默丢弃，统一落到"其他"分区
+    Object.keys(groups).forEach(function(p){
+      html+='<div class="type-title">📦 其他 <span class="tag">'+groups[p].length+' 项</span></div>';
       groups[p].forEach(function(t){ html+=renderTool(t); });
     });
     container.innerHTML=html;
