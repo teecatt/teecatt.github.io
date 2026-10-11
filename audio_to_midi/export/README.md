@@ -1,64 +1,55 @@
-# Transkun V2 → ONNX（阶段1：明天在 NVIDIA 台式机上跑）
+# Transkun V2 → ONNX（阶段1：已在手机端完成 ✅，台式机备用）
 
-本目录 3 个文件：`requirements-export.txt`（环境）、`export_transkun_onnx.py`（导出）、
-`validate_onnx.py`（三层校验）。网站本身不受影响（纯新增目录）。
+2026-10-11 实录：本机（Ubuntu 用户态 + python3.14 + torch 2.10.0+cpu）已跑通导出，
+**不再需要 CUDA、不再需要等台式机**。权重是仓库自带的 `pretrained/2.0.pt`（56MB），零额外流量。
 
-## 明天操作手册（预计 20–40 分钟）
+## 产物（`/tmp/opencode/onnx_out/`，未进 git——见下）
 
-```powershell
-# 1) 建环境（需要 Python 3.10+，NVIDIA 显卡装 CUDA 版 onnxruntime）
-pip install -r requirements-export.txt
+| 文件 | 大小 | 接口 |
+|---|---|---|
+| `transkun_scorer.onnx` | 57MB | mel `[1,691,229,6]` → `S[691,691,90]`、`Sskip[690,90]` |
+| `transkun_attr.onnx` | 3.4MB | `ctx_a[N,256]`、`ctx_b[N,256]` → `vLogits[N,128]`、`ofRaw[N,4]` |
+| `gauss_windows.json` | 239B | 5 组高斯窗 sigma/center（已进 git，本目录） |
 
-# 2) 导出（自动用 pip 包自带的 V2 No Pedal Ext 权重；约 2–5 分钟）
-python export_transkun_onnx.py --out ./onnx_out
-# 预期输出：
-#   [export] 参数量：约 XX M
-#   [export] scoring 输出形状：S=(690, 690, 90) ...
-#   [export] 写出 transkun-v2-scoring.onnx（约 XXX MB）
-#   [export] 写出 transkun-v2-heads.onnx（很小，<5MB）
-#   [export] 属性向量维度：480（期望 480=40*3*4）
-```
+合计约 60MB，无需量化。下一步：传 HuggingFace，拿直链填 `app.js` 的 `MODEL_HF_URL`。
 
-```powershell
-# 3) 校验（准备一段 MAESTRO 钢琴 wav，≥16s；约 3–8 分钟，首次含 CUDA 预热）
-python validate_onnx.py --onnx ./onnx_out --sample D:\data\maestro_sample.wav
-# 预期：层1 max|ΔS|<1e-4 PASS / 层2 90/90 全等 PASS / 层3 PASS
-```
+## 本目录文件
 
-```powershell
-# 4) 文件大（scoring 超 100MB）就加 --fp16 再导一遍，并用 --fp16 校验
-#   （fp16 期望：层1 <1e-2，层3 F1 ≥0.97）
-python export_transkun_onnx.py --out ./onnx_out --fp16
-python validate_onnx.py --onnx ./onnx_out --sample D:\data\maestro_sample.wav --fp16
-```
+- `export_transkun_onnx.py`：导出脚本（用法：`python3 export_transkun_onnx.py --repo /path/to/Transkun --out ./onnx_out`）
+- `validate_onnx.py`：数值校验（`TRANSKUN_REPO`/`TRANSKUN_ONNX_OUT` 环境变量可改路径）
+- `test_e2e_synth.py`：合成功能验证（双音旋律 → torch vs ONNX 音符对比）
+- `viterbi_ref.py` + `test_viterbi.mjs` + `gen_vit_truth.py` + `test_viterbi_diff.js`：Viterbi 移植与真值对拍
+- `test_worker_viterbi.mjs`：worker 内自检
+- `gauss_windows.json`：高斯窗参数（worker 6 通道 STFT 用）
+- `requirements-export.txt`：环境（已过时，实际用的是 torch 2.10+cpu，见下）
 
-```powershell
-# 5) 传 HuggingFace（建个公开仓库，如 <你的用户名>/transkun-v2-onnx）
-huggingface-cli upload <你的用户名>/transkun-v2-onnx ./onnx_out --repo-type model
-```
+## 验证结论（都过了）
 
-```text
-# 6) 把直链发我（或自己填，两处保持一致）：
-#    audio_to_midi/app.js  的 MODEL_HF_URL
-#    audio_to_midi/worker.js 的 ORT_MODEL_URL
-# 格式：https://huggingface.co/<用户>/transkun-v2-onnx/resolve/main/transkun-v2-scoring.onnx
-# heads 很小，可一起传（worker 按需再接）。
-```
+- Viterbi：torch 真值 15 组 case，路径 24/24 全对，分数差 ≤1.6e-5（float32 舍入）；T=1 时 torch 原版崩溃，JS 版鲁棒返回。
+- ONNX 数值：attr 头 1e-5；scorer 绝对差 2.9——**不是 bug**：S 量级 ~63000（内积×|e-b| 放大），相对误差 4.6e-5，纯累积舍入（backbone 分段抽头定位：t1 6e-5 → t3 9e-4 → ctx 2.6e-3，逐层温和放大，无跳变点）。
+- 功能：合成旋律 12/12 音符一致（pitch 全对、力度全对、起始时间最大差 1 帧 23ms）。
+
+## 手机导出关键经验（重跑时看）
+
+1. `pip install torch` 在 Termux python（android tag）无轮子；本机 `/usr/bin/python3.14`（linux-aarch64）有官方 `manylinux_2_28_aarch64` CPU 轮子：`--index-url https://download.pytorch.org/whl/cpu torch==2.10.0+cpu torchaudio==2.10.0+cpu`（配对版本）。
+2. `transkun` 包 `from . import CRF` 会触发 torch 2.10 的 `@torch.jit.script` 编译失败——导出根本不需要 CRF，用 `sys.modules` 注入 stub 绕过（脚本里已有）。
+3. 导出三处 monkeypatch（只影响导出进程）：SDPA 数学等价实现、checkpoint 旁路、`diag_embed` 等价改写（`d.unsqueeze(-1)*eye`）。
+4. **T=691 不是 690**：`nFrame=ceil(705600/1024)+1=691`，`lastFrameIdx=689`。ONNX 已定形 691，worker 分段必须产 691 帧。
+5. classic exporter（dynamo=False）产单文件；dynamo 版拆出 `.data` 外置权重，浏览器端麻烦——用 classic 版。
+6. 校验阈值要用**相对误差**（S 量级 6e4），绝对 1e-4 必然误报。
 
 ## 排错对照表
 
 | 现象 | 原因 / 做法 |
 |---|---|
-| `pip 包内未找到 .pt` | transkun 新版改了权重分发，用 `--weight` 直接指 .pt（Google Drive 下的 V2 / V2 Aug 均可，先用 No Pedal Ext） |
-| `from transkun.ModelTransformer import` 失败 | transkun 包结构与 GitHub 不一致，加 `--repo D:\Transkun` 指源码目录 |
-| 导出报 `torch.fft.rfft` 不支持 | 降 `--opset 18` 重试；仍不行把完整报错贴我，切 dynamo 导出 |
-| scoring 输出 T 不是 690 | 段长被改过（检查 conf.segmentSizeInSecond），把实际 T 告诉我，我同步改 worker 分段 |
-| 属性维度不是 480 | 同上，贴出实际数字 |
-| validate 层2不一致 | 分数差超阈值才会发生，先看层1数字；fp16 允许个别符号翻转，看层3 F1 |
-| 显存不足 | 导出/校验全程 batch=1，690 帧约需 <4GB；仍爆则关其他程序，CPU 也能跑（慢 5–10 倍） |
+| `No module named 'torch'` | 用 `/usr/bin/python3`（不是 `python3`），或重装 CPU 轮子（见经验1） |
+| `@torch.jit.script` 处 `RuntimeError` | CRF 导入问题，确认 stub 代码还在（`sys.modules.setdefault('transkun.CRF', …)`） |
+| `aten::xxx not supported` | 看脚本内 monkeypatch 是否覆盖了该算子；dynamo/classic 换着试 |
+| S 输出 T 不是 691 | 段长被改过（检查 conf.segmentSizeInSecond），把实际 T 告诉我，同步改 worker |
+| validate 绝对差 ~2.9 | 正常（相对 4.6e-5），跑 `test_e2e_synth.py` 看功能一致性 |
 
-## 之后我来接（阶段2，不用你管）
+## 之后（阶段2）
 
-Viterbi 在 JS 手写（`worker.js` 已留 `runModel` 钩子，含段合并语义说明），
-接 `ort.web.min.js`（WebGPU 优先/WASM 回退），OPFS 缓存与进度链路已就绪。
-权重直链一到，转写页切掉自检模式即成真转写。
+worker 侧待办：6 通道 STFT（hann＋5 高斯窗，参数见 `gauss_windows.json`，公式 `exp(-0.5*((x-4096*c)/(s*4096/2))²)`)
+→ mel `[691,229,6]` → `ort.web` 跑 scorer → `viterbi.js` 解码（已验证）→ attr onnx → velocity 取 argmax、offset 用 ContinuousBernoulli 均值公式（见 `transcribeFrames` 源码行 640-650）。
+权重直链一到（HF），转写页切掉自检模式即成真转写。
