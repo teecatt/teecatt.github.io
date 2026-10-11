@@ -625,31 +625,8 @@ const PerfArbiter = {
   }
 };
 
-// 性能降级：临时切换到合成钢琴（最省 CPU），记录原音色以便恢复
-function _perfDegradeToSynth(){
-  const cur = SoundfontLoader.current;
-  if(cur === '__synth__') return;
-  _perfDegradeTimbre = cur;
-  SoundfontLoader.stopAll();
-  SoundfontLoader.current = '__synth__';
-  const sel = document.getElementById('timbreSel');
-  if(sel) sel.value = '__synth__';
-  _updateSynthPathInfo();
-  console.log('[AudioDebug][INFO] 性能降级：音色临时切换为合成钢琴（原 ' + timbreDisplayName(cur) + '）');
-}
-// 性能恢复：切回降级前的音色；本地不存在则后台下载，下完再切
-function _perfRestoreTimbre(){
-  const want = _perfDegradeTimbre || _desiredTimbre;
-  _perfDegradeTimbre = null;
-  if(!want || want === '__synth__') return;
-  const cached = want === '__yamaha_c7__' || SoundfontLoader.cachedNames.has(want);
-  console.log('[AudioDebug][INFO] 性能恢复：切回音色[' + timbreDisplayName(want) + ']' + (cached ? '' : '（本地不存在，下载完成后切换）'));
-  _applyTimbre(want, { auto: true, songKey: currentSongKey, songDisp: null });
-}
-
 // 渲染 + 音频同步降级/恢复
 function applyDegradation(on){
-  _perfDegraded = !!on;
   // 音频：降低复音上限、提高同音重触发下限
   SoundfontLoader.MAX_VOICES = on ? 64 : 128;
   const base = SoundfontLoader.baseRetriggerFloor || 0;
@@ -659,10 +636,8 @@ function applyDegradation(on){
   _syncFpsCapLabel();
   if(on){
     console.log('[AudioDebug][INFO] 渲染降级：帧率上限临时降为 ' + _effectiveFpsCap() + 'fps（原 ' + (renderFpsCap || '不限') + '）');
-    _perfDegradeToSynth();
   } else {
     console.log('[AudioDebug][INFO] 渲染恢复：帧率上限回到 ' + (renderFpsCap || '不限'));
-    _perfRestoreTimbre();
   }
   // 自动降帧率同属渲染降级：进入降级时按勾选设置自动展开调试区（不自动收起）
   if(on && debugEnabled) autoOpenDebugPanel();
@@ -1419,7 +1394,6 @@ const SoundfontLoader = {
     bufferNullLogged: false, // 是否已打印过 buffer 为 null 的告警
     synthWarned: false,      // 是否已打印过回退合成钢琴的告警
   },
-  timbreGain: { '__synth__': 3.0, 'acoustic_grand_piano': 10.0, 'clavinet': 5.0 }, // 硬编码音色增益：合成钢琴300%（默认）, 三角钢琴1000%, 古钢琴500%
 
   init(){
     const names = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
@@ -1926,7 +1900,7 @@ const SoundfontLoader = {
           console.error('[AudioDebug] 创建节点失败:', e, '已创建:', this.debug.srcCreated, '时间:', t.toFixed(2));
           return;
         }
-        const tg = this.timbreGain[this.current] || 3.0; // 未配置的音色默认300%增益
+        const tg = 1.0; // 所有音色统一增益
         // 时长自适应包络：短音符按比例缩短起音/收尾，避免事件时间倒挂
         const attack = Math.min(0.005, d * 0.5);
         const release = Math.min(0.02, d * 0.5);
@@ -1962,7 +1936,7 @@ const SoundfontLoader = {
     }
     const synthDur = Math.max(duration, 0.001); // 真实时长，仅 1ms epsilon
     const f = 440 * Math.pow(2, (midi - 69) / 12);
-    const synthGain = this.timbreGain['__synth__'] || 3.0; // 合成钢琴默认 300% 音量增益
+    const synthGain = 1.0; // 合成钢琴与采样音色统一增益
     // 渐进增强：AudioWorklet 就绪时走单节点合成器（每音符 0 节点、零 churn）
     if(_synthWorkletReady && _synthWorkletNode){
       try{
@@ -2253,16 +2227,14 @@ try{ SoundfontLoader.refreshCachedNames(); }catch(e){}
 function _onTimbreCached(){ try{ if(_timbreSelect) _timbreSelect.refresh(); }catch(e){} }
 
 // 音色状态：_desiredTimbre 记录「期望音色」（谱面配置或用户选中），与实际的
-// SoundfontLoader.current 解耦——配置音色未缓存或性能降级时实际用合成钢琴，
+// SoundfontLoader.current 解耦——配置音色未缓存时实际用合成钢琴，
 // 条件满足后再切回期望音色（opts.auto=true 表示由谱面/恢复触发，不打断播放）。
 let _timbreAutoSwitch = null; // { name, gen, songKey }：后台下载完成后待切换的音色
 let _timbreGen = 0;           // 代际：切歌/手动切音色/播完时递增，使旧的下载回调失效
 let currentSongKey = null;    // 当前选中谱面（含前缀，如 builtin:midi/x.mid）
 let _songEnded = false;       // 当前谱面是否已播完
 let _desiredTimbre = 'gm:1'; // 期望音色：默认亮音钢琴，只随用户下拉选择改变（重制版不随切歌改变）
-let _perfDegradeTimbre = null;    // 性能降级前实际使用的音色（恢复时切回）
-let _perfDegraded = false;        // 是否因性能问题处于降级状态（暂用合成钢琴）
-function _invalidateTimbreAutoSwitch(){ _timbreGen++; _timbreAutoSwitch = null; _perfDegradeTimbre = null; }
+function _invalidateTimbreAutoSwitch(){ _timbreGen++; _timbreAutoSwitch = null; }
 
 // 统一音色应用（所有谱开始播放前调用）：
 // - 算法音色（合成钢琴/雅马哈C7）：无需下载，直接使用
@@ -2288,7 +2260,7 @@ function _applyTimbre(name, opts){
   if(SoundfontLoader.cachedNames.has(name)){
     if(sel) sel.value = name;
     const use = () => {
-      if(gen !== _timbreGen || _perfDegraded) return;
+      if(gen !== _timbreGen) return;
       SoundfontLoader.current = name;
       _updateSynthPathInfo();
       SoundfontLoader.predecodeAll(name).catch(() => {}); // 后台预热，不阻塞起播
@@ -2298,11 +2270,9 @@ function _applyTimbre(name, opts){
     return;
   }
   // 本地不存在：先用合成钢琴播放，后台下载
-  if(!_perfDegraded){
-    if(sel) sel.value = '__synth__';
-    SoundfontLoader.current = '__synth__';
-    _updateSynthPathInfo();
-  }
+  if(sel) sel.value = '__synth__';
+  SoundfontLoader.current = '__synth__';
+  _updateSynthPathInfo();
   const songDisp = opts.songDisp;
   const msg = auto && songDisp
     ? ('谱面[' + songDisp + ']默认使用音色[' + disp + ']。音色[' + disp + ']本地不存在，回滚到合成钢琴')
@@ -2321,9 +2291,8 @@ function _applyTimbre(name, opts){
     if(_timbreAutoSwitch.songKey && currentSongKey !== _timbreAutoSwitch.songKey){ _timbreAutoSwitch = null; return; }
     if(_songEnded){ _timbreAutoSwitch = null; return; }
     _timbreAutoSwitch = null;
-    if(_perfDegraded) return; // 性能降级中：等恢复时再切
     return SoundfontLoader.predecodeAll(name).then(() => {
-      if(_timbreGen !== gen || _desiredTimbre !== name || _perfDegraded) return;
+      if(_timbreGen !== gen || _desiredTimbre !== name) return;
       if(sel) sel.value = name;
       SoundfontLoader.current = name;
       _updateSynthPathInfo();
