@@ -2336,14 +2336,14 @@ let userGestureSeen = false;
 
 // ===== 冷启动优先级管线 =====
 // 进页面后按优先级「独占带宽、顺序下载」，避免并发抢占带宽：
-//   P0  默认谱面（Rush E3，brotli 压缩）—— 独占下载；完成后先用合成钢琴起播
+//   P0  默认谱面（飘韵-DJ Okawari，brotli 压缩）—— 独占下载；完成后先用合成钢琴起播
 //   P1  SF2 音色库（GeneralUserGS.sf3，缓存优先）—— 与 P0 起播同时开始独占下载；期间不下载其它任何资源
 //   P2  预配置的内置必下音色与谱面 —— 音色库就绪后才开始
 // 迁移 Cloudflare 后同源即可获得低延迟与压缩，不再需要多镜像竞速。
 const COLD_START = {
-  sheet: 'midi/unchanged mind.mid',                       // P0：优先独占下载的默认谱面
+  sheet: 'midi/piaoyun.mid',                               // P0：优先独占下载的默认谱面
   timbre: 'gm:1',                                          // P1：默认音色为亮音钢琴（bank 未就绪时先用合成钢琴起播，就绪立马切过去）
-  mandatorySheets: ['midi/The Sound of Silence.mid', 'midi/AfterSchool-DJ Okawari.mid', 'midi/幻昼.mid', 'midi/消失在记忆里的海.mid', 'midi/piaoyun.mid'],  // P2：预配置必下谱面
+  mandatorySheets: ['midi/The Sound of Silence.mid', 'midi/AfterSchool-DJ Okawari.mid', 'midi/幻昼.mid', 'midi/消失在记忆里的海.mid', 'midi/unchanged mind.mid'],  // P2：预配置必下谱面
   mandatoryTimbres: [],                                // P2：重制版无谱面专属音色，bank 在 P1 已就绪
 };
 
@@ -2601,7 +2601,7 @@ function saveDeletedBuiltin(set){
   try{ localStorage.setItem('deletedBuiltin', JSON.stringify([...set])); }catch(e){}
 }
 // 演示谱面：删除为虚假删除（只标识，不删缓存），重置后自动恢复
-const _SOFT_DELETE = new Set(['midi/Rush E 3.mid']);
+const _SOFT_DELETE = new Set(['midi/piaoyun.mid']);
 function _isSoftDeleted(file){ return _SOFT_DELETE.has(file); }
 
 // 内置谱列表：每次会话联网刷新（no-store），失败回退缓存；并检测被废弃的内置谱
@@ -2995,7 +2995,7 @@ async function resetAllSettings(){
                 'menuBtnPos', 'paletteCustom', 'paletteV2', 'raceFull',
                 'renderFpsCap', 'fpsDisplay', 'kbdPianoEnabled', 'kbdBaseOctave'];
   try{ keys.forEach(k => localStorage.removeItem(k)); }catch(e){}
-  // 恢复演示谱面（Rush E3）标记：从「已删除」集合中移除
+  // 恢复演示谱面（飘韵）标记：从「已删除」集合中移除
   try{
     const set = getDeletedBuiltin();
     _SOFT_DELETE.forEach(f => set.delete(f));
@@ -3010,6 +3010,7 @@ async function resetAllSettings(){
     }
     fetchMedia('midi/Rush E 3.mid', null, true).catch(()=>{});
     fetchMedia('midi/The Sound of Silence.mid', null, true).catch(()=>{});
+    fetchMedia('midi/piaoyun.mid', null, true).catch(()=>{});
   }catch(e){}
   try{ location.reload(); }catch(e){}
 }
