@@ -3,7 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=overlays-content">
-<title>MIDI 播放器_重制版</title>
+<!-- 改页面内容时同步更新 page-updated -->
+<meta name="page-updated" content="2026-10-11T13:39:00+08:00">
+<title>MIDI播放器_V2 · 刚刚更新</title>
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
 <link rel="preconnect" href="https://gcore.jsdelivr.net" crossorigin>
@@ -961,6 +963,26 @@ select:focus{border-color:var(--accent)}
   </div>
 </div>
 <!-- 谱面管理弹窗 -->
-
+<script>
+/* 标签标题相对更新时间（page-updated 为页面内容最后更新时刻） */
+(function(){
+  var t = document.querySelector('meta[name=page-updated]');
+  if(!t) return;
+  var base = document.title.split(' · ')[0];
+  function rel(){
+    var s = Math.max(0, (Date.now() - new Date(t.content).getTime()) / 1000);
+    if (s < 60) return '刚刚更新';
+    var m = Math.floor(s/60);
+    if (m < 60) return m + '分钟前更新';
+    var h = Math.floor(m/60);
+    if (h < 24) return h + '小时前更新';
+    var d = Math.floor(h/24);
+    if (d < 30) return d + '天前更新';
+    return Math.floor(d/30) + '个月前更新';
+  }
+  function tick(){ document.title = base + ' · ' + rel(); }
+  tick(); setInterval(tick, 60000);
+})();
+</script>
 </body>
 </html>

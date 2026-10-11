@@ -3,7 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>音频转 MIDI · 钢琴转写（浏览器本地运行）</title>
+<!-- 改页面内容时同步更新 page-updated（标签标题相对时间就靠它） -->
+<meta name="page-updated" content="2026-10-11T13:39:00+08:00">
+<title>音频转MIDI · 刚刚更新</title>
 <style>
 :root{color-scheme:dark;--bg:#0d1117;--panel:#161b22;--line:#30363d;--txt:#e6edf3;--dim:#8b949e;--teal:#2dd4bf;--gold:#e8b64c;--red:#ff3f58}
 *{box-sizing:border-box}
@@ -32,11 +34,17 @@ button.ghost{background:transparent;border:1px solid var(--line);color:var(--txt
 label.chk{font-size:13px;color:var(--dim);display:flex;gap:6px;align-items:center;cursor:pointer}
 .ref{font-size:12px;color:#6e7681;line-height:2}
 .ref a{color:var(--teal);text-decoration:none}
+.diag-head{display:flex;align-items:center;font-size:13px;margin-bottom:8px}
+.diag-btns{margin-left:auto;display:flex;gap:6px}
+.mini-btn{background:transparent;border:1px solid var(--line);color:var(--txt);font-size:11px;font-weight:400;padding:3px 10px;border-radius:6px;cursor:pointer}
+.mini-btn:hover{background:#222}
+.mini-btn.danger{background:rgba(127,29,29,.5);border-color:#b91c1c;color:#fff}
+.mini-btn.ok{border-color:var(--teal);color:var(--teal)}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <div class="top"><a href="../">← 门户</a> · <a href="../midi_player_v2/">重制版 MIDI 播放器</a></div>
+  <div class="top"><a href="../">← 门户</a> · <a href="../midi_player_v2/">MIDI播放器_V2</a></div>
   <h1>🎼 音频转 MIDI</h1>
   <p class="status" id="buildStatus">在线转写 · 权重 R2/OPFS</p>
 
@@ -61,17 +69,38 @@ label.chk{font-size:13px;color:var(--dim);display:flex;gap:6px;align-items:cente
   </div>
 
   <div class="card">
-    <div style="font-size:13px;margin-bottom:8px">诊断日志</div>
+    <div class="diag-head"><span>诊断日志</span><span class="diag-btns"><button class="mini-btn danger" id="diagClear" title="清空日志">🗑 清空</button><button class="mini-btn" id="diagCopy" title="复制日志">⧉ 复制</button></span></div>
     <div id="diag">等待操作…</div>
   </div>
 
   <div class="card ref">
     上游：<a href="https://github.com/Yujia-Yan/Transkun">Yujia-Yan/Transkun</a>（MIT，V2 = Transformer + Neural Semi-CRF，ISMIR 2024）·
-    特征契约：44.1kHz 单声道 / n_fft 4096 / hop 1024 / 229 mel（30–8000Hz，torchaudio slaney/htk）/ log 归一化 / 16s 分段 8s 步进 ·
-    权重到位后填入 <span style="color:var(--gold)">MODEL_HF_URL</span> 即插即用（OPFS 缓存）。
+    特征契约：44.1kHz 单声道 / n_fft 4096 / hop 1024 / 229 mel（30–8000Hz，torchaudio norm=None）/ log 归一化 / 16s 分段 8s 步进 ·
+    权重：R2 双文件（scorer 57MB + attr 3.4MB），OPFS 缓存 + 首512KB双镜像竞速。
   </div>
 </div>
 <script src="../shared/cdn-race.js?v=dev"></script>
 <script src="./app.js?v=3"></script>
+<script>
+/* 标签标题相对更新时间（page-updated 为页面内容最后更新时刻） */
+(function(){
+  var t = document.querySelector('meta[name=page-updated]');
+  if(!t) return;
+  var base = document.title.split(' · ')[0];
+  function rel(){
+    var s = Math.max(0, (Date.now() - new Date(t.content).getTime()) / 1000);
+    if (s < 60) return '刚刚更新';
+    var m = Math.floor(s/60);
+    if (m < 60) return m + '分钟前更新';
+    var h = Math.floor(m/60);
+    if (h < 24) return h + '小时前更新';
+    var d = Math.floor(h/24);
+    if (d < 30) return d + '天前更新';
+    return Math.floor(d/30) + '个月前更新';
+  }
+  function tick(){ document.title = base + ' · ' + rel(); }
+  tick(); setInterval(tick, 60000);
+})();
+</script>
 </body>
 </html>

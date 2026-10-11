@@ -23,6 +23,42 @@ function dlog(text, cls) {
   diagBox.scrollTop = diagBox.scrollHeight;
 }
 
+// ---------- 诊断日志按钮：清空 / 复制（风格参考 midi_player_v2/app.js copyDebugTerminal 一家，简化版，无 confirm 弹窗） ----------
+$('diagClear').onclick = () => {
+  diagBox.textContent = ''; // 清空日志
+  delete diagBox.dataset.init; // 重置初始化标记，下次 dlog 重新走初始化分支
+};
+function diagCopyFeedback(ok) {
+  const btn = $('diagCopy');
+  if (!btn) return;
+  if (!btn.dataset.orig) btn.dataset.orig = btn.textContent; // 记住原始文案“⧉ 复制”
+  btn.textContent = ok ? '✓ 已复制' : '复制失败';
+  clearTimeout(btn._t);
+  btn._t = setTimeout(() => { btn.textContent = btn.dataset.orig || '⧉ 复制'; }, 1200);
+}
+function diagCopyFallback(text) {
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.left = '-9999px';
+    document.body.appendChild(ta);
+    ta.focus(); ta.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    diagCopyFeedback(!!ok);
+  } catch (_) { diagCopyFeedback(false); }
+}
+$('diagCopy').onclick = () => {
+  const text = diagBox.innerText || '';
+  if (!text) { diagCopyFeedback(false); return; } // 空日志也给“复制失败”反馈
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(() => diagCopyFeedback(true), () => diagCopyFallback(text));
+  } else {
+    diagCopyFallback(text);
+  }
+};
+
 let audioFile = null, pcmMono = null, sampleRate = 0, midiBlob = null, worker = null;
 
 function getWorker() {
@@ -31,6 +67,7 @@ function getWorker() {
     worker.onmessage = onWorkerMsg;
     worker.onerror = e => dlog('Worker 错误：' + e.message, 'err');
     worker.postMessage({ type: 'probeBackend' });
+    worker.postMessage({ type: 'warmup' }); // 约定消息名：通知 worker 后台预热 ort（worker 侧实现，就绪后回 warmupOk）
   }
   return worker;
 }
@@ -65,7 +102,7 @@ async function pickFile(f) {
     }
     dlog(`解码完成：${n} 采样 / ${sampleRate}Hz / ${ch}声道→单声道，${(performance.now() - t0).toFixed(0)}ms`, 'ok');
     $('fileInfo').textContent = `${f.name} · ${(n / sampleRate).toFixed(1)}s · ${sampleRate}Hz`;
-    $('go').disabled = false;
+    if (!prefetching) $('go').disabled = false; // 预下载中则等 finally 统一恢复，避免并行双下载
   } catch (err) {
     dlog('解码失败：' + (err && err.message || err) + '（请用 MP3/WAV）', 'err');
     $('fileInfo').textContent = '解码失败，换个文件试试';
@@ -167,7 +204,7 @@ async function onRecStop() {
     }
     dlog(`录音解码完成：${n} 采样 / ${sampleRate}Hz / ${ch}声道→单声道，${(performance.now() - t0).toFixed(0)}ms`, 'ok');
     $('fileInfo').textContent = `麦克风录音 · ${(n / sampleRate).toFixed(1)}s`;
-    $('go').disabled = false;
+    if (!prefetching) $('go').disabled = false; // 同上，预下载中不提前启用
   } catch (err) {
     dlog('录音解码失败：' + (err && err.message || err), 'err');
     $('fileInfo').textContent = '录音解码失败，请重试';
@@ -225,7 +262,10 @@ $('go').onclick = async () => {
   $('go').disabled = true;
   $('prog').style.display = 'block';
   try {
-    const models = await ensureModels();
+    // 预下载命中则复用（transfer 会剥离 buffer，用后即弃；未命中则转写时再下载）
+    let models = preloadedModels;
+    preloadedModels = null;
+    if (!models) models = await ensureModels();
     const w = getWorker();
     const buf = pcmMono.slice().buffer; // 拷贝后 transfer（保留原数据可重跑）
     const msg = { type: 'transcribe', pcm: new Float32Array(buf), sampleRate };
@@ -247,6 +287,8 @@ function onWorkerMsg(e) {
     $('progBar').style.width = Math.round(m.ratio * 100) + '%';
   } else if (m.type === 'log') {
     dlog('[worker] ' + m.text);
+  } else if (m.type === 'warmupOk') {
+    dlog('ort 预热就绪', 'ok');
   } else if (m.type === 'backend') {
     dlog(m.webgpu ? '后端：WebGPU 可用（阶段4将优先使用）' : '后端：无 WebGPU → 阶段4将回退 WASM 模式（慢 5–10 倍）', m.webgpu ? 'ok' : 'warn');
     $('buildStatus').textContent = `在线转写 · 权重 R2/OPFS（scorer 57MB + attr 3.4MB）· ${m.webgpu ? '本机支持 WebGPU' : '本机无 WebGPU，走 WASM（慢 5–10 倍）'}`;
@@ -338,3 +380,26 @@ function drawRoll(notes) {
   ctx.fillStyle = '#8b949e';
   ctx.fillText('0s', 40, H - 1); ctx.fillText(tEnd.toFixed(1) + 's', W - 44, H - 1);
 }
+
+// ---------- 进页预下载：load 后台调用 ensureModels（复用 fetchOne 进度条 + phase + 竞速逻辑） ----------
+let preloadedModels = null; // 预下载好的模型（ArrayBuffer），转写时优先复用
+let prefetching = false; // 预下载进行中时 pickFile/onRecStop 不提前启用转写按钮，避免并行双下载
+window.addEventListener('load', () => {
+  prefetching = true;
+  const goBtn = $('go');
+  const origText = goBtn.textContent; // 原文案“开始转写”
+  goBtn.disabled = true;
+  goBtn.textContent = '准备模型…';
+  dlog('页面加载完成，后台预下载模型…');
+  ensureModels().then(models => {
+    preloadedModels = models;
+    dlog('模型预下载完成，转写可秒开', 'ok');
+  }).catch(err => {
+    // 预热失败不拦路：允许点“开始转写”时再试一次
+    dlog('模型预下载失败，转写时将重试：' + (err && err.message || err), 'warn');
+  }).finally(() => {
+    prefetching = false;
+    goBtn.textContent = origText;
+    goBtn.disabled = !pcmMono; // 无解码音频仍保持禁用，有则恢复可用
+  });
+});

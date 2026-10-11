@@ -23,8 +23,22 @@ const SEG_SEC = 16, STEP_SEC = 8;
 const TARGET_PITCHES = [-64, -67];
 for (let p = 21; p <= 108; p++) TARGET_PITCHES.push(p);
 
-// ---- ONNX 运行时（ort web 经 CDN 动态加载；模型字节由主线程经 OPFS/网络传入）----
-const ORT_CDN = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/ort.web.min.js';
+// ---- ONNX 运行时（ort web UMD 经 CDN 动态加载；模型字节由主线程经 OPFS/网络传入）----
+// 注意：1.22 版已无 ort.web.min.js，UMD 全量包为 ort.all.min.js（暴露全局 ort）。
+// 双 CDN 回退：jsdelivr 失败自动试 unpkg（曾实测 jsdelivr 旧路径 404 导致整页转写失败）。
+const ORT_CDN_LIST = [
+  'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/ort.all.min.js',
+  'https://unpkg.com/onnxruntime-web@1.22.0/dist/ort.all.min.js'
+];
+function loadOrt() {
+  if (self.ort) return; // warmup 已加载过
+  let lastErr = null;
+  for (const url of ORT_CDN_LIST) {
+    try { importScripts(url); if (self.ort) { log('ort 加载 ← ' + url); return; } }
+    catch (e) { lastErr = e; log('ort 加载失败，换镜像：' + url); }
+  }
+  throw new Error('onnxruntime-web 全部镜像加载失败：' + (lastErr && lastErr.message || lastErr));
+}
 
 const log = (...a) => postMessage({ type: 'log', text: a.join(' ') });
 const phase = (text, ratio) => postMessage({ type: 'phase', text, ratio });
@@ -105,6 +119,7 @@ onmessage = async (e) => {
   const msg = e.data;
   if (msg.type === 'probeBackend') return probeBackend();
   if (msg.type === 'viterbiSelftest') return viterbiPlantedTest();
+  if (msg.type === 'warmup') return warmup(); // 进页预热：提前加载 ort（错误早暴露），不跑推理
   if (msg.type !== 'transcribe') return;
   const t0 = performance.now();
   try {
@@ -263,7 +278,7 @@ function viterbiPlantedTest(){
   return ok;
 }
 async function runModel(pcm, models) {
-  importScripts(ORT_CDN); // onnxruntime-web（动态加载，不阻塞页面）
+  loadOrt(); // 双 CDN 回退加载（动态，不阻塞页面）
   const ortNS = self.ort;
   // 后端：优先 WebGPU，失败回退 WASM（任务6要求明示回退）
   let providers = ['wasm'], backend = 'wasm';
@@ -450,6 +465,16 @@ function framesToMel6(frames, nFrame) {
     if ((f & 127) === 127) phase('提取 log-mel（229维×6通道）…', 0.2 + 0.1 * f / nFrame);
   }
   return out;
+}
+
+// 预热：只加载 ort，不建会话不推理；供主线程进页调用，错误早暴露
+function warmup() {
+  try {
+    loadOrt();
+    postMessage({ type: 'warmupOk', hasOrt: !!self.ort });
+  } catch (err) {
+    postMessage({ type: 'error', text: '预热失败：' + String((err && err.message) || err) });
+  }
 }
 
 // 后端探测：WebGPU 可用性（阶段4 在此分支显示“WASM 回退”提示）
