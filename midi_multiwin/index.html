@@ -32,10 +32,11 @@
   #fileIn{display:none}
 
   #calib{position:fixed;left:0;right:0;bottom:0;z-index:15;display:flex;
-    justify-content:space-between;align-items:flex-end;padding:8px 14px;
+    justify-content:flex-end;align-items:flex-end;padding:8px 14px;
     background:linear-gradient(transparent,rgba(11,14,20,.8) 40%);pointer-events:none}
-  #bigclock{font-size:clamp(26px,4.5vw,54px);font-weight:700;letter-spacing:2px;
-    font-variant-numeric:tabular-nums;text-shadow:0 2px 8px #000}
+  #bigclock{position:fixed;right:12px;top:56px;z-index:16;pointer-events:none;
+    font-size:clamp(15px,2vw,24px);font-weight:700;letter-spacing:1px;
+    font-variant-numeric:tabular-nums;text-shadow:0 2px 8px #000;color:rgba(230,237,243,.85)}
   #hint{font-size:12px;color:#9aa4bf;text-align:right;max-width:58%}
 
   #banner{position:fixed;top:46px;left:50%;transform:translateX(-50%);z-index:18;
@@ -72,6 +73,7 @@
 <div id="bar">
   <span class="badge" id="stWin">#1 / 1 窗</span>
   <span class="stat" id="stRange">键 21–108</span>
+  <span class="stat">序号<select id="selOrder" title="手动指定本窗序号，同步到所有窗口；目标号被占用时自动对调"></select></span>
   <button class="primary" id="btnPlay">▶ 播放</button>
   <span class="stat">倍速<select id="selSpeed">
     <option value="0.5">0.5x</option><option value="0.75">0.75x</option>
@@ -99,10 +101,10 @@
 
 <div id="banner"><span id="bannerText"></span><button id="btnOpen2">拆成独立窗口</button><button id="btnBannerX">✕</button></div>
 
+<div id="bigclock">000000</div>
 <div id="calib">
-  <div id="bigclock">000000</div>
-  <div id="hint">白线 = 绝对毫秒相位标尺（不随偏移滑条移动）；竖拍两屏照片，量两条白线像素差：<br>
-    ms = 像素差 ÷ 窗口宽 × 1000，把结果填进右上「显示偏移」→ 让<b>谱面</b>对齐</div>
+  <div id="hint">白线 = 绝对毫秒标尺（每 2 秒生成一根：扫 1 秒 + 静默 1 秒，所有窗口走完当前这根，下一根才在新的绝对周期生成；不随偏移滑条移动）；<br>
+    竖拍两屏照片量两线像素差：ms = 像素差 ÷ 窗口宽 × 1000 → 填进「显示偏移」让<b>谱面</b>与标尺对齐</div>
 </div>
 
 <div id="steps">
@@ -137,7 +139,8 @@ const LOOKAHEAD = 2.5;                            // 瀑布提前量（秒，1x 
 
 /* 共享状态：sv = 状态版本（发起动作窗口的 Date.now()），只接受严格更新的版本 */
 const S = { sv: 0, playing: false, startAt: 0, pausedPos: 0,
-  speed: DEF.speed, flow: DEF.flow, keyH: DEF.keyH, songId: 'demo', songName: '' };
+  speed: DEF.speed, flow: DEF.flow, keyH: DEF.keyH, songId: 'demo', songName: '',
+  ord: {} };   // 手动序号覆写 {窗口id: 序号}，同步到所有窗口
 
 let dispOffset = Number(localStorage.getItem('mmw_offset') || 0);   // 本地显示标定
 let soundOn = localStorage.getItem('mmw_sound') !== '0';            // 本地开关（真正出声还需是主窗）
@@ -181,7 +184,7 @@ S.songName = '内置演示谱（88键全扫）';
 /* 状态应用与广播 */
 function stateFields() {
   return { type: 'state', sv: S.sv, playing: S.playing, startAt: S.startAt, pausedPos: S.pausedPos,
-    speed: S.speed, flow: S.flow, keyH: S.keyH, songId: S.songId, songName: S.songName };
+    speed: S.speed, flow: S.flow, keyH: S.keyH, songId: S.songId, songName: S.songName, ord: S.ord };
 }
 function pushState() { S.sv = Date.now(); send(stateFields()); syncControls(); }
 const songReqAt = new Map();
@@ -190,11 +193,12 @@ function applyState(m) {
   S.sv = m.sv; S.playing = m.playing; S.startAt = m.startAt; S.pausedPos = m.pausedPos;
   S.speed = m.speed; S.flow = m.flow; S.keyH = m.keyH;
   S.songId = m.songId; S.songName = m.songName || '';
+  S.ord = (m.ord && typeof m.ord === 'object') ? m.ord : {};
   if (!songStore.has(S.songId)) {
     const last = songReqAt.get(S.songId) || 0;
     if (Date.now() - last > 3000) { songReqAt.set(S.songId, Date.now()); send({ type: 'songreq', id: S.songId }); }
   }
-  syncControls(); resyncScheduler();
+  renumber(); syncControls(); resyncScheduler();
 }
 
 /* 心跳（让晚到的窗口也能对齐）+ 在场宣告 + 双向延迟测量 */
@@ -231,7 +235,18 @@ onMsg(m => {
   }
 });
 
-/* =============== 编号：按 (打开时刻, id) 全序，各窗独立计算得到同一结果 =============== */
+/* =============== 编号：手动序号(下拉覆写)优先，其余按 (打开时刻, id) 自动补位 =============== */
+function liveIds() {
+  const ids = [...peers.keys()];
+  ids.push(MY_ID);
+  ids.sort((a, b) => {
+    const pa = a === MY_ID ? { born: BORN } : peers.get(a);
+    const pb = b === MY_ID ? { born: BORN } : peers.get(b);
+    if (pa && pb && pa.born !== pb.born) return pa.born - pb.born;
+    return a < b ? -1 : 1;
+  });
+  return ids;
+}
 function rosterPrune() {
   const now = Date.now();
   let changed = false;
@@ -242,16 +257,26 @@ function rosterPrune() {
 }
 function renumber() {
   rosterPrune();
-  const ids = [...peers.keys()];
-  ids.push(MY_ID);
-  ids.sort((a, b) => {
-    const pa = a === MY_ID ? { born: BORN } : peers.get(a);
-    const pb = b === MY_ID ? { born: BORN } : peers.get(b);
-    if (pa.born !== pb.born) return pa.born - pb.born;
-    return a < b ? -1 : 1;
-  });
-  const idx = ids.indexOf(MY_ID);
+  const ids = liveIds();
   const n = ids.length;
+  // 1) 先落手动覆写：冲突时按自动顺序先到先得（各窗口独立计算，结果一致）
+  const slots = new Array(n).fill(null);
+  const assigned = new Map();
+  for (const id of ids) {
+    const f = S.ord ? Number(S.ord[id]) : 0;
+    if (!f) continue;
+    const k = Math.min(n, Math.max(1, f)) - 1;
+    if (slots[k] == null) { slots[k] = id; assigned.set(id, k); }
+  }
+  // 2) 未覆写的按自动顺序填剩余空位
+  let fill = 0;
+  for (const id of ids) {
+    if (assigned.has(id)) continue;
+    while (fill < n && slots[fill] != null) fill++;
+    if (fill >= n) break;
+    slots[fill] = id; assigned.set(id, fill); fill++;
+  }
+  const idx = assigned.has(MY_ID) ? assigned.get(MY_ID) : ids.indexOf(MY_ID);
   const changed = idx !== myIndex || n !== myCount;
   myIndex = idx; myCount = n;
   const sl = MidiCore.sliceFor(idx, n);
@@ -395,6 +420,16 @@ function syncControls() {
   st('stWin').textContent = '#' + (myIndex + 1) + ' / ' + myCount + ' 窗';
   st('stRange').textContent = '键 ' + MidiCore.noteName(slice.lo) + '–' + MidiCore.noteName(slice.hi - 1) + '（' + (slice.hi - slice.lo) + '）';
   st('stOffset').textContent = (dispOffset >= 0 ? '+' : '') + dispOffset + 'ms';
+  syncOrderSelect();
+}
+/* 序号下拉：显示本窗当前序号，改动经 state 广播到所有窗口 */
+function syncOrderSelect() {
+  const sel = st('selOrder');
+  let html = '<option value="">自动</option>';
+  for (let i = 1; i <= myCount; i++) html += '<option value="' + i + '">#' + i + '</option>';
+  if (sel.innerHTML !== html) sel.innerHTML = html;
+  const f = S.ord ? Number(S.ord[MY_ID]) : 0;
+  sel.value = f ? String(Math.min(myCount, Math.max(1, f))) : '';
 }
 function updateSteps() {
   const s1 = st('s1'), s2 = st('s2');
@@ -440,6 +475,21 @@ st('rngOffset').oninput = e => {
   localStorage.setItem('mmw_offset', String(dispOffset));
   st('stOffset').textContent = (dispOffset >= 0 ? '+' : '') + dispOffset + 'ms';
 };
+st('selOrder').onchange = e => {
+  const v = Number(e.target.value);
+  if (!S.ord) S.ord = {};
+  if (!v) {
+    delete S.ord[MY_ID];
+  } else {
+    // 目标序号被其它窗口手动占用 → 对调，保证唯一
+    const other = liveIds().find(id => id !== MY_ID && Number(S.ord[id]) === v);
+    if (other) S.ord[other] = myIndex + 1;
+    S.ord[MY_ID] = v;
+  }
+  pushState();
+  renumber();
+  syncControls();
+};
 window.addEventListener('keydown', e => {
   if (e.target && /INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) return;
   if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
@@ -451,6 +501,7 @@ window.addEventListener('keydown', e => {
 /* =============== 画布渲染 =============== */
 const cv = st('cv'), ctx = cv.getContext('2d');
 let W = 0, H = 0, DPR = 1;
+let barH = 46;   // 顶栏实高（水印/大字钟避让用，低频刷新）
 function resize() {
   DPR = Math.min(window.devicePixelRatio || 1, 2);
   W = cv.clientWidth; H = cv.clientHeight;
@@ -533,20 +584,26 @@ function draw() {
   ctx.fillStyle = '#15171d';
   ctx.fillRect(0, playBot - 2, W, 2);
 
-  /* ---- 窗口身份水印（摆屏时确认左右顺序） ---- */
+  /* ---- 窗口身份水印（摆屏时确认左右顺序；避开顶栏高度） ---- */
+  const wmSize = Math.min(120, H * 0.16);
+  const wmBase = barH + 16 + wmSize * 0.78;
   ctx.textAlign = 'left';
   ctx.fillStyle = 'rgba(230,237,243,.14)';
-  ctx.font = '700 ' + Math.min(120, H * 0.16) + 'px system-ui';
-  ctx.fillText('#' + (myIndex + 1), 16, 64 + Math.min(120, H * 0.16) * 0.75);
+  ctx.font = '700 ' + wmSize + 'px system-ui';
+  ctx.fillText('#' + (myIndex + 1), 16, wmBase);
   ctx.fillStyle = 'rgba(154,164,191,.5)';
   ctx.font = '13px system-ui';
-  ctx.fillText(myCount + ' 窗分键 · 本窗 ' + MidiCore.noteName(slice.lo) + '–' + MidiCore.noteName(slice.hi - 1), 18,
-    74 + Math.min(120, H * 0.16) * 0.75);
+  ctx.fillText(myCount + ' 窗分键 · 本窗 ' + MidiCore.noteName(slice.lo) + '–' + MidiCore.noteName(slice.hi - 1),
+    18, wmBase + 24);
 
-  /* ---- 标定：白线（绝对相位，不随偏移动）+ 大字时钟 ---- */
-  const phase = (nowAbs % 1000) / 1000;
-  ctx.strokeStyle = 'rgba(255,255,255,.92)'; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.moveTo(phase * W, 0); ctx.lineTo(phase * W, H); ctx.stroke();
+  /* ---- 标定：绝对毫秒线（2s 周期：扫 1s + 静默 1s；
+     所有窗口按同一绝对时钟走完当前这根，下一根才在新周期生成） ---- */
+  const phase = nowAbs % 2000;
+  if (phase < 1000) {
+    const x = (phase / 1000) * W;
+    ctx.strokeStyle = 'rgba(255,255,255,.92)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+  }
   st('bigclock').textContent = String(nowAbs % 1000000).padStart(6, '0');
 
   /* ---- 进度条（顶栏 #prog 点击定位，见下方监听） ---- */
@@ -584,6 +641,8 @@ setInterval(() => {
   const t = songTime(Date.now());
   const fmt = s => Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
   st('stTime').textContent = fmt(t) + '/' + fmt(dur);
+  barH = st('bar').offsetHeight || barH;              // 顶栏换行变高时同步
+  st('bigclock').style.top = (barH + 10) + 'px';      // 大字钟贴在音符区右上角
   if (document.hidden || (bannerDismissed && myCount < 2)) return;
   updateBanner();
 }, 500);
