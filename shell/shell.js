@@ -291,7 +291,7 @@
       if (!SH.sw || SH.sw.cycle !== oldCycle) onNewCycle();
       reassign(); renderPanel();
     } else if (m.type === 'page' && MODE !== 'host') {
-      if (m.psv < psv) return;               // 严格更旧才丢；相等=刷新（对时）
+      if (m.psv < psv) return;               // 只丢「更旧的数据版本」；相等=心跳刷新（对时）
       psv = m.psv;
       lastData = m.data;                     // 逐字保留真值，后续心跳原样转发
       if (adapter && adapter.applyState) {
@@ -299,6 +299,11 @@
         try { adapter.applyState(m.data); } catch (e) { console.warn('[MWS] applyState', e); }
         finally { applying = false; }
       }
+      if (adapter && adapter.resumeAudio) { try { adapter.resumeAudio(); } catch (e) {} }
+    } else if (m.type === 'key' && MODE !== 'host') {
+      /* 键盘镜像：焦点在任一窗 = 焦点在每窗（合成派发给本页 v2） */
+      dispatchKeyEvt(m);
+      if (adapter && adapter.resumeAudio) { try { adapter.resumeAudio(); } catch (e) {} }
     } else if (m.type === 'swdone' && MODE === 'host') {
       let s = swAcks.get(m.cycle); if (!s) { s = new Set(); swAcks.set(m.cycle, s); }
       s.add(m._from);
@@ -576,14 +581,46 @@
     requestAnimationFrame(draw);
   }
 
-  /* ================= inner：偏移接收 + 就绪握手 ================= */
+  /* ================= inner：偏移接收 + 就绪握手 + 键盘镜像 ================= */
+  let fwdLock = false;   // 合成派发期间置位，防镜像回环
+  function dispatchKeyEvt(m) {
+    if (typeof KeyboardEvent === 'undefined') return;
+    fwdLock = true;
+    try {
+      document.dispatchEvent(new KeyboardEvent(m.et || 'keydown', {
+        key: m.key, code: m.code, ctrlKey: !!m.ctrlKey, shiftKey: !!m.shiftKey,
+        altKey: !!m.altKey, metaKey: !!m.metaKey, repeat: !!m.repeat,
+        bubbles: true, cancelable: true
+      }));
+    } catch (e) {} finally { fwdLock = false; }
+  }
   function applyOffsetLocal(ms) {
     if (!adapter) return;
     if (adapter.applyOffset) { try { adapter.applyOffset(ms); } catch (e) {} }
   }
   if (MODE !== 'host') {
+    /* 真实键盘事件 → 广播给所有兄弟实例（发送方本页原生处理，不再合成）。
+       跳过文本输入控件，避免搜索框打字被镜像。 */
+    const fwdKey = et => e => {
+      if (fwdLock) return;                                  // 自己合成的事件不再转发
+      const t = e.target;
+      if (t && /INPUT|SELECT|TEXTAREA/.test(t.tagName || '')) return;
+      send({ type: 'key', et, key: e.key, code: e.code, ctrlKey: e.ctrlKey,
+        shiftKey: e.shiftKey, altKey: e.altKey, metaKey: e.metaKey, repeat: e.repeat });
+    };
+    window.addEventListener('keydown', fwdKey('keydown'));
+    window.addEventListener('keyup', fwdKey('keyup'));
+
     window.addEventListener('message', e => {
-      if (e.data && e.data.mws === 'offset') { dispOffset = Number(e.data.ms) || 0; applyOffsetLocal(dispOffset); }
+      if (!e.data) return;
+      if (e.data.mws === 'offset') { dispOffset = Number(e.data.ms) || 0; applyOffsetLocal(dispOffset); }
+      else if (e.data.mws === 'key') {          // 宿主面板焦点时的按键 → 本页派发 + 转发兄弟
+        dispatchKeyEvt(e.data);
+        send({ type: 'key', et: e.data.et, key: e.data.key, code: e.data.code,
+          ctrlKey: e.data.ctrlKey, shiftKey: e.data.shiftKey, altKey: e.data.altKey,
+          metaKey: e.data.metaKey, repeat: e.data.repeat });
+        if (adapter && adapter.resumeAudio) { try { adapter.resumeAudio(); } catch (err) {} }
+      }
     });
     /* 适配器就绪后向宿主索取当前偏移 */
     const handshake = setInterval(() => {
@@ -631,11 +668,11 @@
       rzT = setTimeout(() => { hello(); updateFrame(); renderPanel(); }, 150);
     });
   } else {
-    /* 业务状态：全员心跳——psv 保鲜（对时/纠偏）、数据逐字转发（内容仅动作可变）。
-       修：旧版仅 #1 心跳导致晚加载 #1 的旧状态永远无人纠偏。 */
+    /* 业务状态：全员心跳——数据逐字转发，psv 保持「数据版本」语义：
+       ⚠ 心跳绝不改写 psv（改写会与真实动作抢单调计数，导致动作被丢弃/被旧数据回滚）。
+       接收方对 m.psv >= 本地 的都应用：相等=心跳刷新（对时纠偏），更大=新动作。 */
     setInterval(() => {
       if (lastData && adapter && !applying) {
-        psv = Math.max(Date.now(), psv + 1);
         send({ type: 'page', psv, data: lastData });
         /* 诊断上报宿主面板 */
         try {
@@ -655,6 +692,20 @@
     reassign();
     if (MODE === 'host') maybeAck(true);
   });
+  /* 宿主焦点时的按键 → 转发进自己的 iframe（焦点在任一窗 = 焦点在每窗） */
+  if (MODE === 'host') {
+    const fwdToFrame = et => e => {
+      const t = e.target;
+      if (t && /INPUT|SELECT|TEXTAREA/.test(t.tagName || '')) return;
+      if (!frameEl || !frameEl.contentWindow) return;
+      try {
+        frameEl.contentWindow.postMessage({ mws: 'key', et, key: e.key, code: e.code,
+          ctrlKey: e.ctrlKey, shiftKey: e.shiftKey, altKey: e.altKey, metaKey: e.metaKey, repeat: e.repeat }, location.origin);
+      } catch (err) {}
+    };
+    window.addEventListener('keydown', fwdToFrame('keydown'));
+    window.addEventListener('keyup', fwdToFrame('keyup'));
+  }
 
   /* 适配器可能晚于壳注册：轮询拾取（inner 模式）；就绪后补放已收到的状态（修：就绪前消息被丢） */
   setInterval(() => {

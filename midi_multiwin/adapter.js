@@ -150,8 +150,13 @@
       applyState: applyState,
       domain: { lo: 21, hi: 109, label: '键' },
       onAssign: onAssign,
-      applyOffset: ms => { window.__MW_OFFSET_MS = ms; }
+      applyOffset: ms => { window.__MW_OFFSET_MS = ms; },
+      resumeAudio: () => {                 // 任意同步消息到达时尝试解锁音频时钟
+        try { if (typeof audioCtx !== 'undefined' && audioCtx && audioCtx.state !== 'running') audioCtx.resume(); } catch (e) {}
+      }
     };
+    /* iframe 带 allow=autoplay：无手势也应可 resume；这里先试一次兜底 */
+    try { if (typeof audioCtx !== 'undefined' && audioCtx && audioCtx.state !== 'running') audioCtx.resume(); } catch (e) {}
     if (MWS()) MWS().onAssign(onAssign);   // 壳早于适配器就绪：立即补一次当前分片
     /* 静音每秒重申：防 initAudio 首次调用早于包装时机导致 masterGain 恒为 1（四窗齐响） */
     setInterval(applyMute, 1000);
