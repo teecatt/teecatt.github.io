@@ -28,11 +28,11 @@
   /* ================= 模式分流 ================= */
   const q = new URLSearchParams(location.search);
   const IS_TOP = (function () { try { return window.self === window.top; } catch (e) { return false; } })();
-  const MODE = IS_TOP ? 'host' : (q.get('mws') === 'inner' ? 'inner' : 'passive');
+  const MODE = IS_TOP ? (q.get('mws') === 'mirror' ? 'mirror' : 'host') : (q.get('mws') === 'inner' ? 'inner' : 'passive');
   MWS.mode = MODE;
 
-  /* host：在 <head> 阶段接管文档——中止原页面解析，写入纯净宿主骨架
-     （原页面的 body 脚本、DOM 全部不执行，由 iframe 内实例承担） */
+  /* mirro/host：在 <head> 阶段接管文档——中止原页面解析，写入纯净宿主骨架
+     （原页面的 body 脚本、DOM 全部不执行；mirror 用 <video> 代替 iframe） */
   if (MODE === 'host') {
     const keepTitle = document.title;
     try {
@@ -46,7 +46,9 @@
   }
 
   /* ================= 身份 / 配置 ================= */
-  const CH = MODE === 'host' ? 'mws.v1' : 'mws.page';   // host 几何层 / 内容中继层 分道
+  const IS_LEAD = MODE === 'host';        // top 窗几何组；SRC=host&index0 唯一渲染源
+  const TOPW = MODE === 'host';           // 拓扑层（几何/扫描/面板）仅 top 窗参与
+  const CH = MODE === 'inner' ? 'mws.page' : 'mws.v1';   // 内容中继层 / 几何+视频层 分道
   const MY_ID = (crypto && crypto.randomUUID) ? crypto.randomUUID()
     : Math.random().toString(36).slice(2) + Date.now();
   const BORN = Date.now();
@@ -57,6 +59,8 @@
   const SH = { sv: 0, ord: {}, sw: null };   // 仅 host 使用（序号/扫描轮）
   let psv = 0, applying = false;             // 仅 inner/passive（业务状态中继）
   let lastData = null;                       // 最近已知业务状态（逐字转发，防中途态污染）
+  let recalUntil = 0, recalDirty = false;    // 新窗校准窗口期内：暂停中、丢弃状态应用
+  let reclPauseT = 0, reclResumeT = 0;
   let dispOffset = 0;                        // host 持有，postMessage 转交自己的 iframe
 
   let adapter = window.ShellAdapter || null;
@@ -144,6 +148,7 @@
   }
   function reassign() {
     const a = computeAssign();
+    const prevN = myCount;
     const changed = a.idx !== myIndex || a.n !== myCount;
     myIndex = a.idx; myCount = a.n;
     if (changed) {
@@ -151,7 +156,17 @@
       const payload = { index: myIndex, count: myCount, slice: null };
       if (adapter && adapter.onAssign) { try { adapter.onAssign(payload); } catch (e) { console.warn(e); } }
       for (const cb of assignCbs) { try { cb(payload); } catch (e) {} }
-      if (MODE === 'host') { renderPanel(); renderSteps(); updateFrame(); }
+      if (MODE === 'host') {
+        renderPanel(); renderSteps(); updateFrame(); updateBanner();
+        const cin = (a && a.n) || myCount;
+        /* 新窗口加入（拓扑计数上升）→ 请求内容层校准 */
+        if (cin > prevN) send({ type: 'recal', at: Date.now() + 200 });
+        /* 告知渲染源内容 lead 开关（仅 #1 内容实例供流；镜像窗内容为 mirror.html） */
+        try {
+          if (frameEl && frameEl.tagName === 'IFRAME' && frameEl.contentWindow)
+            frameEl.contentWindow.postMessage({ mws: 'lead', on: myIndex === 0 }, location.origin);
+        } catch (e) {}
+      }
     }
     return changed;
   }
@@ -261,10 +276,24 @@
   /* ================= 业务状态中继（仅 inner/passive） ================= */
   function notifyPage() {
     if (MODE === 'host' || !adapter || applying || !adapter.getState) return;
+    if (Date.now() < recalUntil) return;             // 校准窗口内暂停响应
     let data; try { data = adapter.getState(); } catch (e) { return; }
     lastData = data;                         // 动作时刻的真值
     psv = Date.now();
     send({ type: 'page', psv, data });
+  }
+  /* 新窗校准：全员在绝对时刻 at 暂停、+0.5s 恢复（内容层本地执行；期间丢弃消息应用，恢复后对齐） */
+  function scheduleRecal(at) {
+    if (MODE === 'host' || !adapter) return;
+    at = Math.max(at || 0, Date.now() + 50);
+    recalUntil = at + 700;
+    clearTimeout(reclPauseT); clearTimeout(reclResumeT);
+    reclPauseT = setTimeout(() => { try { adapter.recalPause && adapter.recalPause(); } catch (e) {} }, Math.max(0, at - Date.now()));
+    reclResumeT = setTimeout(() => {
+      recalUntil = 0;
+      try { adapter.recalResume && adapter.recalResume(); } catch (e) {}
+      recalDirty = false;
+    }, Math.max(0, at - Date.now()) + 500);
   }
   MWS.notify = notifyPage;
   MWS.onAssign = cb => { assignCbs.push(cb); cb({ index: myIndex, count: myCount, slice: null }); };
@@ -294,16 +323,22 @@
       if (m.psv < psv) return;               // 只丢「更旧的数据版本」；相等=心跳刷新（对时）
       psv = m.psv;
       lastData = m.data;                     // 逐字保留真值，后续心跳原样转发
-      if (adapter && adapter.applyState) {
+      if (Date.now() < recalUntil) { recalDirty = true; }   // 校准窗内：记脏，恢复后对齐
+      else if (adapter && adapter.applyState) {
         applying = true;
         try { adapter.applyState(m.data); } catch (e) { console.warn('[MWS] applyState', e); }
         finally { applying = false; }
+        if (adapter && adapter.resumeAudio) { try { adapter.resumeAudio(); } catch (e) {} }
       }
-      if (adapter && adapter.resumeAudio) { try { adapter.resumeAudio(); } catch (e) {} }
+    } else if (m.type === 'recal' && MODE !== 'host') {
+      scheduleRecal(m.at || Date.now());
     } else if (m.type === 'key' && MODE !== 'host') {
       /* 键盘镜像：焦点在任一窗 = 焦点在每窗（合成派发给本页 v2） */
       dispatchKeyEvt(m);
       if (adapter && adapter.resumeAudio) { try { adapter.resumeAudio(); } catch (e) {} }
+    } else if (m.type === 'mclk' && MODE === 'host' && myIndex === 0) {
+      /* 镜像窗转发的画布坐标点击 → 派发给渲染源内容 */
+      try { if (frameEl && frameEl.contentWindow) frameEl.contentWindow.postMessage({ mws: 'do', x: m.x, y: m.y }, location.origin); } catch (e) {}
     } else if (m.type === 'swdone' && MODE === 'host') {
       let s = swAcks.get(m.cycle); if (!s) { s = new Set(); swAcks.set(m.cycle, s); }
       s.add(m._from);
@@ -377,6 +412,7 @@
     shadow.appendChild(st);
 
     /* iframe = 整块画布上的本窗裁剪视口 */
+  if (MODE === 'host') {   // 渲染源：iframe 承担整画布
     const u = new URL(location.href);
     u.searchParams.set('mws', 'inner');
     frameEl = document.createElement('iframe');
@@ -384,6 +420,13 @@
     frameEl.src = u.pathname + u.search + u.hash;
     frameEl.setAttribute('allow', 'autoplay; fullscreen; clipboard-write; clipboard-read');
     shadow.appendChild(frameEl);
+  } else {                 // mirror：视频占位（尺寸与 iframe 同套裁剪矩形）
+    frameEl = document.createElement('video');
+    frameEl.id = 'f';
+    frameEl.autoplay = true; frameEl.playsInline = true; frameEl.muted = true;
+    frameEl.style.cssText = 'position:fixed;border:0;will-change:transform;transform-origin:0 0;background:#0b0e14';
+    shadow.appendChild(frameEl);
+  }
 
     cv = el(shadow, 'canvas'); cv.id = 'cv';
     clockEl = el(shadow, 'div', '', '000000'); clockEl.id = 'clock';
@@ -471,6 +514,7 @@
     stepsEl.querySelector('#sDone').onclick = () => stepsEl.style.display = 'none';
     stepsEl.querySelector('#sOpen').onclick = openWin;
     stepsEl.addEventListener('click', e => { if (e.target === stepsEl) stepsEl.style.display = 'none'; });
+    stepsEl.style.display = 'none';   // 不再二次确认：打开即用、直接播放（? 按钮仍可查看帮助）
 
     (document.body || document.documentElement).appendChild(host);
     ctx = cv.getContext('2d');
@@ -535,13 +579,48 @@
   }
 
   /* ================= iframe 裁剪与覆盖层绘制（host） ================= */
+  /* iframe 尺寸/位置 + 动态角色：#1=真页面(供流源)；其余=mirror.html 轻量接收页 */
   function updateFrame() {
     if (!frameEl) return;
+    const SRC = myIndex === 0;
+    if (SRC) {
+      const srcOk = frameEl.tagName === 'IFRAME' && (frameEl.src || '').indexOf('mws=inner') >= 0;
+      if (!srcOk) {   // 首次或角色翻转才动 src（重设 src 会整页重载）
+        const nf = document.createElement('iframe');
+        nf.id = 'f'; nf.setAttribute('allow', 'autoplay; fullscreen; clipboard-write; clipboard-read');
+        shadow.replaceChild(nf, frameEl); frameEl = nf;
+        const uu = new URL(location.href);
+        uu.searchParams.set('mws', 'inner');
+        frameEl.src = uu.pathname + uu.search + uu.hash;
+      }
+    } else {
+      const srcOk = frameEl.tagName === 'VIDEO' && (frameEl.src || '').indexOf('mirror.html') >= 0;
+      if (!srcOk) {
+        const nv = document.createElement('video');
+        nv.id = 'f'; nv.autoplay = true; nv.playsInline = true; nv.muted = true;
+        nv.style.cssText = 'position:fixed;border:0;will-change:transform;transform-origin:0 0;background:#0b0e14;object-fit:fill;pointer-events:auto';
+        shadow.replaceChild(nv, frameEl); frameEl = nv;
+        frameEl.src = new URL('../shell/mirror.html', location.href).href;
+        mirrorWire();
+      }
+    }
     const g = hostGeom(), r = myRect(g);
     frameEl.style.width = g.total + 'px';
     frameEl.style.height = g.Hv + 'px';
     frameEl.style.left = (-r.ox) + 'px';
     frameEl.style.top = (-r.oy) + 'px';
+  }
+  /* mirror.html）。降低 iframe 内页面尺寸 = 轻量接收页 */
+  function mirrorWire() {
+    if (!frameEl || frameEl.tagName !== 'VIDEO' || frameEl.__wired) return;
+    frameEl.__wired = true;
+    /* 点击 → 转发画布坐标（iframe 已被裁剪，坐标即画布坐标） */
+    frameEl.addEventListener('click', e => {
+      const g = hostGeom();
+      send({ type: 'mclk', x: Math.round(e.clientX), y: Math.round(e.clientY) });
+      e.preventDefault();
+    });
+    /* 就绪握手（mirror.html 通过 postMessage 请求自己的 tile rect） */
   }
   function resize() {
     if (!cv) return;

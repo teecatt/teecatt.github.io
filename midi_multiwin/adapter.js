@@ -8,8 +8,12 @@
   'use strict';
   let ready = false;
   let notifyTimer = 0;
+  let leadLive = false, leadStream = null, vidCh = null;
+  const sendPCs = new Map();
+  const srcId = 'SRC' + Math.random().toString(36).slice(2, 6);
   let applyingNow = false;   // applyState 进行中（含 300ms 尾巴）：抑制回声广播
   let pending = null;        // 异步切歌期间挂起的对齐请求
+  let recalPlaying = false;  // 新窗校准：恢复依据
 
   function MWS() { return window.__MWS; }
   function debounceNotify() {
@@ -153,6 +157,11 @@
       applyOffset: ms => { window.__MW_OFFSET_MS = ms; },
       resumeAudio: () => {                 // 任意同步消息到达时尝试解锁音频时钟
         try { if (typeof audioCtx !== 'undefined' && audioCtx && audioCtx.state !== 'running') audioCtx.resume(); } catch (e) {}
+      },
+      recalPause: () => { applyingNow = true; try { recalPlaying = !!isPlaying; if (isPlaying) pausePlay(); } catch (e) {} },
+      recalResume: () => {
+        try { if (recalPlaying && !isPlaying) startPlay(); } catch (e) {}
+        finally { setTimeout(() => { applyingNow = false; }, 300); }
       }
     };
     /* iframe 带 allow=autoplay：无手势也应可 resume；这里先试一次兜底 */
@@ -160,6 +169,48 @@
     if (MWS()) MWS().onAssign(onAssign);   // 壳早于适配器就绪：立即补一次当前分片
     /* 静音每秒重申：防 initAudio 首次调用早于包装时机导致 masterGain 恒为 1（四窗齐响） */
     setInterval(applyMute, 1000);
+
+    /* ===== 镜像模式供流：宿主告知 lead 开关 → captureStream + 逐从窗 WebRTC ===== */
+    window.addEventListener('message', ev => {
+      if (!ev.data || ev.data.mws === undefined) return;
+      if (ev.data.mws === 'lead') {
+        try {
+          if (!!ev.data.on === leadLive) return;
+          leadLive = !!ev.data.on;
+          if (!leadLive) {
+            for (const pc of sendPCs.values()) { try { pc.close(); } catch (e2) {} }
+            sendPCs.clear(); return;
+          }
+          const cvs = document.getElementById('visualCanvas') || document.querySelector('canvas');
+          if (!cvs || !cvs.captureStream) { console.warn('[MWS-adapter] captureStream 不可用'); return; }
+          leadStream = cvs.captureStream(45);
+          vidCh = vidCh || new BroadcastChannel('mws.vid');
+          vidCh.onmessage = onVidSignal;
+        } catch (err) { console.warn('[MWS-adapter] lead', err); }
+      } else if (ev.data.mws === 'do') {   // 从窗转发的画布坐标点击 → 合成派发进真实页面
+        try {
+          const eld = document.elementFromPoint(ev.data.x, ev.data.y);
+          if (eld) eld.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, clientX: ev.data.x, clientY: ev.data.y }));
+        } catch (err) {}
+      }
+    });
+    function onVidSignal(e) {
+      const m = e.data;
+      if (m.type === 'want') startPeer(m.pid);
+      else if (m.type === 'ice' && m.to === srcId) { const pc = sendPCs.get(m.pid); if (pc) pc.addIceCandidate(m.c).catch(() => {}); }
+      else if (m.type === 'answer' && m.to === srcId) { const pc = sendPCs.get(m.pid); if (pc) pc.setRemoteDescription(m.sdp).catch(() => {}); }
+    }
+    function startPeer(pid) {
+      if (!leadStream || !vidCh) return;
+      const pc = new RTCPeerConnection({});          // 本机回环：无 STUN/TURN
+      sendPCs.set(pid, pc);
+      leadStream.getTracks().forEach(t => { try { pc.addTrack(t, leadStream); } catch (e2) {} });
+      pc.onicecandidate = ev => { if (ev.candidate) vidCh.postMessage({ type: 'ice', to: pid, c: ev.candidate, from: srcId }); };
+      pc.createOffer({ offerToReceiveVideo: false, offerToReceiveAudio: false })
+        .then(o => pc.setLocalDescription(o))
+        .then(() => vidCh.postMessage({ type: 'offer', to: pid, pid: srcId, sdp: pc.localDescription }))
+        .catch(() => {});
+    }
     console.log('[MWS-adapter] 就绪：v2 页已接入同步壳');
   }
   setInterval(boot, 120);
