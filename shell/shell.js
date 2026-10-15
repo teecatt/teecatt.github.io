@@ -56,6 +56,7 @@
 
   const SH = { sv: 0, ord: {}, sw: null };   // 仅 host 使用（序号/扫描轮）
   let psv = 0, applying = false;             // 仅 inner/passive（业务状态中继）
+  let lastData = null;                       // 最近已知业务状态（逐字转发，防中途态污染）
   let dispOffset = 0;                        // host 持有，postMessage 转交自己的 iframe
 
   let adapter = window.ShellAdapter || null;
@@ -261,6 +262,7 @@
   function notifyPage() {
     if (MODE === 'host' || !adapter || applying || !adapter.getState) return;
     let data; try { data = adapter.getState(); } catch (e) { return; }
+    lastData = data;                         // 动作时刻的真值
     psv = Date.now();
     send({ type: 'page', psv, data });
   }
@@ -289,8 +291,9 @@
       if (!SH.sw || SH.sw.cycle !== oldCycle) onNewCycle();
       reassign(); renderPanel();
     } else if (m.type === 'page' && MODE !== 'host') {
-      if (m.psv <= psv) return;
+      if (m.psv < psv) return;               // 严格更旧才丢；相等=刷新（对时）
       psv = m.psv;
+      lastData = m.data;                     // 逐字保留真值，后续心跳原样转发
       if (adapter && adapter.applyState) {
         applying = true;
         try { adapter.applyState(m.data); } catch (e) { console.warn('[MWS] applyState', e); }
@@ -390,6 +393,7 @@
     p.innerHTML =
       '<span class="badge" id="pBadge">#1/1</span>' +
       '<span class="s" id="pGeom"></span>' +
+      '<span class="s" id="pDiag"></span>' +
       '<span class="s">序号<select id="pSeq"></select></span>' +
       '<button class="b" id="pLines" title="扫描线开关">✛ 线</button>' +
       '<span class="s">显示偏移<b id="pOff">+0ms</b><input type="range" id="pOffR" min="-300" max="300" step="4" value="0"></span>' +
@@ -397,7 +401,7 @@
       '<button class="b" id="pOpen">＋ 开窗</button>' +
       '<button class="b" id="pFull">⛶</button>' +
       '<button class="b" id="pHelp">?</button>';
-    for (const [k, id] of [['badge', 'pBadge'], ['geom', 'pGeom'], ['seq', 'pSeq'], ['lines', 'pLines'],
+    for (const [k, id] of [['badge', 'pBadge'], ['geom', 'pGeom'], ['diag', 'pDiag'], ['seq', 'pSeq'], ['lines', 'pLines'],
       ['off', 'pOff'], ['offR', 'pOffR'], ['rtt', 'pRtt'], ['open', 'pOpen'], ['full', 'pFull'], ['help', 'pHelp']]) {
       panelEls[k] = p.querySelector('#' + id);
     }
@@ -588,10 +592,29 @@
       try { if (window.parent && window.parent !== window) window.parent.postMessage({ mws: 'ready' }, location.origin); } catch (e) {}
     }, 300);
   } else {
-    /* 宿主：iframe 就绪 → 下发偏移 */
+    /* 宿主：iframe 就绪 → 下发偏移；实例诊断 → 面板同步状态行 */
+    const diagMap = new Map();   // source window -> {idx,n,playing,pos,t}
+    const updateDiag = () => {
+      if (!panelEls.diag) return;
+      const now = Date.now();
+      let total = 0, playing = 0, nMax = 0;
+      for (const [k, d] of diagMap) {
+        if (now - d.t > 3500) { diagMap.delete(k); continue; }
+        total++; if (d.playing) playing++; nMax = Math.max(nMax, d.n);
+      }
+      panelEls.diag.textContent = total
+        ? ('实例 ' + total + (nMax ? '/' + nMax : '') + ' · 播放中 ' + playing)
+        : '';
+    };
     window.addEventListener('message', e => {
-      if (e.data && e.data.mws === 'ready') MWS.setOffset(dispOffset);
+      if (!e.data) return;
+      if (e.data.mws === 'ready') MWS.setOffset(dispOffset);
+      else if (e.data.mws === 'diag') {
+        diagMap.set(e.source, { idx: e.data.idx, n: e.data.n, playing: e.data.playing, pos: e.data.pos, t: Date.now() });
+        updateDiag();
+      }
     });
+    setInterval(updateDiag, 1500);
   }
 
   /* ================= 定时器（按模式） ================= */
@@ -608,11 +631,21 @@
       rzT = setTimeout(() => { hello(); updateFrame(); renderPanel(); }, 150);
     });
   } else {
-    /* 业务状态：仅编号 0 的内容实例心跳（收敛源，防双写竞态） */
+    /* 业务状态：全员心跳——psv 保鲜（对时/纠偏）、数据逐字转发（内容仅动作可变）。
+       修：旧版仅 #1 心跳导致晚加载 #1 的旧状态永远无人纠偏。 */
     setInterval(() => {
-      if (psv > 0 && myIndex === 0 && adapter && adapter.getState && !applying) {
-        let data; try { data = adapter.getState(); } catch (e) { return; }
-        send({ type: 'page', psv, data });
+      if (lastData && adapter && !applying) {
+        psv = Math.max(Date.now(), psv + 1);
+        send({ type: 'page', psv, data: lastData });
+        /* 诊断上报宿主面板 */
+        try {
+          if (window.parent && window.parent !== window) {
+            const a = MWS.assignment();
+            const st = adapter.getState ? adapter.getState() : {};
+            window.parent.postMessage({ mws: 'diag', idx: a.index, n: a.count,
+              playing: !!st.playing, pos: Math.round(st.pos || 0) }, location.origin);
+          }
+        } catch (e) {}
       }
     }, 1000);
     window.addEventListener('resize', () => { setTimeout(() => hello(), 150); });
@@ -623,12 +656,17 @@
     if (MODE === 'host') maybeAck(true);
   });
 
-  /* 适配器可能晚于壳注册：轮询拾取（inner 模式） */
+  /* 适配器可能晚于壳注册：轮询拾取（inner 模式）；就绪后补放已收到的状态（修：就绪前消息被丢） */
   setInterval(() => {
     if (MODE !== 'host' && !adapter && window.ShellAdapter) {
       adapter = window.ShellAdapter;
       reassign();
       applyOffsetLocal(dispOffset);
+      if (lastData && adapter.applyState) {
+        applying = true;
+        try { adapter.applyState(lastData); } catch (e) {}
+        finally { applying = false; }
+      }
       try { if (window.parent && window.parent !== window) window.parent.postMessage({ mws: 'ready' }, location.origin); } catch (e) {}
     }
   }, 200);

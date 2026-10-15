@@ -8,12 +8,14 @@
   'use strict';
   let ready = false;
   let notifyTimer = 0;
-  let pending = null;   // 异步切歌期间挂起的对齐请求
+  let applyingNow = false;   // applyState 进行中（含 300ms 尾巴）：抑制回声广播
+  let pending = null;        // 异步切歌期间挂起的对齐请求
 
   function MWS() { return window.__MWS; }
   function debounceNotify() {
+    if (applyingNow) return;             // 该变更来自他窗同步 → 不回声
     clearTimeout(notifyTimer);
-    notifyTimer = setTimeout(() => { if (MWS()) MWS().notify(); }, 80);
+    notifyTimer = setTimeout(() => { if (!applyingNow && MWS()) MWS().notify(); }, 80);
   }
 
   /* ---------- 对 v2 全局函数打通知钩子（包装 window 属性，内部裸调用同样经过包装） ---------- */
@@ -56,7 +58,7 @@
   function alignPos(d) {
     if (typeof d.speed === 'number' && Math.abs(playSpeed - d.speed) > 0.01) setSpeed(d.speed);
     if (typeof d.pos === 'number') {
-      const thr = d.playing ? 0.2 : 0.01;
+      const thr = d.playing ? 0.35 : 0.01;   // 播放中放宽到 350ms，避免心跳对时抖动
       if (Math.abs((currentTime || 0) - d.pos) > thr) seekTo(d.pos);
     }
     if (d.playing && !isPlaying) startPlay();
@@ -70,6 +72,7 @@
   }
   function applyState(d) {
     if (!ready || !d) return;
+    applyingNow = true;
     pending = d;
     try {
       const sel = document.getElementById('songSel');
@@ -80,6 +83,7 @@
       pending = null;
       alignPos(d);
     } catch (e) { console.warn('[MWS-adapter] applyState', e); }
+    finally { setTimeout(() => { applyingNow = false; }, 300); }   // 覆盖 wrapper 的 80ms debounce
   }
 
   /* ---------- 分片 / 静音 ---------- */
@@ -149,6 +153,8 @@
       applyOffset: ms => { window.__MW_OFFSET_MS = ms; }
     };
     if (MWS()) MWS().onAssign(onAssign);   // 壳早于适配器就绪：立即补一次当前分片
+    /* 静音每秒重申：防 initAudio 首次调用早于包装时机导致 masterGain 恒为 1（四窗齐响） */
+    setInterval(applyMute, 1000);
     console.log('[MWS-adapter] 就绪：v2 页已接入同步壳');
   }
   setInterval(boot, 120);
