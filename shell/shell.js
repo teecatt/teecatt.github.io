@@ -83,16 +83,24 @@
   });
 
   /* ================= 在场与编号（host 与 inner 各自成组） ================= */
-  const peers = new Map();
-  function myWH() { return { w: Math.max(1, window.innerWidth || 1280), h: Math.max(1, window.innerHeight || 720) }; }
-  function hello(hidden) {
-    const wh = myWH();
-    send({ type: 'hello', id: MY_ID, born: BORN, hidden: hidden === undefined ? document.hidden : hidden, w: wh.w, h: wh.h });
+  const peers = new Map();   // id -> {born,hidden,cx,cy,w,h,lastSeen}  cx/cy=内容区物理原点
+  /* 本窗内容区（标签栏/边框/任务栏偏移都换算进画布坐标，F11 全屏时 chrome=0 自动归零） */
+  function myContent() {
+    const iw = window.innerWidth || 1280, ih = window.innerHeight || 720;
+    const ow = window.outerWidth || iw, oh = window.outerHeight || ih;
+    const b = Math.max(0, (ow - iw) / 2);                 // 左右边框（对称）
+    const top = Math.max(0, oh - ih - b);                 // 标签栏+地址栏高度
+    return { x: (window.screenX || 0) + b, y: (window.screenY || 0) + top, w: iw, h: ih };
   }
-  function peerWH(id) {
-    if (id === MY_ID) return myWH();
-    const p = peers.get(id);
-    return { w: (p && p.w) || 1280, h: (p && p.h) || 720 };
+  function hello(hidden) {
+    const c = myContent();
+    send({ type: 'hello', id: MY_ID, born: BORN, hidden: hidden === undefined ? document.hidden : hidden,
+      cx: Math.round(c.x), cy: Math.round(c.y), w: c.w, h: c.h });
+  }
+  function peerContent(id) {
+    if (id === MY_ID) return myContent();
+    const p = peers.get(id) || {};
+    return { x: p.cx || 0, y: p.cy || 0, w: p.w || 1280, h: p.h || 720 };
   }
   function liveIds() {
     const ids = [...peers.keys()];
@@ -112,7 +120,9 @@
   }
   function computeAssign() {
     prune();
-    const ids = liveIds(), n = ids.length;
+    /* host：编号按桌面物理位置（聚类成行、行主序），与打开顺序无关；inner：按打开顺序（仅静音选主） */
+    const ids = MODE === 'host' ? hostGeom().ids : liveIds();
+    const n = ids.length;
     const slots = new Array(n).fill(null), assigned = new Map();
     if (MODE === 'host') {                        // 序号覆写仅 host 层（用户在面板操作）
       for (const id of ids) {
@@ -145,22 +155,47 @@
     return changed;
   }
 
-  /* ================= host 几何：画布与本窗裁剪矩形 ================= */
+  /* ================= host 几何：物理画布（包围盒）与本窗裁剪矩形 =================
+     2D 布局自适应：窗口可在桌面任意摆放（单排/2×2/任意网格），
+     画布 = 全部窗口内容区的包围盒，每窗裁剪 = 自己的物理矩形（含行列间隙）。 */
+  function physicalOrder(entries) {
+    const sorted = entries.slice().sort((a, b) => a.y - b.y || a.x - b.x);
+    const rows = [];
+    for (const e of sorted) {
+      let row = null;
+      for (const r of rows) {
+        if (Math.abs(r.anchorY - e.y) < Math.min(e.h, r.anchorH) * 0.5) { row = r; break; }
+      }
+      if (row) row.items.push(e);
+      else rows.push({ anchorY: e.y, anchorH: e.h, items: [e] });
+    }
+    rows.sort((a, b) => a.anchorY - b.anchorY);
+    const ordered = [];
+    for (const r of rows) ordered.push(...r.items.sort((a, b) => a.x - b.x));
+    return ordered;
+  }
   function hostGeom() {
     const ids = liveIds();
-    const segs = []; let total = 0, maxw = 0, Hv = 0;
-    for (const id of ids) {
-      const { w, h } = peerWH(id);
-      segs.push({ id, ox: total, oy: 0, w, h });
-      total += w; if (w > maxw) maxw = w; if (h > Hv) Hv = h;
+    const entries = ids.map(id => { const c = peerContent(id); return { id, x: c.x, y: c.y, w: c.w, h: c.h }; });
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, maxW = 1;
+    for (const e of entries) {
+      if (e.x < x0) x0 = e.x; if (e.y < y0) y0 = e.y;
+      if (e.x + e.w > x1) x1 = e.x + e.w; if (e.y + e.h > y1) y1 = e.y + e.h;
+      if (e.w > maxW) maxW = e.w;
     }
-    const T = Math.max(1500, Math.round(1000 * total / Math.max(1, maxw)));   // 横扫周期；纵扫同周期走完 Hv
-    const sig = ids.map((id, i) => id.slice(0, 8) + ':' + Math.round(segs[i].w / 20) + 'x' + Math.round(segs[i].h / 20)).join('|');
-    return { ids, segs, total, maxw, Hv, T, sig };
+    const Wv = Math.max(1, x1 - x0), Hv = Math.max(1, y1 - y0);
+    const ordered = physicalOrder(entries);
+    const segs = entries.map(e => ({ id: e.id, ox: Math.round(e.x - x0), oy: Math.round(e.y - y0), w: e.w, h: e.h }));
+    const T = Math.max(1500, Math.round(1000 * Wv / maxW));   // 去程时长：最宽窗 1s 跨过；纵轴同周期走完 Hv
+    const sig = entries.map(e => e.id.slice(0, 8) + '@' + Math.round(e.x / 10) + ',' + Math.round(e.y / 10) +
+      ',' + Math.round(e.w / 10) + 'x' + Math.round(e.h / 10)).sort().join('|');
+    return { ids: ordered.map(e => e.id), segs, total: Wv, Hv, T, sig, x0, y0, maxW };
   }
   function myRect(g) {
     const seg = g.segs.find(s => s.id === MY_ID);
-    return seg || { ox: 0, oy: 0, w: myWH().w, h: myWH().h };
+    if (seg) return seg;
+    const c = myContent();
+    return { ox: Math.round(c.x - (g.x0 || 0)), oy: Math.round(c.y - (g.y0 || 0)), w: c.w, h: c.h };
   }
 
   /* ================= 扫描线：屏障 / 求值（仅 host） ================= */
@@ -241,7 +276,8 @@
   onMsg(m => {
     if (m.type === 'hello') {
       const isNew = !peers.has(m.id);
-      peers.set(m.id, { born: m.born, hidden: !!m.hidden, w: m.w | 0 || 1280, h: m.h | 0 || 720, lastSeen: Date.now() });
+      peers.set(m.id, { born: m.born, hidden: !!m.hidden, cx: m.cx | 0, cy: m.cy | 0,
+        w: m.w | 0 || 1280, h: m.h | 0 || 720, lastSeen: Date.now() });
       if (isNew) hello();          // 立即回应新窗口：修开机广播早于对方存在的丢包（免等下个800ms周期）
       reassign();
       if (MODE === 'host') updateFrame();
@@ -412,7 +448,7 @@
     };
     document.addEventListener('mousemove', poke); poke();
 
-    const hint = el(shadow, 'div', '', '整页 = 一块画布，按像素裁剪到各窗（含顶部按键区）<br>横竖两线匀速 TL→BR→TL 往返 · 交点即画布坐标 · 大字钟差 = 显示延迟');
+    const hint = el(shadow, 'div', '', '整页 = 一块画布，按各窗<b>桌面物理坐标</b>裁剪（任意网格摆放自适应）<br>横竖两线匀速 TL→BR→TL 往返 · 交点 = 画布坐标 · 大字钟差 = 显示延迟');
     hint.id = 'hint';
 
     stepsEl = el(shadow, 'div'); stepsEl.id = 'steps';
@@ -436,7 +472,7 @@
     if (!shadow) return;
     panelEls.badge.textContent = '#' + (myIndex + 1) + ' / ' + myCount + ' 窗';
     const g = hostGeom(), r = myRect(g);
-    panelEls.geom.textContent = '画布 ' + g.total + '×' + g.Hv + ' · 本窗x' + r.ox + '+' + r.w;
+    panelEls.geom.textContent = '画布 ' + g.total + '×' + g.Hv + ' · 本窗@' + r.ox + ',' + r.oy + ' ' + r.w + '×' + r.h;
     let html = '<option value="">自动</option>';
     for (let i = 1; i <= myCount; i++) html += '<option value="' + i + '">#' + i + '</option>';
     if (panelEls.seq.innerHTML !== html) panelEls.seq.innerHTML = html;
@@ -518,7 +554,7 @@
       ctx.fillText('#' + (myIndex + 1), 14, 118);
       ctx.fillStyle = 'rgba(154,164,191,.55)';
       ctx.font = '13px system-ui';
-      ctx.fillText('#' + (myIndex + 1) + '/' + myCount + ' · x' + r.ox + '+' + r.w, 16, 142);
+      ctx.fillText('#' + (myIndex + 1) + '/' + myCount + ' · @' + r.ox + ',' + r.oy, 16, 142);
       /* 扫描线（画布坐标） */
       if (MODE === 'host' && linesOn && SH.sw) {
         const s = evalSweep(now);
