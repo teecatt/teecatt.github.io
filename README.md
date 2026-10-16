@@ -76,6 +76,7 @@ GitHub Pages（`*.github.io`）无此隔离头，多线程跑不起来。结论�
 - 访客地图：<https://down2.top/globe/>
 - 加密工具箱：<https://down2.top/crypto/>
 - UI Kit：<https://down2.top/ui-kit/>
+- 临时云文件（手机上的只读文件中转站，首页「临时云文件」卡片指向它）：<https://f.down2.top>
 
 ## 每页 README 索引
 
