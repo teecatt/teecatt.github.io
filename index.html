@@ -44,11 +44,11 @@ a{text-decoration:none;color:inherit}
 .social a:hover{border-color:var(--accent);color:var(--text);background:var(--hover)}
 .social a svg{width:16px;height:16px}
 .grid{flex:1;display:grid;gap:20px;justify-content:center;align-content:start;padding:32px 24px 60px;max-width:1080px;margin:0 auto;width:100%}
-/* 自适应布局：1-3个横排，4个2x2，5-6个3x2，7-9个3x3 */
-.grid.cards-1,.grid.cards-2,.grid.cards-3{grid-template-columns:repeat(auto-fit,minmax(240px,1fr));max-width:1080px}
-.grid.cards-4{grid-template-columns:repeat(2,1fr);max-width:720px}
-.grid.cards-5,.grid.cards-6{grid-template-columns:repeat(3,1fr);max-width:1080px}
-.grid.cards-7,.grid.cards-8,.grid.cards-9{grid-template-columns:repeat(3,1fr);max-width:1080px}
+/* 自适应布局：宽屏 PC/横屏 4 列，窄屏/竖屏手机（≤600px）1 列 */
+.grid.cards-1{grid-template-columns:repeat(auto-fit,minmax(240px,1fr));max-width:1080px}
+.grid.cards-2{grid-template-columns:repeat(2,1fr);max-width:720px}
+.grid.cards-3{grid-template-columns:repeat(3,1fr);max-width:1080px}
+.grid.cards-4,.grid.cards-5,.grid.cards-6,.grid.cards-7,.grid.cards-8,.grid.cards-9{grid-template-columns:repeat(4,1fr);max-width:1080px}
 .card{position:relative;background:var(--surface);border:1px solid var(--line);border-radius:24px;padding:28px 24px;cursor:pointer;transition:transform .15s,border-color .15s,box-shadow .15s;display:flex;flex-direction:column;gap:10px;min-width:0;container-type:inline-size}
 .card:hover{transform:translateY(-3px);border-color:var(--accent);box-shadow:0 12px 32px rgba(0,0,0,.35)}
 .card .ico{width:30%;aspect-ratio:1/1;height:auto;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:26px;font-size:21cqi}
@@ -131,9 +131,9 @@ footer{border-top:1px solid var(--line);padding:16px 24px;text-align:center;font
     </a>
   </div>
   <div class="card card-piano-v2">
-    <a class="card-body" href="./midi_player_v2/" title="MIDI播放器_V2（开发中）">
+    <a class="card-body" href="./midi_player_v2/" title="MIDI播放器V2（开发中）">
       <div class="ico">🎹</div>
-      <h2>MIDI播放器_V2 <span class="badge badge-new">开发中</span></h2>
+      <h2>MIDI播放器V2 <span class="badge badge-new">开发中</span></h2>
       <div class="desc">多种键型钢琴 · FluidR3_GM 音色库共55种 · 变速播放 · 自定义配色 · 音游模式 · 多CDN竞速 · SF2完整合成 · 真实ADSR包络 · 混响/合唱 · 弯音踏板全支持<br><span style="font-size:11px;color:var(--warn)">💡 低性能设备可能无法流畅播放高密度谱面</span></div>
       <div class="go">进入 →</div>
     </a>
@@ -150,7 +150,7 @@ footer{border-top:1px solid var(--line);padding:16px 24px;text-align:center;font
     <a class="card-body" href="./midi_multiwin/" title="多窗口 MIDI 同步">
       <div class="ico">🖥️</div>
       <h2>多窗口 MIDI 同步 <span class="badge badge-new">新</span></h2>
-      <div class="desc">MIDI播放器_V2 全功能（选谱 · 音色 · 谱面管理）套组件式同步壳 · 双开互认编号 · 88键跨屏均分 · 双扫描线画布标定 · 任意窗口播放全局联动</div>
+      <div class="desc">MIDI播放器V2 全功能（选谱 · 音色 · 谱面管理）套组件式同步壳 · 双开互认编号 · 88键跨屏均分 · 双扫描线画布标定 · 任意窗口播放全局联动</div>
       <div class="go">进入 →</div>
     </a>
   </div>
@@ -168,10 +168,16 @@ footer{border-top:1px solid var(--line);padding:16px 24px;text-align:center;font
     <div class="desc">好用的小玩意</div>
     <div class="go">进入 →</div>
   </a>
-  <a class="card card-crypto" href="https://n-web.down2.top/" title="加密笔记-云仓库版">
+  <a class="card card-crypto" href="https://n-web.down2.top/" title="加密笔记">
     <div class="ico">🔒</div>
-    <h2>加密笔记-云仓库版</h2>
+    <h2>加密笔记</h2>
     <div class="desc">Argon2id 派生 · AES-CTR 解密 · 明文不出浏览器 · 密文存于 GitHub 云仓库</div>
+    <div class="go">进入 →</div>
+  </a>
+  <a class="card card-crypto" href="https://n.down2.top/" title="加密笔记V2">
+    <div class="ico">🔒</div>
+    <h2>加密笔记V2</h2>
+    <div class="desc">服务端登录验证 · 笔记明文存于手机 · 版本历史见 GitHub 提交记录</div>
     <div class="go">进入 →</div>
   </a>
   <a class="card card-chef" href="./crypto/" title="加密工具箱 · 常用加解密工具">
