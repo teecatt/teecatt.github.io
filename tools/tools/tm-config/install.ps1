@@ -83,6 +83,9 @@ foreach ($f in $Files) {
     } catch {
         throw "下载失败: $url  原因: $($_.Exception.Message)"
     }
+    # 站点上的文本文件是 LF 换行，落盘前统一成 CRLF，避免 Windows INI 解析异常
+    $body = ([IO.File]::ReadAllText($tmp) -replace "`r`n", "`n") -replace "`n", "`r`n"
+    [IO.File]::WriteAllText($tmp, $body, (New-Object Text.UTF8Encoding($false)))
     Copy-Item $tmp (Join-Path $Dest $f) -Force
     Info "已写入 $f"
 }
